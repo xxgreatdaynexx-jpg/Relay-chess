@@ -10,8 +10,8 @@
 import { PLANET, orbitalElements, orbitPoints, altitudeOf, fmtAlt, type FlightState } from '../../../shared/spaceFlight';
 import { clamp, lerp, smooth, perlin3, fbm, terrainAt, biomeFromTerrain, oreAt, type BiomeId } from '../../../shared/spaceTerrain';
 
-const TW = 1536;
-const TH = 768;
+export const TW = 1536;
+export const TH = 768;
 const GLOBE_HI = 560;
 const GLOBE_LO = 384;
 
@@ -52,14 +52,20 @@ function rgb(r: number, g: number, b: number): [number, number, number] {
   return [clamp(r, 0, 255) | 0, clamp(g, 0, 255) | 0, clamp(b, 0, 255) | 0];
 }
 
-function biome(elev: number, lat: number, moist: number, slope: number): [number, number, number] {
+/** Fine colour variation inside a biome (planet-fixed, seamless). */
+export function landVary(lat: number, lon: number): number {
+  const cl = Math.cos(lat);
+  const x = cl * Math.cos(lon), y = cl * Math.sin(lon), z = Math.sin(lat);
+  return fbm(x * 7.5 + 31, y * 7.5 - 5, z * 7.5 + 17, 3) * 1.6;
+}
+
+/**
+ * Surface colour. Continuous blends (no hard latitude or moisture cut-offs) so
+ * biome borders read as natural transitions at every zoom; the dominant colour
+ * still matches `biomeFromTerrain`.
+ */
+export function biome(elev: number, lat: number, moist: number, slope: number, vary = 0): [number, number, number] {
   const absLat = Math.abs(lat) * 180 / Math.PI;
-  // Ice caps and high alpine snow.
-  const snowLine = 0.55 + 0.35 * (1 - absLat / 90);
-  if (elev > 0 && (absLat > 62 + moist * 6 + elev * 8 || (elev > snowLine && absLat > 28))) {
-    const k = 228 + (elev * 20) | 0;
-    return rgb(k, k + 4, k + 10);
-  }
   if (elev <= 0) {
     // Ocean: depth from elev (more negative = deeper).
     const d = clamp(-elev / 0.55);
@@ -68,42 +74,39 @@ function biome(elev: number, lat: number, moist: number, slope: number): [number
     const deep = rgb(4, 22, 56);
     const trench = rgb(2, 10, 32);
     const t = d;
-    const a = t < 0.35 ? lerpC(shallow, mid, t / 0.35) : t < 0.7 ? lerpC(mid, deep, (t - 0.35) / 0.35) : lerpC(deep, trench, (t - 0.7) / 0.3);
-    // A little sun-facing baked sparkle is added at draw time; here a faint teal in shallows.
-    return a;
+    return t < 0.35 ? lerpC(shallow, mid, t / 0.35) : t < 0.7 ? lerpC(mid, deep, (t - 0.35) / 0.35) : lerpC(deep, trench, (t - 0.7) / 0.3);
   }
-  // Beach
-  if (elev < 0.035) return rgb(194, 178, 122);
-  // Desert vs grassland vs forest by moisture and latitude.
-  const trop = smooth(18, 8, absLat);
   const midl = smooth(12, 22, absLat) * smooth(52, 42, absLat);
-  const dry = moist < 0.32 + (absLat > 18 && absLat < 36 ? 0.12 : 0);
-  if (dry && absLat < 48 && elev < 0.42) {
-    const sand = rgb(196, 164, 92);
-    const red = rgb(168, 110, 62);
-    return lerpC(sand, red, clamp(elev * 1.4));
-  }
-  if (slope > 0.45 && elev > 0.28) {
-    // Bare rock / mountains
-    const rock = rgb(98, 96, 92);
-    const dark = rgb(72, 70, 68);
-    return lerpC(rock, dark, clamp(slope));
-  }
-  if (trop > 0.4 && moist > 0.4) {
-    const jungle = rgb(22, 92, 42);
-    const lush = rgb(36, 122, 52);
-    return lerpC(lush, jungle, clamp(moist));
-  }
-  if (moist > 0.45) {
-    const forest = rgb(28, 86, 38);
-    const pine = rgb(24, 64, 40);
-    return lerpC(forest, pine, midl * 0.6 + elev);
-  }
-  const grass = rgb(62, 122, 52);
-  const prairie = rgb(110, 136, 58);
-  const tundra = rgb(132, 140, 108);
-  const g = lerpC(grass, prairie, clamp(0.55 - moist));
-  return absLat > 50 ? lerpC(g, tundra, smooth(50, 62, absLat)) : g;
+  // Grass / prairie base.
+  let c = lerpC(rgb(62, 122, 52), rgb(112, 136, 60), clamp(0.55 - moist + vary * 0.12));
+  // Forest where it is wet.
+  const forest = lerpC(rgb(30, 88, 40), rgb(24, 64, 40), clamp(midl * 0.6 + (elev - 0.3) * 0.8));
+  c = lerpC(c, forest, smooth(0.41, 0.49, moist + vary * 0.03));
+  // Tropics (same warped edge as biomeFromTerrain), feathered.
+  const trop = smooth(18, 8, absLat - (moist - 0.5) * 30 - elev * 10 + vary * 7);
+  const jungle = lerpC(rgb(36, 118, 50), rgb(20, 86, 40), clamp(moist + vary * 0.25));
+  c = lerpC(c, jungle, smooth(0.2, 0.6, trop) * smooth(0.36, 0.44, moist) * 0.9);
+  // Tundra toward the poles.
+  c = lerpC(c, rgb(132, 140, 108), smooth(50, 62, absLat) * 0.85);
+  // Highland plateaus turn olive / brown.
+  c = lerpC(c, rgb(104, 108, 70), smooth(0.6, 1.1, elev) * 0.35 * (0.7 + 0.3 * vary));
+  // Deserts.
+  const dryT = 0.32 + 0.12 * smooth(15, 20, absLat) * smooth(39, 34, absLat);
+  const wDry = smooth(dryT + 0.035, dryT - 0.035, moist) * smooth(50, 46, absLat) * smooth(0.45, 0.39, elev);
+  c = lerpC(c, lerpC(rgb(198, 166, 94), rgb(168, 110, 62), clamp(elev * 1.4 + vary * 0.2)), wDry);
+  // Bare rock on steep high ground.
+  c = lerpC(c, lerpC(rgb(98, 96, 92), rgb(72, 70, 68), clamp(slope)), smooth(0.38, 0.52, slope) * smooth(0.24, 0.3, elev));
+  // Beaches.
+  c = lerpC(c, rgb(194, 178, 122), smooth(0.045, 0.02, elev));
+  // Snow: polar caps and high peaks, feathered.
+  const snowLine = 0.55 + 0.35 * (1 - absLat / 90);
+  const polar = smooth(-2.5, 2.5, absLat - (62 + moist * 6 + elev * 8) + vary * 3);
+  const alpine = smooth(snowLine - 0.03, snowLine + 0.06, elev) * smooth(-4, 4, absLat - 28 + (elev - snowLine) * 25 + vary * 6);
+  const k = 228 + (elev * 20) | 0;
+  c = lerpC(c, rgb(k, k + 4, k + 10), Math.max(polar, alpine));
+  // Small tonal variation.
+  const m = 1 + vary * 0.09;
+  return rgb(c[0] * m, c[1] * m, c[2] * m);
 }
 
 function lerpC(a: [number, number, number], b: [number, number, number], t: number): [number, number, number] {
@@ -153,7 +156,7 @@ function buildTextures(): PlanetAssets | null {
       const slope = Math.hypot(eR - e, eD - e) * 9;
       // Relief: light from the northwest.
       const shade = clamp(0.78 + (e - eR) * 2.4 + (e - (elev[Math.max(0, j - 1) * TW + i] ?? e)) * 1.6, 0.55, 1.18);
-      let [r, g, b] = biome(e, lat, moistA[idx]!, slope);
+      let [r, g, b] = biome(e, lat, moistA[idx]!, slope, landVary(lat, ((i + 0.5) / TW) * 2 * Math.PI - Math.PI));
       // Slight colour noise so large biomes aren't flat.
       const jitter = perlin3(i * 0.08, j * 0.08, 4) * 8;
       r = clamp(r * shade + jitter, 0, 255) | 0;
@@ -201,35 +204,78 @@ function buildTextures(): PlanetAssets | null {
   lctx.putImageData(lImg, 0, 0);
 
   // Stars (cached, large).
-  const stars = makeCanvas(1024, 768);
-  const st = stars.getContext('2d');
-  if (st) {
-    st.fillStyle = '#050814';
-    st.fillRect(0, 0, 1024, 768);
-    // Faint milky band.
-    const milky = st.createLinearGradient(0, 200, 1024, 560);
-    milky.addColorStop(0, 'rgba(0,0,0,0)');
-    milky.addColorStop(0.4, 'rgba(160,180,230,0.07)');
-    milky.addColorStop(0.55, 'rgba(200,210,255,0.11)');
-    milky.addColorStop(0.7, 'rgba(160,180,230,0.06)');
-    milky.addColorStop(1, 'rgba(0,0,0,0)');
-    st.save();
-    st.translate(512, 384);
-    st.rotate(-0.35);
-    st.translate(-512, -384);
-    st.fillStyle = milky;
-    st.fillRect(0, 250, 1024, 280);
-    st.restore();
-    let s = 91_117;
-    const rnd = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
-    for (let i = 0; i < 900; i++) {
-      const x = rnd() * 1024, y = rnd() * 768, a = 0.15 + rnd() * 0.85, r = rnd() * (rnd() > 0.96 ? 1.8 : 1.05);
-      const col = rnd() > 0.85 ? `rgba(180,210,255,${a})` : rnd() > 0.7 ? `rgba(255,230,200,${a})` : `rgba(240,245,255,${a})`;
-      st.fillStyle = col;
-      st.beginPath(); st.arc(x, y, r, 0, Math.PI * 2); st.fill();
-    }
-  }
+  const stars = buildStarfield(2048, 1152);
   return { surface, clouds, lights, ocean, elev, moist: moistA, stars };
+}
+
+/**
+ * Starfield with a soft, irregular Milky Way: a Gaussian band of faint dust and
+ * dense small stars (no hard-edged gradient strip).
+ */
+function buildStarfield(W: number, H: number): HTMLCanvasElement {
+  const c = makeCanvas(W, H);
+  const st = c.getContext('2d');
+  if (!st) return c;
+  st.fillStyle = '#04060f';
+  st.fillRect(0, 0, W, H);
+  let seed = 91_117;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  // Milky Way: computed per pixel at low resolution (Gaussian band x fbm, with
+  // dark dust lanes), then upscaled smoothly so it has no hard edges or blocks.
+  const bw = 384, bh = Math.round((384 * H) / W);
+  const band = makeCanvas(bw, bh);
+  const bc = band.getContext('2d');
+  const ang = -0.32, ca = Math.cos(ang), sa = Math.sin(ang);
+  if (bc) {
+    const img = bc.createImageData(bw, bh);
+    for (let j = 0; j < bh; j++) for (let i = 0; i < bw; i++) {
+      const x = (i / bw - 0.5) * (W / H), y = j / bh - 0.5;
+      const along = x * ca + y * sa, across = -x * sa + y * ca;
+      const wob = 0.035 * Math.sin(along * 7.1) + 0.015 * Math.sin(along * 19.3);
+      const d = (across - wob) / 0.095;
+      const prof = Math.exp(-d * d * 0.5);
+      if (prof < 0.004) continue;
+      const n = fbm(along * 6, across * 6, 3.7, 5) * 0.5 + 0.5;
+      const lane = smooth(0.35, 0.9, Math.abs(d + 0.25 * fbm(along * 9, 1.3, across * 9, 3))) * 0.6 + 0.4;
+      const v = prof * clamp(n * 1.25 - 0.15) * lane;
+      const o = (j * bw + i) * 4;
+      const warm = clamp(0.5 + fbm(along * 3, across * 3, 9.1, 3));
+      img.data[o] = 175 + 45 * warm; img.data[o + 1] = 185 + 25 * warm; img.data[o + 2] = 235 - 20 * warm;
+      img.data[o + 3] = clamp(v * 0.42) * 255;
+    }
+    bc.putImageData(img, 0, 0);
+    st.save();
+    st.imageSmoothingEnabled = true;
+    st.imageSmoothingQuality = 'high';
+    st.drawImage(band, 0, 0, W, H);
+    st.restore();
+  }
+  const bandAt = (x: number, y: number) => {
+    const xx = (x / W - 0.5) * (W / H), yy = y / H - 0.5;
+    const across = -xx * sa + yy * ca;
+    return Math.exp(-((across / 0.1) ** 2) * 0.5);
+  };
+  const dot = (x: number, y: number, r: number, col: string) => { st.fillStyle = col; st.beginPath(); st.arc(x, y, r, 0, Math.PI * 2); st.fill(); };
+  // Dense faint stars concentrated in the band, a sparse field elsewhere.
+  for (let i = 0; i < 9000; i++) {
+    const x = rnd() * W, y = rnd() * H;
+    if (rnd() > bandAt(x, y) * 0.9 + 0.1) continue;
+    dot(x, y, 0.4 + rnd() * 0.4, `rgba(225,232,255,${0.15 + rnd() * 0.4})`);
+  }
+  for (let i = 0; i < 1500; i++) {
+    const x = rnd() * W, y = rnd() * H, a = 0.2 + rnd() * 0.8;
+    const big = rnd() > 0.975;
+    const r = big ? 1.1 + rnd() * 0.8 : 0.45 + rnd() * 0.6;
+    const k = rnd();
+    const col = k > 0.85 ? `rgba(175,205,255,${a})` : k > 0.72 ? `rgba(255,228,195,${a})` : `rgba(242,246,255,${a})`;
+    if (big) {
+      const g = st.createRadialGradient(x, y, 0, x, y, r * 4);
+      g.addColorStop(0, col); g.addColorStop(1, 'rgba(200,220,255,0)');
+      st.fillStyle = g; st.fillRect(x - r * 4, y - r * 4, r * 8, r * 8);
+    }
+    dot(x, y, r, col);
+  }
+  return c;
 }
 
 export function ensurePlanetAssets(): PlanetAssets | null {
@@ -250,7 +296,7 @@ function pixelsOf(c: HTMLCanvasElement): Uint8ClampedArray | null {
 let surfacePx: Uint8ClampedArray | null = null;
 let cloudPx: Uint8ClampedArray | null = null;
 let lightPx: Uint8ClampedArray | null = null;
-function maps() {
+export function maps() {
   const a = ensurePlanetAssets();
   if (!a) return null;
   if (!surfacePx) surfacePx = pixelsOf(a.surface);
@@ -263,7 +309,7 @@ function maps() {
 interface GlobeCache { canvas: HTMLCanvasElement; key: string; size: number }
 let globeCache: GlobeCache | null = null;
 
-function sample(px: Uint8ClampedArray, u: number, v: number, w: number, h: number): [number, number, number, number] {
+export function sample(px: Uint8ClampedArray, u: number, v: number, w: number, h: number): [number, number, number, number] {
   let x = u % 1; if (x < 0) x += 1;
   const y = clamp(v, 0, 0.99999);
   const fx = x * w, fy = y * (h - 1);
@@ -403,7 +449,7 @@ function renderGlobe(size: number, planetRot: number, cloudRot: number, camAz: n
   return canvas;
 }
 
-function drawStars(ctx: CanvasRenderingContext2D, w: number, h: number, alpha = 1) {
+export function drawStars(ctx: CanvasRenderingContext2D, w: number, h: number, alpha = 1) {
   const a = ensurePlanetAssets();
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -422,26 +468,19 @@ function drawStars(ctx: CanvasRenderingContext2D, w: number, h: number, alpha = 
 
 function drawAtmosphereHalo(ctx: CanvasRenderingContext2D, cx: number, cy: number, R: number, sunX: number, sunY: number) {
   const atm = R * (PLANET.atmHeight / PLANET.radius) * 1.35; // slightly exaggerated so 70 km is visible
-  // Outer glow
-  const g = ctx.createRadialGradient(cx, cy, R * 0.92, cx, cy, R + atm * 1.8);
-  g.addColorStop(0, 'rgba(80,160,255,0)');
-  g.addColorStop(R / (R + atm * 1.8) * 0.98, 'rgba(80,160,255,0)');
-  g.addColorStop(R / (R + atm * 1.8), 'rgba(140,200,255,0.55)');
-  g.addColorStop(Math.min(0.99, (R + atm * 0.55) / (R + atm * 1.8)), 'rgba(90,160,255,0.18)');
+  // One continuous falloff from the limb outward (no dark gap between rings).
+  const outer = R + atm * 1.6;
+  const at = (r: number) => clamp(r / outer, 0, 1);
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, outer);
+  g.addColorStop(0, 'rgba(150,205,255,0)');
+  g.addColorStop(at(R * 0.985), 'rgba(170,215,255,0.55)');
+  g.addColorStop(at(R + atm * 0.12), 'rgba(185,222,255,0.6)');
+  g.addColorStop(at(R + atm * 0.4), 'rgba(110,175,255,0.26)');
+  g.addColorStop(at(R + atm * 0.9), 'rgba(70,130,230,0.07)');
   g.addColorStop(1, 'rgba(40,80,180,0)');
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.arc(cx, cy, R + atm * 1.8, 0, Math.PI * 2);
-  ctx.fill();
-  // Tight inner limb
-  const g2 = ctx.createRadialGradient(cx, cy, R * 0.97, cx, cy, R + atm * 0.35);
-  g2.addColorStop(0, 'rgba(200,230,255,0)');
-  g2.addColorStop(0.7, 'rgba(200,230,255,0)');
-  g2.addColorStop(0.92, 'rgba(210,235,255,0.65)');
-  g2.addColorStop(1, 'rgba(150,200,255,0)');
-  ctx.fillStyle = g2;
-  ctx.beginPath();
-  ctx.arc(cx, cy, R + atm * 0.35, 0, Math.PI * 2);
+  ctx.arc(cx, cy, outer, 0, Math.PI * 2);
   ctx.fill();
   // Sunset wedge on the terminator side of the limb.
   const ang = Math.atan2(sunY - cy, sunX - cx);
@@ -473,7 +512,7 @@ function project(wx: number, wy: number, wz: number, eye: [number, number, numbe
 export function drawSpaceGlobe(
   ctx: CanvasRenderingContext2D,
   s: FlightState,
-  opts: { w: number; h: number; trail?: Array<[number, number]>; wallT?: number },
+  opts: { w: number; h: number; trail?: Array<[number, number]>; wallT?: number; fleet?: FleetMarker[] },
 ) {
   const { w, h } = opts;
   const el = orbitalElements(s.x, s.y, s.vx, s.vy);
@@ -541,9 +580,9 @@ export function drawSpaceGlobe(
 
   // Atmosphere cutoff ring (thin, dashed).
   ctx.save();
-  ctx.strokeStyle = 'rgba(140,200,255,0.28)';
+  ctx.strokeStyle = 'rgba(140,200,255,0.16)';
   ctx.lineWidth = 1;
-  ctx.setLineDash([3, 5]);
+  ctx.setLineDash([2, 6]);
   const atmR = Rpix * (1 + PLANET.atmHeight / PLANET.radius);
   ctx.beginPath(); ctx.arc(c0[0], c0[1], atmR, 0, Math.PI * 2); ctx.stroke();
   ctx.setLineDash([]);
@@ -573,6 +612,45 @@ export function drawSpaceGlobe(
     void prevZ;
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.restore();
+  }
+  if (opts.fleet?.length) {
+    // Faint shared orbit rings (deduplicated by altitude) and a dot per satellite.
+    const rings = new Set<number>();
+    ctx.save();
+    for (const m of opts.fleet) {
+      const rr = PLANET.radius + m.altM;
+      const key = Math.round(m.altM / 5_000);
+      if (!rings.has(key) && rings.size < 6) {
+        rings.add(key);
+        ctx.strokeStyle = 'rgba(111,227,255,0.13)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        let started = false;
+        for (let k = 0; k <= 96; k++) {
+          const a = (k / 96) * Math.PI * 2;
+          const p = plot(rr * Math.cos(a), rr * Math.sin(a));
+          if (!p) { started = false; continue; }
+          const behind = p[2] > (c0[2] ?? 0) && Math.hypot(p[0] - c0[0], p[1] - c0[1]) < Rpix * 0.98;
+          if (behind) { started = false; continue; }
+          if (!started) { ctx.moveTo(p[0], p[1]); started = true; } else ctx.lineTo(p[0], p[1]);
+        }
+        ctx.stroke();
+      }
+      const th = fleetAngle(m, opts.wallT ?? 0);
+      const p = plot(rr * Math.cos(th), rr * Math.sin(th));
+      if (!p) continue;
+      if (p[2] > (c0[2] ?? 0) && Math.hypot(p[0] - c0[0], p[1] - c0[1]) < Rpix * 0.98) continue;
+      ctx.fillStyle = m.mine ? FLEET_MINE : FLEET_OTHER;
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.beginPath(); ctx.arc(p[0], p[1], 2.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.font = '600 9px ui-sans-serif, system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillText(m.label, p[0] + 6, p[1] - 3);
+      ctx.fillStyle = m.mine ? FLEET_MINE : 'rgba(189,239,255,0.9)';
+      ctx.fillText(m.label, p[0] + 5, p[1] - 4);
+    }
     ctx.restore();
   }
   if (opts.trail && opts.trail.length > 1) {
@@ -616,204 +694,13 @@ export function drawSpaceGlobe(
   ctx.fillText(`ApA ${fmtAlt(el.apAltitude)}   PeA ${fmtAlt(el.peAltitude)}`, 10, h - 12);
 }
 
-/** Low / mid-ascent: curved horizon, textured ground, atmosphere-gradient sky. */
-export function drawAscentHorizon(
-  ctx: CanvasRenderingContext2D,
-  s: FlightState,
-  opts: { w: number; h: number; tFlame?: number; wallT?: number; drawRocket?: (ctx: CanvasRenderingContext2D, baseX: number, baseY: number, horizonY: number) => void },
-) {
-  const { w, h } = opts;
-  const alt = Math.max(0, altitudeOf(s));
-  const skyT = clamp(alt / 52_000);
-  ensurePlanetAssets();
-
-  // Sky: blue fading to black with altitude. Zenith darker than the horizon.
-  const zenith = lerpC3([110, 170, 225], [5, 8, 18], Math.pow(skyT, 0.72));
-  const horiz = lerpC3([168, 208, 238], [28, 48, 90], Math.pow(skyT, 0.85));
-  // A warm horizon when the sun is low (after some MET the launch-noon sun sinks in the west).
-  const sunAlt = Math.cos(PLANET.omega * s.t); // 1 at t=0
-  const glow = lerpC3([255, 200, 130], [120, 80, 90], clamp(sunAlt * 0.5 + 0.5));
-  const sky = ctx.createLinearGradient(0, 0, 0, h);
-  sky.addColorStop(0, `rgb(${zenith[0]},${zenith[1]},${zenith[2]})`);
-  sky.addColorStop(0.55, `rgb(${lerp(zenith[0], horiz[0], 0.6)|0},${lerp(zenith[1], horiz[1], 0.6)|0},${lerp(zenith[2], horiz[2], 0.6)|0})`);
-  sky.addColorStop(0.88, `rgb(${horiz[0]},${horiz[1]},${horiz[2]})`);
-  sky.addColorStop(1, `rgb(${glow[0]},${glow[1]},${glow[2]})`);
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, w, h);
-
-  if (skyT > 0.15) {
-    drawStars(ctx, w, h, clamp((skyT - 0.15) / 0.55));
-    // Redraw a translucent sky over stars so they fade in, not punch through at low alt.
-    if (skyT < 0.7) {
-      ctx.fillStyle = `rgba(${zenith[0]},${zenith[1]},${zenith[2]},${1 - (skyT - 0.15) / 0.55})`;
-      ctx.fillRect(0, 0, w, h * 0.75);
-    }
-  }
-
-  // Curvature: almost flat near the pad, clearly bowed by 20–40 km.
-  const dip = Math.acos(PLANET.radius / (PLANET.radius + alt + 1));
-  const Rpix = Math.max(w * 0.9, (w * 0.55) / Math.max(0.07, Math.sin(Math.max(dip, 0.04))));
-  const horizonY = h * (0.58 + 0.14 * (1 - clamp(alt / 40_000)));
-  const pcx = w / 2;
-  const pcy = horizonY + Rpix;
-
-  paintHorizonGround(ctx, s, pcx, pcy, Rpix, w, h, alt);
-
-  // Atmospheric limb / haze along the horizon.
-  const hazeH = 18 + 70 * (1 - skyT);
-  const hg = ctx.createLinearGradient(0, horizonY - hazeH * 2, 0, horizonY + 8);
-  hg.addColorStop(0, 'rgba(180,210,255,0)');
-  hg.addColorStop(0.55, `rgba(170,210,255,${0.22 * (1 - skyT)})`);
-  hg.addColorStop(0.82, `rgba(220,235,255,${0.45 * (1 - skyT * 0.6)})`);
-  hg.addColorStop(1, 'rgba(180,210,255,0)');
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(pcx, pcy, Rpix + hazeH * 0.6, 0, Math.PI * 2);
-  ctx.arc(pcx, pcy, Math.max(0, Rpix - 4), 0, Math.PI * 2, true);
-  ctx.clip();
-  ctx.fillStyle = hg;
-  ctx.fillRect(0, 0, w, h);
-  ctx.restore();
-  // Tight white-blue limb
-  ctx.strokeStyle = `rgba(210,235,255,${0.45 + 0.35 * skyT})`;
-  ctx.lineWidth = 2 + 3 * skyT;
-  ctx.beginPath();
-  ctx.arc(pcx, pcy, Rpix, Math.PI, 0, true); // upper arc
-  ctx.stroke();
-
-  if (alt < 900) {
-    ctx.fillStyle = '#4a4e56';
-    ctx.fillRect(w / 2 - 50, horizonY - 6, 100, 8);
-    ctx.fillStyle = '#888';
-    ctx.fillRect(w / 2 + 36, horizonY - 90, 6, 90);
-  }
-  opts.drawRocket?.(ctx, w / 2, horizonY - 8 - Math.min(alt / 80, 40), horizonY);
-
-  ctx.fillStyle = skyT > 0.45 ? '#cde' : '#123';
-  ctx.font = '11px ui-monospace, monospace';
-  ctx.textAlign = 'left';
-  ctx.fillText(fmtAlt(alt), 10, 18);
+/** Another player's satellite (or one of yours) shown on the maps. */
+export interface FleetMarker { id: string; label: string; altM: number; periodS: number; seed: number; mine?: boolean }
+/** Display-only orbital angle (inertial) from wall-clock time; positions are illustrative. */
+export function fleetAngle(m: FleetMarker, wallS: number): number {
+  return m.seed * 2 * Math.PI + (2 * Math.PI * wallS) / Math.max(600, m.periodS);
 }
-
-function lerpC3(a: [number, number, number], b: [number, number, number], t: number): [number, number, number] {
-  const k = clamp(t);
-  return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
-}
-
-
-function paintHorizonGround(ctx: CanvasRenderingContext2D, s: FlightState, pcx: number, pcy: number, Rpix: number, w: number, h: number, alt: number) {
-  const m = maps();
-  if (!m) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(pcx, pcy, Rpix, 0, Math.PI * 2);
-    ctx.clip();
-    const g = ctx.createLinearGradient(0, pcy - Rpix, 0, h);
-    g.addColorStop(0, alt < 3000 ? '#2d6a3a' : '#1a3a28');
-    g.addColorStop(1, '#0c1c14');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-    ctx.restore();
-    return;
-  }
-  const mobile = w < 700;
-  const bufW = mobile ? 320 : 560;
-  const bufH = mobile ? 200 : 340;
-  const buf = horizonBuf(bufW, bufH);
-  const img = buf.img;
-  const out = img.data;
-  const { surfacePx: sp, cloudPx: cp } = m;
-  const [suX, suY, suZ] = SUN;
-  const r = Math.hypot(s.x, s.y) || 1;
-  const ux = s.x / r, uy = s.y / r;
-  const ex = -uy, ey = ux;
-  // Look a little north-of-east so a coastline sits in frame (launch is on the equator).
-  const lookYaw = 0.55;
-  const cyE = Math.cos(lookYaw), syE = Math.sin(lookYaw);
-  // Camera looks just below the geometric horizon so the limb sits mid-lower frame.
-  const dip = Math.acos(PLANET.radius / (PLANET.radius + alt + 1));
-  const lookPitch = -dip * 0.15;
-  const fov = 1.05;
-  const aspect = bufW / bufH;
-  const tanH = Math.tan(fov / 2);
-  for (let j = 0; j < bufH; j++) {
-    for (let i = 0; i < bufW; i++) {
-      const ndcX = ((i + 0.5) / bufW) * 2 - 1;
-      const ndcY = 1 - ((j + 0.5) / bufH) * 2;
-      const camF = 1;
-      const camR = ndcX * tanH * aspect;
-      const camU = ndcY * tanH;
-      // Rotate look by pitch (in the east/up plane) then yaw toward north.
-      const fp = Math.cos(lookPitch), up = Math.sin(lookPitch);
-      const f2 = camF * fp + camU * (-Math.sin(lookPitch));
-      const u2 = camF * Math.sin(lookPitch) + camU * fp;
-      // yaw around up: mix east and north
-      const east = f2 * cyE;
-      const north = f2 * syE + camR;
-      const upC = u2;
-      const inv = 1 / (Math.hypot(east, north, upC) || 1);
-      const rdE = east * inv, rdN = north * inv, rdU = upC * inv;
-      const rx = rdE * ex + rdU * ux;
-      const ry = rdE * ey + rdU * uy;
-      const rz = rdN;
-      const ox = s.x, oy = s.y, oz = 0;
-      const bdot = 2 * (ox * rx + oy * ry + oz * rz);
-      const cc = ox * ox + oy * oy + oz * oz - PLANET.radius * PLANET.radius;
-      const disc = bdot * bdot - 4 * cc;
-      const o = (j * bufW + i) * 4;
-      if (disc < 0) { out[o + 3] = 0; continue; }
-      const tHit = (-bdot - Math.sqrt(disc)) / 2;
-      if (!(tHit > 20)) { out[o + 3] = 0; continue; }
-      const hx = ox + rx * tHit, hy = oy + ry * tHit, hz = oz + rz * tHit;
-      const nlen = Math.hypot(hx, hy, hz) || 1;
-      const nx = hx / nlen, ny = hy / nlen, nz = hz / nlen;
-      const lat = Math.asin(clamp(nz, -1, 1));
-      const lon = Math.atan2(ny, nx) - PLANET.omega * s.t;
-      const u = lon / (2 * Math.PI) + 0.5;
-      const v = 0.5 - lat / Math.PI;
-      const [sr, sg, sb] = sample(sp, u, v, TW, TH);
-      const ndotl = nx * suX + ny * suY + nz * suZ;
-      const day = smooth(-0.05, 0.18, ndotl);
-      const lambert = 0.18 + 0.9 * Math.max(0, ndotl);
-      let rC = sr * lerp(0.08, lambert, day);
-      let gC = sg * lerp(0.09, lambert, day);
-      let bC = sb * lerp(0.16, lambert, day);
-      const [, , , ca] = sample(cp, u + optsWall(s), v, TW, TH);
-      const cA = (ca / 255) * 0.5;
-      if (cA > 0) {
-        const cl = 0.22 + 0.85 * Math.max(0, ndotl);
-        rC = rC * (1 - cA) + 230 * cl * cA;
-        gC = gC * (1 - cA) + 235 * cl * cA;
-        bC = bC * (1 - cA) + 245 * cl * cA;
-      }
-      const haze = clamp(tHit / (PLANET.radius * 0.85 + alt * 4));
-      const hzC = lerp(0.55, 1, day);
-      rC = lerp(rC, 140 * hzC + 30, haze * 0.5);
-      gC = lerp(gC, 170 * hzC + 25, haze * 0.5);
-      bC = lerp(bC, 205 * hzC, haze * 0.55);
-      out[o] = clamp(rC, 0, 255) | 0;
-      out[o + 1] = clamp(gC, 0, 255) | 0;
-      out[o + 2] = clamp(bC, 0, 255) | 0;
-      out[o + 3] = 255;
-    }
-  }
-  buf.ctx.putImageData(img, 0, 0);
-  // Draw over the whole viewport — transparent sky pixels leave the gradient sky.
-  ctx.drawImage(buf.canvas, 0, 0, bufW, bufH, 0, 0, w, h);
-}
-
-function optsWall(_s: FlightState): number {
-  return (Date.now() / 1000) * 0.002;
-}
-
-let hzCanvas: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; img: ImageData; w: number; h: number } | null = null;
-function horizonBuf(w: number, h: number) {
-  if (hzCanvas && hzCanvas.w === w && hzCanvas.h === h) return hzCanvas;
-  const canvas = makeCanvas(w, h);
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-  hzCanvas = { canvas, ctx, img: ctx.createImageData(w, h), w, h };
-  return hzCanvas;
-}
+const FLEET_OTHER = '#6fe3ff', FLEET_MINE = '#f0d060';
 
 let trackCacheKey = '';
 let trackShade: HTMLCanvasElement | null = null;
@@ -822,7 +709,7 @@ let trackShade: HTMLCanvasElement | null = null;
 export function drawGroundTrack(
   ctx: CanvasRenderingContext2D,
   s: FlightState,
-  opts: { w: number; h: number; trail?: Array<[number, number]>; wallT?: number },
+  opts: { w: number; h: number; trail?: Array<[number, number]>; wallT?: number; fleet?: FleetMarker[] },
 ) {
   const { w, h } = opts;
   ctx.fillStyle = '#071016';
@@ -881,60 +768,101 @@ export function drawGroundTrack(
     }
     ctx.stroke();
   }
+  // Fleet: everyone's satellites on the equatorial track (labels only when roomy).
+  if (opts.fleet?.length) {
+    const wallS = opts.wallT ?? 0;
+    const placed: number[] = [];
+    for (const m of opts.fleet) {
+      const th = fleetAngle(m, wallS);
+      let u = (th - PLANET.omega * s.t) / (2 * Math.PI) + 0.5;
+      u = ((u % 1) + 1) % 1;
+      const x = u * w, y = h / 2;
+      ctx.fillStyle = m.mine ? FLEET_MINE : FLEET_OTHER;
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, y - 4); ctx.lineTo(x + 4, y); ctx.lineTo(x, y + 4); ctx.lineTo(x - 4, y); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      if (w > 260 && placed.every((px) => Math.abs(px - x) > 70)) {
+        placed.push(x);
+        ctx.font = '600 9px ui-sans-serif, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        const row = placed.length % 2 ? -9 : 15;
+        const half = ctx.measureText(m.label).width / 2 + 3;
+        const lx = Math.min(w - half, Math.max(half, x)); // keep edge labels on the map
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillText(m.label, lx + 1, y + row + 1);
+        ctx.fillStyle = m.mine ? FLEET_MINE : '#bdefff';
+        ctx.fillText(m.label, lx, y + row);
+      }
+    }
+  }
   const here = toMap(s.x, s.y);
   ctx.fillStyle = s.deployed ? '#f0d060' : '#fff';
   ctx.strokeStyle = '#000';
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.arc(here[0], here[1], 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  // Launch site (λ = 0)
-  const ls = ((((0 / (2 * Math.PI) + 0.5 - rot / (2 * Math.PI)) % 1) + 1) % 1) * w;
+  // Launch site: planet-fixed λ = 0, so always mid-map.
+  const ls = 0.5 * w;
   ctx.fillStyle = '#7ad0ff';
   ctx.beginPath();
   ctx.moveTo(ls, h / 2 - 6); ctx.lineTo(ls + 4, h / 2 + 4); ctx.lineTo(ls - 4, h / 2 + 4);
   ctx.closePath(); ctx.fill();
 
-  ctx.fillStyle = 'rgba(200,230,255,0.75)';
-  ctx.font = '9px ui-monospace, monospace';
+  // Label bottom-left (the HUD owns the top-left corner).
+  ctx.font = '600 9px ui-monospace, monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('GROUND TRACK  ·  equator', 6, 12);
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillText('GROUND TRACK · EQUATOR', 7, h - 7);
+  ctx.fillStyle = 'rgba(210,232,255,0.85)';
+  ctx.fillText('GROUND TRACK · EQUATOR', 6, h - 8);
 }
 
+let nightCache: { key: string; shade: HTMLCanvasElement; lights: HTMLCanvasElement } | null = null;
+/**
+ * Day/night for the flat map: a cached low-res overlay (darkness + city
+ * lights) drawn scaled, so it is resolution-independent (HiDPI-safe) and
+ * cheap per frame.
+ */
 function paintMapNight(ctx: CanvasRenderingContext2D, w: number, h: number, planetRot: number) {
-  // Sun in planet-fixed frame: rotate SUN around Z by -planetRot.
-  const c = Math.cos(-planetRot), si = Math.sin(-planetRot);
-  const sx = SUN[0] * c - SUN[1] * si;
-  const sy = SUN[0] * si + SUN[1] * c;
-  const sz = SUN[2];
-  const img = ctx.getImageData(0, 0, w, h);
-  const d = img.data;
-  const lights = maps()?.lightPx;
-  for (let j = 0; j < h; j++) {
-    const lat = (0.5 - (j + 0.5) / h) * Math.PI;
-    const cl = Math.cos(lat), sl = Math.sin(lat);
-    for (let i = 0; i < w; i++) {
-      const lon = ((i + 0.5) / w) * 2 * Math.PI - Math.PI;
-      const nx = cl * Math.cos(lon), ny = cl * Math.sin(lon), nz = sl;
-      const nd = nx * sx + ny * sy + nz * sz;
-      const night = 1 - smooth(-0.05, 0.18, nd);
-      if (night < 0.05) continue;
-      const o = (j * w + i) * 4;
-      const dim = 1 - 0.78 * night;
-      d[o] = (d[o]! * dim) | 0;
-      d[o + 1] = (d[o + 1]! * dim) | 0;
-      d[o + 2] = (d[o + 2]! * (dim * 0.95 + 0.05)) | 0;
-      if (lights && night > 0.3) {
-        const u = (i + 0.5) / w, v = (j + 0.5) / h;
-        const [, , , la] = sample(lights, u, v, TW, TH);
-        if (la > 6) {
-          const g = (la / 255) * night * night;
-          d[o] = clamp(d[o]! + 255 * g, 0, 255) | 0;
-          d[o + 1] = clamp(d[o + 1]! + 190 * g, 0, 255) | 0;
-          d[o + 2] = clamp(d[o + 2]! + 90 * g, 0, 255) | 0;
+  const NW = 512, NH = 256;
+  const key = `${Math.round(planetRot * 300)}`;
+  if (!nightCache || nightCache.key !== key) {
+    const shade = nightCache?.shade ?? makeCanvas(NW, NH);
+    const lightsC = nightCache?.lights ?? makeCanvas(NW, NH);
+    const sc = shade.getContext('2d'), lc = lightsC.getContext('2d');
+    if (!sc || !lc) return;
+    const si = sc.createImageData(NW, NH), li = lc.createImageData(NW, NH);
+    const c = Math.cos(-planetRot), sn = Math.sin(-planetRot);
+    const sx = SUN[0] * c - SUN[1] * sn, sy = SUN[0] * sn + SUN[1] * c, sz = SUN[2];
+    const lights = maps()?.lightPx;
+    for (let j = 0; j < NH; j++) {
+      const lat = (0.5 - (j + 0.5) / NH) * Math.PI;
+      const cl = Math.cos(lat), sl = Math.sin(lat);
+      for (let i = 0; i < NW; i++) {
+        const lon = ((i + 0.5) / NW) * 2 * Math.PI - Math.PI;
+        const nd = cl * Math.cos(lon) * sx + cl * Math.sin(lon) * sy + sl * sz;
+        const night = 1 - smooth(-0.05, 0.18, nd);
+        const o = (j * NW + i) * 4;
+        si.data[o] = 2; si.data[o + 1] = 6; si.data[o + 2] = 18; si.data[o + 3] = night * 0.78 * 255;
+        if (lights && night > 0.3) {
+          const la = sample(lights, (i + 0.5) / NW, (j + 0.5) / NH, TW, TH)[3];
+          if (la > 6) {
+            const g = clamp((la / 255) * night * night * 1.4);
+            li.data[o] = 255; li.data[o + 1] = 190; li.data[o + 2] = 90; li.data[o + 3] = g * 255;
+          }
         }
       }
     }
+    sc.putImageData(si, 0, 0);
+    lc.putImageData(li, 0, 0);
+    nightCache = { key, shade, lights: lightsC };
   }
-  ctx.putImageData(img, 0, 0);
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(nightCache.shade, 0, 0, w, h);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.drawImage(nightCache.lights, 0, 0, w, h);
+  ctx.restore();
 }
 
 /** Force a fresh globe on the next frame (e.g. after a resize). */
@@ -981,7 +909,7 @@ function heat(v: number): [number, number, number] {
 }
 
 /** A full (unmasked) survey layer at w×h, cached. */
-export function surveyLayer(kind: SurveyLayer, w = 720, h = 360): HTMLCanvasElement | null {
+export function surveyLayer(kind: SurveyLayer, w = 1024, h = 512): HTMLCanvasElement | null {
   const key = `${kind}|${w}x${h}`;
   const hit = layerCache.get(key);
   if (hit) return hit;
@@ -1050,6 +978,40 @@ const BIOME_COLORS: Record<BiomeId, string> = {
  * Draw a survey map: the layer where `isCovered(lon, lat)` is true, and a dark
  * unscanned grid elsewhere. Cells are SURVEY_LON × SURVEY_LAT.
  */
+let coverMask: { key: string; canvas: HTMLCanvasElement } | null = null;
+let surveyScratch: HTMLCanvasElement | null = null;
+
+/**
+ * Soft coverage mask: the same per-cell coverage data, sampled bilinearly
+ * between cell centres (longitude wraps) and eased, so scanned regions read as
+ * smooth swaths instead of 5° blocks.
+ */
+function coverageMask(lonCells: number, latCells: number, isCovered: (i: number, j: number) => boolean): HTMLCanvasElement {
+  const bits: number[] = [];
+  for (let j = 0; j < latCells; j++) for (let i = 0; i < lonCells; i++) bits.push(isCovered(i, j) ? 1 : 0);
+  const key = `${lonCells}x${latCells}|${bits.join('')}`;
+  if (coverMask && coverMask.key === key) return coverMask.canvas;
+  const MW = lonCells * 8, MH = latCells * 8;
+  const c = coverMask?.canvas.width === MW && coverMask.canvas.height === MH ? coverMask.canvas : makeCanvas(MW, MH);
+  const ctx = c.getContext('2d')!;
+  const img = ctx.createImageData(MW, MH);
+  const at = (i: number, j: number) => bits[clamp(j, 0, latCells - 1) * lonCells + (((i % lonCells) + lonCells) % lonCells)]!;
+  for (let y = 0; y < MH; y++) {
+    // grid row 0 = south; canvas row 0 = north
+    const gy = latCells - (y + 0.5) / 8 - 0.5;
+    const j0 = Math.floor(gy), ty = gy - j0;
+    for (let x = 0; x < MW; x++) {
+      const gx = (x + 0.5) / 8 - 0.5;
+      const i0 = Math.floor(gx), tx = gx - i0;
+      const v = lerp(lerp(at(i0, j0), at(i0 + 1, j0), tx), lerp(at(i0, j0 + 1), at(i0 + 1, j0 + 1), tx), ty);
+      img.data[(y * MW + x) * 4 + 3] = smooth(0.18, 0.62, v) * 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  coverMask = { key, canvas: c };
+  return c;
+}
+
 export function drawSurveyMap(
   ctx: CanvasRenderingContext2D,
   kind: SurveyLayer,
@@ -1058,37 +1020,42 @@ export function drawSurveyMap(
   const { w, h } = opts;
   ctx.fillStyle = '#05090e';
   ctx.fillRect(0, 0, w, h);
-  const layer = surveyLayer(kind);
-  const cw = w / opts.lonCells, ch = h / opts.latCells;
-  if (layer) {
-    ctx.save();
-    ctx.beginPath();
-    for (let j = 0; j < opts.latCells; j++) {
-      for (let i = 0; i < opts.lonCells; i++) {
-        // grid row 0 = south pole; canvas row 0 = north
-        if (opts.isCovered(i, j)) ctx.rect(i * cw - 0.5, (opts.latCells - 1 - j) * ch - 0.5, cw + 1, ch + 1);
-      }
-    }
-    ctx.clip();
-    ctx.drawImage(layer, 0, 0, layer.width, layer.height, 0, 0, w, h);
-    ctx.restore();
-  }
-  // Unscanned hatch
+  // Unscanned: a faint continuous hatch under everything.
   ctx.save();
-  ctx.strokeStyle = 'rgba(80,120,150,0.12)';
+  ctx.strokeStyle = 'rgba(80,120,150,0.13)';
   ctx.lineWidth = 1;
-  for (let j = 0; j < opts.latCells; j++) {
-    for (let i = 0; i < opts.lonCells; i++) {
-      if (opts.isCovered(i, j)) continue;
-      const x = i * cw, y = (opts.latCells - 1 - j) * ch;
-      ctx.beginPath(); ctx.moveTo(x, y + ch); ctx.lineTo(x + cw, y); ctx.stroke();
+  ctx.beginPath();
+  for (let x = -h; x < w; x += 9) { ctx.moveTo(x, h); ctx.lineTo(x + h, 0); }
+  ctx.stroke();
+  ctx.restore();
+  const layer = surveyLayer(kind);
+  if (layer && typeof document !== 'undefined') {
+    // Composite at device resolution: layer, then keep it only where scanned.
+    const tr = ctx.getTransform();
+    const pw = Math.max(1, Math.round(w * tr.a)), ph = Math.max(1, Math.round(h * tr.d));
+    if (!surveyScratch) surveyScratch = document.createElement('canvas');
+    if (surveyScratch.width !== pw || surveyScratch.height !== ph) { surveyScratch.width = pw; surveyScratch.height = ph; }
+    const sc = surveyScratch.getContext('2d');
+    if (sc) {
+      sc.globalCompositeOperation = 'source-over';
+      sc.clearRect(0, 0, pw, ph);
+      sc.imageSmoothingEnabled = true;
+      sc.imageSmoothingQuality = 'high';
+      sc.drawImage(layer, 0, 0, layer.width, layer.height, 0, 0, pw, ph);
+      sc.globalCompositeOperation = 'destination-in';
+      sc.drawImage(coverageMask(opts.lonCells, opts.latCells, opts.isCovered), 0, 0, pw, ph);
+      sc.globalCompositeOperation = 'source-over';
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(surveyScratch, tr.e, tr.f);
+      ctx.restore();
     }
   }
-  ctx.restore();
   // Graticule
   ctx.strokeStyle = 'rgba(200,230,255,0.14)';
-  for (let k = 1; k < 12; k++) { const x = (k / 12) * w; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
-  for (let k = 1; k < 6; k++) { const y = (k / 6) * h; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+  ctx.lineWidth = 1;
+  for (let k = 1; k < 12; k++) { const x = Math.round((k / 12) * w) + 0.5; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+  for (let k = 1; k < 6; k++) { const y = Math.round((k / 6) * h) + 0.5; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
   ctx.strokeStyle = 'rgba(255,220,120,0.3)';
-  ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, Math.round(h / 2) + 0.5); ctx.lineTo(w, Math.round(h / 2) + 0.5); ctx.stroke();
 }

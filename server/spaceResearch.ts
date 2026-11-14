@@ -84,6 +84,9 @@ CREATE TABLE IF NOT EXISTS space_mappers (
 );
 CREATE INDEX IF NOT EXISTS space_mappers_owner ON space_mappers (owner_key);
 CREATE INDEX IF NOT EXISTS space_mappers_launch ON space_mappers (launch_id);
+ALTER TABLE space_science ADD COLUMN IF NOT EXISTS owner_name TEXT;
+ALTER TABLE space_survey ADD COLUMN IF NOT EXISTS owner_name TEXT;
+ALTER TABLE space_survey ADD COLUMN IF NOT EXISTS pct DOUBLE PRECISION NOT NULL DEFAULT 0;
 `;
 
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
@@ -92,10 +95,10 @@ type PoolLike = Q & { connect: () => Promise<Q & { release: () => void }> };
 export interface ScienceRow {
   id: string; ownerKey: string; launchId: string; subject: string;
   experimentId: string; situation: Situation; biome: string; partUid: string;
-  points: number; grant: number; day: string; at: number;
+  points: number; grant: number; day: string; at: number; ownerName?: string;
 }
 export interface MapperRow extends MapperState { id: string; ownerKey: string; launchId: string; lastAt: number }
-interface SurveyRow { grid: Uint8Array; milestone: number; updatedAt: number }
+interface SurveyRow { grid: Uint8Array; milestone: number; updatedAt: number; ownerName?: string }
 
 const b64 = (g: Uint8Array) => Buffer.from(g).toString('base64');
 const unb64 = (s: string) => gridFromBytes(Buffer.from(s, 'base64'));
@@ -240,7 +243,7 @@ export class SpaceResearch {
     if (isQa(k)) grant = 0;
     const row: ScienceRow = {
       id: randomUUID(), ownerKey: k, launchId: L.id, subject, experimentId: exp!.id, situation, biome,
-      partUid, points, grant, day, at: now,
+      partUid, points, grant, day, at: now, ownerName: name.trim(),
     };
     const bank = getBank();
     const w = grant > 0
@@ -253,9 +256,9 @@ export class SpaceResearch {
       try {
         await cl.query('BEGIN');
         await cl.query(
-          `INSERT INTO space_science (id, owner_key, launch_id, subject, experiment_id, situation, biome, part_uid, points, grant_chips, day, at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-          [row.id, k, L.id, subject, row.experimentId, situation, biome, partUid, points, grant, day, now],
+          `INSERT INTO space_science (id, owner_key, launch_id, subject, experiment_id, situation, biome, part_uid, points, grant_chips, day, at, owner_name)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          [row.id, k, L.id, subject, row.experimentId, situation, biome, partUid, points, grant, day, now, name.trim()],
         );
         if (w) for (const s of w.stmts) await cl.query(s.sql, s.args);
         await cl.query('COMMIT');
@@ -372,7 +375,7 @@ export class SpaceResearch {
       if (!this.pool) {
         for (const t of touched) {
           const r = rows.get(t)!;
-          this.memSurvey.set(`${k}|${t}`, { grid: r.grid, milestone: r.milestone, updatedAt: now });
+          this.memSurvey.set(`${k}|${t}`, { grid: r.grid, milestone: r.milestone, updatedAt: now, ownerName: name.trim() });
         }
         return;
       }
@@ -383,10 +386,11 @@ export class SpaceResearch {
         for (const t of touched) {
           const r = rows.get(t)!;
           await cl.query(
-            `INSERT INTO space_survey (owner_key, map_type, grid, milestone, updated_at) VALUES ($1,$2,$3,$4,$5)
+            `INSERT INTO space_survey (owner_key, map_type, grid, milestone, updated_at, owner_name, pct) VALUES ($1,$2,$3,$4,$5,$6,$7)
              ON CONFLICT (owner_key, map_type) DO UPDATE SET grid = EXCLUDED.grid,
-               milestone = GREATEST(space_survey.milestone, EXCLUDED.milestone), updated_at = EXCLUDED.updated_at`,
-            [k, t, b64(r.grid), r.milestone, now],
+               milestone = GREATEST(space_survey.milestone, EXCLUDED.milestone), updated_at = EXCLUDED.updated_at,
+               owner_name = EXCLUDED.owner_name, pct = EXCLUDED.pct`,
+            [k, t, b64(r.grid), r.milestone, now, name.trim(), Math.round(coveragePct(r.grid) * 10) / 10],
           );
         }
         for (const m of mappers) await cl.query('UPDATE space_mappers SET last_at = $1 WHERE id = $2', [now, m.id]);
@@ -398,6 +402,39 @@ export class SpaceResearch {
     const p = run(); w?.bind(p);
     try { await p; } catch (e) { w?.revert(); throw e; }
     return { survey: await this.surveyView(k), payouts, paid: total, simulatedS: simulated, chips: bank.ready ? bank.account(name).chips : null };
+  }
+
+  /** Top science and mapping programs (QA accounts excluded). */
+  async leaders(limit = 10): Promise<{ science: Array<{ name: string; points: number }>; survey: Array<{ name: string; pct: number }> }> {
+    if (this.pool) {
+      const sci = (await this.pool.query(
+        `SELECT owner_key, MAX(owner_name) AS name, SUM(points) AS pts FROM space_science
+         WHERE owner_key NOT LIKE 'qa-%' GROUP BY owner_key ORDER BY pts DESC LIMIT $1`, [limit])).rows;
+      const sur = (await this.pool.query(
+        `SELECT owner_key, MAX(owner_name) AS name, SUM(pct) / 5.0 AS pct FROM space_survey
+         WHERE owner_key NOT LIKE 'qa-%' GROUP BY owner_key HAVING SUM(pct) > 0 ORDER BY pct DESC LIMIT $1`, [limit])).rows;
+      return {
+        science: sci.map((r) => ({ name: String(r.name ?? r.owner_key), points: Math.round(Number(r.pts) * 10) / 10 })),
+        survey: sur.map((r) => ({ name: String(r.name ?? r.owner_key), pct: Math.round(Number(r.pct) * 10) / 10 })),
+      };
+    }
+    const sci = new Map<string, { name: string; points: number }>();
+    for (const r of this.memScience) {
+      if (isQa(r.ownerKey)) continue;
+      const c = sci.get(r.ownerKey) ?? { name: r.ownerName ?? r.ownerKey, points: 0 };
+      c.points += r.points; sci.set(r.ownerKey, c);
+    }
+    const sur = new Map<string, { name: string; pct: number }>();
+    for (const [key, r] of this.memSurvey) {
+      const k = key.split('|')[0]!;
+      if (isQa(k)) continue;
+      const c = sur.get(k) ?? { name: r.ownerName ?? k, pct: 0 };
+      c.pct += coveragePct(r.grid) / 5; sur.set(k, c);
+    }
+    return {
+      science: [...sci.values()].sort((a, b) => b.points - a.points).slice(0, limit).map((x) => ({ ...x, points: Math.round(x.points * 10) / 10 })),
+      survey: [...sur.values()].filter((x) => x.pct > 0).sort((a, b) => b.pct - a.pct).slice(0, limit).map((x) => ({ ...x, pct: Math.round(x.pct * 10) / 10 })),
+    };
   }
 
   async surveyView(k: string | null) {

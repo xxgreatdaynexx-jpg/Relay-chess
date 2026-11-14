@@ -105,6 +105,21 @@ CREATE TABLE IF NOT EXISTS space_contract_payouts (
 CREATE INDEX IF NOT EXISTS space_contract_payouts_owner_day ON space_contract_payouts (owner_key, day);
 `;
 
+/** Additive: display names for the shared launch feed. */
+export const SPACE_SOCIAL_MIGRATION = `
+ALTER TABLE space_launches ADD COLUMN IF NOT EXISTS owner_name TEXT;
+CREATE INDEX IF NOT EXISTS space_launches_at ON space_launches (at);
+`;
+
+/** Shared, read-only snapshot other players see: recent satellites, launches and leaderboards. */
+export interface SpaceSocial {
+  fleet: Array<{ id: string; ownerName: string; satName: string; designName: string; peM: number; apM: number; periodS: number | null; deployedAt: number }>;
+  feed: Array<{ id: string; ownerName: string; designName: string; missionTitle: string | null; at: number; deployed: boolean }>;
+  leaders: { sats: BoardRow[]; science: Array<{ name: string; points: number }>; survey: Array<{ name: string; pct: number }> };
+  at: number;
+}
+export const SPACE_SOCIAL_TTL_MS = 15_000;
+
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
 type PoolLike = Q & { connect: () => Promise<Q & { release: () => void }> };
 
@@ -114,7 +129,7 @@ export interface SatRow {
   designName: string; peM: number; apM: number; periodS: number | null;
   paid: boolean; payout: number; deployedAt: number;
 }
-export interface LaunchTicket { id: string; ownerKey: string; hash: string; design: VesselDesign; cost: number; at: number; deployed: boolean; missionId?: string | null }
+export interface LaunchTicket { id: string; ownerKey: string; hash: string; design: VesselDesign; cost: number; at: number; deployed: boolean; missionId?: string | null; ownerName?: string }
 export interface BoardRow { name: string; sats: number; lastAt: number }
 export interface ContractRow {
   id: string; ownerKey: string; missionId: string; day: string;
@@ -141,6 +156,7 @@ const asLaunch = (r: Record<string, unknown>): LaunchTicket | null => {
     cost: Number(r.cost), at: Number(r.at),
     deployed: r.deployed === true || r.deployed === 't' || r.deployed === 'true',
     missionId: r.mission_id ? String(r.mission_id) : null,
+    ownerName: r.owner_name ? String(r.owner_name) : undefined,
   };
 };
 
@@ -184,6 +200,19 @@ export class SpaceProgram {
   private memContracts: ContractRow[] = [];
   private memMissionPayouts: Array<{ id: string; ownerKey: string; day: string; missionId: string; amount: number; at: number }> = [];
   readonly research: SpaceResearch;
+  /** Per-player serialisation: one mutating request at a time per account (covers two tabs / double clicks). */
+  private locks = new Map<string, Promise<unknown>>();
+  private socialCache: SpaceSocial | null = null;
+  private socialAt = 0;
+  private socialP: Promise<SpaceSocial> | null = null;
+  serial<T>(k: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(k) ?? Promise.resolve();
+    const next = prev.catch(() => {}).then(fn);
+    const tail = next.catch(() => {});
+    this.locks.set(k, tail);
+    void tail.then(() => { if (this.locks.get(k) === tail) this.locks.delete(k); });
+    return next;
+  }
   constructor(private readonly pool: PoolLike | null, private readonly clock = () => Date.now()) {
     this.research = new SpaceResearch(pool, clock);
   }
@@ -191,6 +220,7 @@ export class SpaceProgram {
     if (this.pool) {
       await this.pool.query(SPACE_MIGRATION);
       await this.pool.query(SPACE_MISSION_MIGRATION);
+      await this.pool.query(SPACE_SOCIAL_MIGRATION);
     }
     await this.research.init();
   }
@@ -202,18 +232,33 @@ export class SpaceProgram {
     }
   }
 
-  async runScience(name: string, body: Record<string, unknown>) {
+  runScience(...a: Parameters<SpaceProgram['_runScience']>) {
+    return this.serial(keyOf(a[0]), () => this._runScience(...a));
+  }
+
+  /** Unserialised; call `runScience` instead. */
+  async _runScience(name: string, body: Record<string, unknown>) {
     if (typeof body.launchId !== 'string' || !body.launchId) throw new SpaceError('Missing launch ticket.');
     const k = keyOf(name);
     const L = await this.launchOf(body.launchId, k);
     return this.wrapResearch(() => this.research.runScience(name, k, L, body));
   }
 
-  async unlockTech(name: string, nodeId: unknown) {
+  unlockTech(...a: Parameters<SpaceProgram['_unlockTech']>) {
+    return this.serial(keyOf(a[0]), () => this._unlockTech(...a));
+  }
+
+  /** Unserialised; call `unlockTech` instead. */
+  async _unlockTech(name: string, nodeId: unknown) {
     return this.wrapResearch(() => this.research.unlock(keyOf(name), nodeId));
   }
 
-  async syncSurvey(name: string) {
+  syncSurvey(...a: Parameters<SpaceProgram['_syncSurvey']>) {
+    return this.serial(keyOf(a[0]), () => this._syncSurvey(...a));
+  }
+
+  /** Unserialised; call `syncSurvey` instead. */
+  async _syncSurvey(name: string) {
     return this.wrapResearch(() => this.research.syncSurvey(name, keyOf(name)));
   }
 
@@ -226,7 +271,12 @@ export class SpaceProgram {
     return [...(this.memDesigns.get(k) ?? [])].sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
-  async saveDesign(name: string, raw: unknown, id?: unknown): Promise<SavedDesign> {
+  saveDesign(...a: Parameters<SpaceProgram['_saveDesign']>) {
+    return this.serial(keyOf(a[0]), () => this._saveDesign(...a));
+  }
+
+  /** Unserialised; call `saveDesign` instead. */
+  async _saveDesign(name: string, raw: unknown, id?: unknown): Promise<SavedDesign> {
     const design = parseDesign(raw);
     if (!design) throw new SpaceError('That design could not be read.');
     const issues = validateDesign(design);
@@ -257,7 +307,12 @@ export class SpaceProgram {
     return row;
   }
 
-  async deleteDesign(name: string, id: unknown): Promise<void> {
+  deleteDesign(...a: Parameters<SpaceProgram['_deleteDesign']>) {
+    return this.serial(keyOf(a[0]), () => this._deleteDesign(...a));
+  }
+
+  /** Unserialised; call `deleteDesign` instead. */
+  async _deleteDesign(name: string, id: unknown): Promise<void> {
     if (typeof id !== 'string' || !id) throw new SpaceError('Which design?');
     const k = keyOf(name);
     if (this.pool) {
@@ -301,7 +356,7 @@ export class SpaceProgram {
   }
 
   async board(): Promise<BoardRow[]> {
-    const sats = await this.satsOf();
+    const sats = (await this.satsOf()).filter((x) => !isQa(x.ownerKey));
     const map = new Map<string, BoardRow>();
     for (const s of sats) {
       const cur = map.get(s.ownerKey) ?? { name: s.ownerName, sats: 0, lastAt: 0 };
@@ -344,11 +399,52 @@ export class SpaceProgram {
       missions,
       science,
       survey,
+      social: await this.social(),
       now,
     };
   }
 
-  async launch(name: string, raw: unknown, missionId?: unknown) {
+  /** Cached for a few seconds so many players polling cost one set of queries. */
+  async social(): Promise<SpaceSocial> {
+    const now = this.clock();
+    if (this.socialCache && now - this.socialAt < SPACE_SOCIAL_TTL_MS) return this.socialCache;
+    if (this.socialP) return this.socialP;
+    this.socialP = (async () => {
+      try {
+        const sats = (await this.satsOf()).filter((x) => !isQa(x.ownerKey));
+        const fleet = sats.slice(0, 40).map((x) => ({
+          id: x.id, ownerName: x.ownerName, satName: x.satName, designName: x.designName,
+          peM: x.peM, apM: x.apM, periodS: x.periodS, deployedAt: x.deployedAt,
+        }));
+        let launches: LaunchTicket[];
+        if (this.pool) {
+          const rows = (await this.pool.query(
+            `SELECT id, owner_key, owner_name, design_hash, design, cost, at, deployed, mission_id FROM space_launches
+             WHERE owner_key NOT LIKE 'qa-%' ORDER BY at DESC LIMIT 12`)).rows;
+          launches = rows.map(asLaunch).filter((x): x is LaunchTicket => !!x);
+        } else {
+          launches = [...this.memLaunches.values()].filter((x) => !isQa(x.ownerKey)).sort((a, b) => b.at - a.at).slice(0, 12);
+        }
+        const feed = launches.map((L) => ({
+          id: L.id, ownerName: L.ownerName ?? L.ownerKey, designName: L.design.name,
+          missionTitle: L.missionId ? missionById(L.missionId)?.title ?? null : null, at: L.at, deployed: L.deployed,
+        }));
+        const board = (await this.board()).slice(0, 10);
+        const lr = await this.research.leaders(10);
+        const snap: SpaceSocial = { fleet, feed, leaders: { sats: board, science: lr.science, survey: lr.survey }, at: now };
+        this.socialCache = snap; this.socialAt = now;
+        return snap;
+      } finally { this.socialP = null; }
+    })();
+    return this.socialP;
+  }
+
+  launch(...a: Parameters<SpaceProgram['_launch']>) {
+    return this.serial(keyOf(a[0]), () => this._launch(...a));
+  }
+
+  /** Unserialised; call `launch` instead. */
+  async _launch(name: string, raw: unknown, missionId?: unknown) {
     const design = parseDesign(raw);
     if (!design) throw new SpaceError('That design could not be read.');
     requireLaunchable(design);
@@ -377,7 +473,7 @@ export class SpaceProgram {
     if (!bank.canAfford(name, cost)) throw new SpaceError('Not enough chips.');
     const id = randomUUID();
     const hash = designHash(design);
-    const ticket: LaunchTicket = { id, ownerKey: k, hash, design: cloneDesign(design), cost, at: now, deployed: false, missionId: mid };
+    const ticket: LaunchTicket = { id, ownerKey: k, hash, design: cloneDesign(design), cost, at: now, deployed: false, missionId: mid, ownerName: name.trim() };
     const w = bank.transferAtomic([{ name, amount: -cost, key: `space_launch:${id}`, game: 'space_launch', memo: `Space Center launch: ${design.name}` }]);
     const run = async () => {
       if (!this.pool) { this.memLaunches.set(id, ticket); return; }
@@ -386,8 +482,8 @@ export class SpaceProgram {
       try {
         await cl.query('BEGIN');
         await cl.query(
-          'INSERT INTO space_launches (id, owner_key, design_hash, design, cost, at, deployed, mission_id) VALUES ($1,$2,$3,$4,$5,$6,false,$7)',
-          [id, k, hash, ticket.design, cost, now, mid],
+          'INSERT INTO space_launches (id, owner_key, design_hash, design, cost, at, deployed, mission_id, owner_name) VALUES ($1,$2,$3,$4,$5,$6,false,$7,$8)',
+          [id, k, hash, ticket.design, cost, now, mid, name.trim()],
         );
         for (const s of w.stmts) await cl.query(s.sql, s.args);
         await cl.query('COMMIT');
@@ -415,7 +511,12 @@ export class SpaceProgram {
     return L;
   }
 
-  async deploy(name: string, body: { launchId?: unknown; peM?: unknown; apM?: unknown; periodS?: unknown; satId?: unknown }) {
+  deploy(...a: Parameters<SpaceProgram['_deploy']>) {
+    return this.serial(keyOf(a[0]), () => this._deploy(...a));
+  }
+
+  /** Unserialised; call `deploy` instead. */
+  async _deploy(name: string, body: { launchId?: unknown; peM?: unknown; apM?: unknown; periodS?: unknown; satId?: unknown }) {
     if (typeof body.launchId !== 'string' || !body.launchId) throw new SpaceError('Missing launch ticket.');
     const k = keyOf(name);
     const L = await this.launchOf(body.launchId, k);
@@ -443,7 +544,7 @@ export class SpaceProgram {
     };
     const bank = getBank();
     const w = payout > 0
-      ? bank.transferAtomic([{ name, amount: payout, key: `space_deploy:${sid}`, game: 'space_deploy', memo: `Satellite deploy: ${satName}` }])
+      ? bank.transferAtomic([{ name, amount: payout, key: `space_deploy:${k}:paid:${paidSoFar + 1}`, game: 'space_deploy', memo: `Satellite deploy: ${satName}` }])
       : null;
     const run = async () => {
       if (!this.pool) {
@@ -524,7 +625,12 @@ export class SpaceProgram {
     };
   }
 
-  async acceptMission(name: string, missionId: unknown) {
+  acceptMission(...a: Parameters<SpaceProgram['_acceptMission']>) {
+    return this.serial(keyOf(a[0]), () => this._acceptMission(...a));
+  }
+
+  /** Unserialised; call `acceptMission` instead. */
+  async _acceptMission(name: string, missionId: unknown) {
     const mid = typeof missionId === 'string' ? missionId.trim() : '';
     const m = missionById(mid);
     const now = this.clock();
@@ -563,7 +669,12 @@ export class SpaceProgram {
     return { contract: row, mission: { ...m, payout: px(m.payout) } };
   }
 
-  async completeMission(name: string, body: {
+  completeMission(...a: Parameters<SpaceProgram['_completeMission']>) {
+    return this.serial(keyOf(a[0]), () => this._completeMission(...a));
+  }
+
+  /** Unserialised; call `completeMission` instead. */
+  async _completeMission(name: string, body: {
     launchId?: unknown; missionId?: unknown;
     peM?: unknown; apM?: unknown; periodS?: unknown;
     altitudeM?: unknown; eccentricity?: unknown;
@@ -725,4 +836,5 @@ export function registerSpaceProgram(_io: Server, socket: Socket): void {
   on('space_science', async (b, p) => p.runScience(need(), b));
   on('space_tech_unlock', async (b, p) => p.unlockTech(need(), b.nodeId));
   on('space_survey_sync', async (_b, p) => p.syncSurvey(need()));
+  on('space_social', async (_b, p) => ({ social: await p.social() }));
 }

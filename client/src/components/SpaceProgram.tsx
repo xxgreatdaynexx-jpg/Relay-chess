@@ -12,7 +12,7 @@ import {
   SPACE_PAYOUT, SPACE_MAX_PAID, TARGET_PE,
   type FlightState, type FlightLogEntry, type DesignStats,
 } from '../../../shared/spaceFlight';
-import { drawVab, hitVab, drawMission, drawOrbitMap, type PartBox, type McCamera } from '@/lib/spaceDraw';
+import { drawVab, hitVab, drawMission, drawOrbitMap, primeDebris, type PartBox, type McCamera, type FleetMarker } from '@/lib/spaceDraw';
 import {
   dailyBoard, utcDay, criteriaOnly, designMeetsMission, MISSION_DAILY_CAP, MISSION_MAX_ACTIVE,
   type MissionDef,
@@ -31,7 +31,8 @@ import type { MapType } from '../../../shared/spaceSurvey';
 import '../spaceSim.css';
 
 export type SpaceView = 'hangar' | 'vab' | 'launch' | 'contracts' | 'survey' | 'science';
-export type SpacePreviewView = SpaceView | 'ascent' | 'orbit' | 'ascent-low' | 'ascent-high' | 'ground-track' | 'missions' | 'mission-complete'
+export type SpacePreviewView = SpaceView | 'ascent' | 'orbit' | 'ascent-low' | 'ascent-high' | 'ground-track'
+  | 'pad' | 'ascent-mid' | 'ascent-handoff' | 'staging' | 'deploy' | 'survey-weather' | 'missions' | 'mission-complete'
   | 'survey-altimetry' | 'survey-biome' | 'survey-resource' | 'science-archive' | 'tech-tree' | 'science-flight' | 'science-orbit';
 export type SpacePreview = { view: SpacePreviewView; freeze?: boolean };
 
@@ -44,7 +45,67 @@ type ViewData = {
   missions: MissionViewData;
   science: ScienceViewData;
   survey: SurveyViewData;
+  social: SocialView;
 };
+
+/** Shared, cross-player view: everyone's satellites, recent launches, leaderboards. */
+export type SocialView = {
+  fleet: Array<{ id: string; ownerName: string; satName: string; designName: string; peM: number; apM: number; periodS: number | null; deployedAt: number }>;
+  feed: Array<{ id: string; ownerName: string; designName: string; missionTitle: string | null; at: number; deployed: boolean }>;
+  leaders: { sats: Array<{ name: string; sats: number; lastAt: number }>; science: Array<{ name: string; points: number }>; survey: Array<{ name: string; pct: number }> };
+  at: number;
+};
+const emptySocial = (): SocialView => ({ fleet: [], feed: [], leaders: { sats: [], science: [], survey: [] }, at: 0 });
+/** Poll interval for the shared view while the Space Center is open and visible. */
+const SOCIAL_POLL_MS = 90_000;
+
+function previewSocial(): SocialView {
+  const t0 = Date.parse('2026-11-13T18:00:00Z');
+  const pilots = ['Vega', 'Orion', 'Lyra', 'Preview'];
+  const fleet = [
+    { id: 'p1', ownerName: 'Vega', satName: 'CommSat', designName: 'Courier I', peM: 81_000, apM: 84_000, periodS: 1_990, deployedAt: t0 - 3_600_000 },
+    { id: 'p2', ownerName: 'Orion', satName: 'SciSat', designName: 'Heavy Lifter', peM: 120_000, apM: 135_000, periodS: 2_300, deployedAt: t0 - 7_200_000 },
+    { id: 'p3', ownerName: 'Lyra', satName: 'WeatherSat', designName: 'Scout I', peM: 95_000, apM: 99_000, periodS: 2_090, deployedAt: t0 - 1_800_000 },
+    { id: 'p4', ownerName: 'Vega', satName: 'CommSat', designName: 'Courier II', peM: 150_000, apM: 160_000, periodS: 2_520, deployedAt: t0 - 600_000 },
+    { id: 'p5', ownerName: 'Preview', satName: 'CommSat', designName: 'Courier I', peM: 75_700, apM: 89_400, periodS: 1_980, deployedAt: t0 - 300_000 },
+  ];
+  return {
+    fleet,
+    feed: [
+      { id: 'f1', ownerName: 'Lyra', designName: 'Scout I', missionTitle: 'Weather watch', at: t0 - 120_000, deployed: true },
+      { id: 'f2', ownerName: 'Vega', designName: 'Courier II', missionTitle: null, at: t0 - 600_000, deployed: true },
+      { id: 'f3', ownerName: 'Orion', designName: 'Heavy Lifter', missionTitle: 'High orbit relay', at: t0 - 1_500_000, deployed: false },
+      { id: 'f4', ownerName: 'Vega', designName: 'Courier I', missionTitle: null, at: t0 - 3_700_000, deployed: true },
+    ],
+    leaders: {
+      sats: [{ name: 'Vega', sats: 2, lastAt: t0 }, { name: 'Orion', sats: 1, lastAt: t0 }, { name: 'Lyra', sats: 1, lastAt: t0 }, { name: 'Preview', sats: 1, lastAt: t0 }],
+      science: pilots.map((name, i) => ({ name, points: [412, 288, 190, 96][i]! })),
+      survey: pilots.map((name, i) => ({ name, pct: [38.5, 22.1, 12.4, 6.2][i]! })),
+    },
+    at: t0,
+  };
+}
+
+/** "3 min ago" style relative time for the feed. */
+function ago(at: number, now = Date.now()): string {
+  const d = Math.max(0, now - at) / 1000;
+  if (d < 60) return 'just now';
+  if (d < 3600) return `${Math.floor(d / 60)} min ago`;
+  if (d < 86_400) return `${Math.floor(d / 3600)} h ago`;
+  return `${Math.floor(d / 86_400)} d ago`;
+}
+
+/** Map markers from the shared fleet (positions are display-only). */
+function fleetMarkers(social: SocialView, me: string | null | undefined): FleetMarker[] {
+  return social.fleet.slice(0, 40).map((f) => {
+    let h = 0;
+    for (let i = 0; i < f.id.length; i++) h = (h * 31 + f.id.charCodeAt(i)) >>> 0;
+    return {
+      id: f.id, label: f.ownerName, altM: (f.peM + f.apM) / 2, periodS: f.periodS ?? 2_000,
+      seed: (h % 1000) / 1000, mine: !!me && f.ownerName.toLowerCase() === me.toLowerCase(),
+    };
+  });
+}
 
 const previewDay = '2026-11-13';
 function previewMissions(complete = false): MissionViewData {
@@ -71,6 +132,7 @@ const emptyView = (preview?: SpacePreview): ViewData => ({
     : { day: utcDay(Date.now()), board: dailyBoard(utcDay(Date.now())), accepted: [], completedIds: [], paidToday: 0, dailyCap: MISSION_DAILY_CAP, remainingCap: MISSION_DAILY_CAP, maxActive: MISSION_MAX_ACTIVE },
   science: preview ? previewScience() : emptyScience(),
   survey: preview ? previewSurvey() : emptySurvey(),
+  social: preview ? previewSocial() : emptySocial(),
 });
 
 /** Courier I with a science package bolted on (preview flights). */
@@ -85,20 +147,34 @@ function sciCourier(): VesselDesign {
     ],
   };
 }
-const PREVIEW_SURVEY: Record<string, MapType> = { survey: 'visual', 'survey-altimetry': 'altimetry', 'survey-biome': 'biome', 'survey-resource': 'resource' };
+const PREVIEW_SURVEY: Record<string, MapType> = { survey: 'visual', 'survey-altimetry': 'altimetry', 'survey-biome': 'biome', 'survey-resource': 'resource', 'survey-weather': 'weather' };
 
-function freezeAscent(kind: 'ascent' | 'orbit' | 'ascent-low' | 'ascent-high' | 'science-flight' | 'science-orbit'): FlightState {
+type FrozenKind = 'ascent' | 'orbit' | 'ascent-low' | 'ascent-high' | 'science-flight' | 'science-orbit' | 'pad' | 'ascent-mid' | 'ascent-handoff' | 'staging' | 'deploy';
+const FROZEN_VIEWS: string[] = ['ascent', 'orbit', 'ascent-low', 'ascent-high', 'ground-track', 'science-flight', 'science-orbit', 'pad', 'ascent-mid', 'ascent-handoff', 'staging', 'deploy'];
+
+function freezeAscent(kind: FrozenKind): FlightState {
+  if (kind === 'pad') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 60, stopAtAltitude: 25 }).state;
+  if (kind === 'ascent-mid') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 200, stopAtAltitude: 24_000 }).state;
+  if (kind === 'ascent-handoff') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 280, stopAtAltitude: 64_000 }).state;
+  if (kind === 'staging') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 221.6 }).state;
+  if (kind === 'deploy') {
+    // Payload released a few seconds ago (display only).
+    const s = scriptedAscent(courierI(), { dt: 0.05, maxTime: 900 }).state;
+    s.t += 3.5;
+    return s;
+  }
   if (kind === 'science-flight') return scriptedAscent(sciCourier(), { dt: 0.05, maxTime: 280, stopAtAltitude: 46_000 }).state;
   if (kind === 'science-orbit') return scriptedAscent(sciCourier(), { dt: 0.05, maxTime: 900 }).state;
   if (kind === 'orbit') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 900 }).state;
   if (kind === 'ascent-low') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 200, stopAtAltitude: 18_000 }).state;
-  if (kind === 'ascent-high') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 280, stopAtAltitude: 52_000 }).state;
+  if (kind === 'ascent-high') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 280, stopAtAltitude: 57_000 }).state;
   return scriptedAscent(courierI(), { dt: 0.05, maxTime: 90 }).state;
 }
 
 function previewCamera(view?: SpacePreviewView): McCamera {
   if (view === 'ascent-low' || view === 'ascent') return 'horizon';
-  if (view === 'ascent-high') return 'horizon';
+  if (view === 'pad' || view === 'ascent-mid' || view === 'staging') return 'horizon';
+  if (view === 'deploy') return 'globe';
   if (view === 'ground-track') return 'track';
   if (view === 'orbit') return 'globe';
   if (view === 'science-flight') return 'horizon';
@@ -107,7 +183,7 @@ function previewCamera(view?: SpacePreviewView): McCamera {
 }
 
 export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onClose: () => void; preview?: SpacePreview }) {
-  const launchViews = ['ascent', 'orbit', 'launch', 'ascent-low', 'ascent-high', 'ground-track', 'science-flight', 'science-orbit'];
+  const launchViews = ['launch', ...FROZEN_VIEWS];
   const initialView: SpaceView = preview?.view && launchViews.includes(preview.view) ? 'launch'
     : preview?.view === 'vab' ? 'vab'
     : preview?.view && preview.view in PREVIEW_SURVEY ? 'survey'
@@ -138,10 +214,11 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
     return null;
   });
   const [flight, setFlight] = useState<FlightState | null>(() => {
-    if (preview?.view === 'ascent' || preview?.view === 'ascent-low') return freezeAscent(preview.view === 'ascent-low' ? 'ascent-low' : 'ascent');
-    if (preview?.view === 'ascent-high') return freezeAscent('ascent-high');
-    if (preview?.view === 'science-flight' || preview?.view === 'science-orbit') return freezeAscent(preview.view);
-    if (preview?.view === 'orbit' || preview?.view === 'ground-track' || (preview?.view === 'launch' && preview.freeze)) return freezeAscent('orbit');
+    if (preview?.view === 'ground-track' || (preview?.view === 'launch' && preview.freeze)) return freezeAscent('orbit');
+    if (preview && FROZEN_VIEWS.includes(preview.view)) {
+      if (preview.view === 'staging') primeDebris(scriptedAscent(courierI(), { dt: 0.05, maxTime: 220.85 }).state);
+      return freezeAscent(preview.view as FrozenKind);
+    }
     return null;
   });
   const [guidance, setGuidance] = useState(true);
@@ -174,9 +251,27 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
       missions: { ...emptyView().missions, ...(r.missions ?? {}) },
       science: { ...emptyScience(), ...(r.science ?? {}) },
       survey: { ...emptySurvey(), ...(r.survey ?? {}) },
+      social: { ...emptySocial(), ...(r.social ?? {}) },
     });
   }, [preview]);
   useEffect(() => { void load(); }, [load]);
+  // Shared view: a light poll (server-cached), only while this tab is visible.
+  useEffect(() => {
+    if (preview) return;
+    let stop = false;
+    let last = Date.now();
+    const tick = async () => {
+      if (document.visibilityState !== 'visible') return;
+      last = Date.now();
+      const r = await request('space_social') as { ok: boolean; social?: SocialView };
+      if (!stop && r.ok && r.social) setData((d) => ({ ...d, social: { ...emptySocial(), ...r.social } }));
+    };
+    const id = window.setInterval(() => void tick(), SOCIAL_POLL_MS);
+    const onVis = () => { if (document.visibilityState === 'visible' && Date.now() - last > SOCIAL_POLL_MS) void tick(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { stop = true; window.clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
+  }, [preview]);
+  const fleet = useMemo(() => fleetMarkers(data.social, preview ? 'Preview' : me), [data.social, me, preview]);
 
   const stats = useMemo(() => analyzeDesign(design), [design]);
   const nodes = data.science.nodes;
@@ -304,12 +399,13 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
           guidance={guidance} setGuidance={setGuidance}
           warp={warp} setWarp={setWarp}
           countdown={countdown} setCountdown={setCountdown}
-          launchId={launchId} preview={!!preview} freeze={!!preview?.freeze || ['ascent','orbit','ascent-low','ascent-high','ground-track','science-flight','science-orbit'].includes(preview?.view ?? '')}
+          launchId={launchId} preview={!!preview} freeze={!!preview?.freeze || FROZEN_VIEWS.includes(preview?.view ?? '')}
           science={data.science} sciDone={sciDone} sciResult={sciResult} busy={busy}
           onRunScience={(s, uid, exp, sit, biome) => void runScience(s, uid, exp, sit, biome)}
           onDismissResult={() => setSciResult(null)}
           trail={trail}
           camera={previewCamera(preview?.view)}
+          fleet={fleet} feed={data.social.feed}
           mission={missionId ? (data.missions.board.find((m) => m.id === missionId) ?? null) : null}
           onDeployed={async (s) => {
             if (preview || !launchId || launchId === 'preview') return;
@@ -458,18 +554,49 @@ function Hangar({ me, data, design, onNew, onLoad }: {
             ))}
           </tbody></table>
         </section>
-        <section className="spc-panel">
-          <h2>Orbit leaderboard</h2>
-          <table className="spc-board">
-            <thead><tr><th>Pilot</th><th className="n">Sats</th></tr></thead>
-            <tbody>
-              {data.board.map((b) => <tr key={b.name}><td>{b.name}</td><td className="n">{b.sats}</td></tr>)}
-              {!data.board.length && <tr><td colSpan={2} style={{ color: '#8aa' }}>No satellites on station yet.</td></tr>}
-            </tbody>
-          </table>
+        <section className="spc-panel" data-testid="spc-leaders">
+          <Leaders data={data} me={me} />
         </section>
       </div>
     </div>
+  );
+}
+
+function Leaders({ data, me }: { data: ViewData; me: string | null }) {
+  const [tab, setTab] = useState<'sats' | 'science' | 'survey'>('sats');
+  const L = data.social.leaders;
+  const sats = L.sats.length ? L.sats : data.board;
+  const rows: Array<{ name: string; v: string }> = tab === 'sats' ? sats.map((b) => ({ name: b.name, v: String(b.sats) }))
+    : tab === 'science' ? L.science.map((b) => ({ name: b.name, v: b.points.toLocaleString('en-US') }))
+    : L.survey.map((b) => ({ name: b.name, v: `${b.pct.toFixed(1)}%` }));
+  const isMe = (n: string) => !!me && n.toLowerCase() === me.toLowerCase();
+  return (
+    <>
+      <h2>Leaderboard</h2>
+      <div className="spc-seg" role="tablist">
+        {([['sats', 'Satellites'], ['science', 'Science'], ['survey', 'Map coverage']] as const).map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)} data-testid={`spc-leaders-${k}`}>{label}</button>
+        ))}
+      </div>
+      <table className="spc-board">
+        <thead><tr><th>#</th><th>Pilot</th><th className="n">{tab === 'sats' ? 'Sats' : tab === 'science' ? 'Points' : 'Mapped'}</th></tr></thead>
+        <tbody>
+          {rows.map((r, i) => <tr key={r.name} className={isMe(r.name) ? 'me' : ''}><td className="rk">{i + 1}</td><td>{r.name}</td><td className="n">{r.v}</td></tr>)}
+          {!rows.length && <tr><td colSpan={3} className="none">{tab === 'sats' ? 'No satellites on station yet.' : tab === 'science' ? 'No science returned yet.' : 'No maps started yet.'}</td></tr>}
+        </tbody>
+      </table>
+      <h2 style={{ marginTop: 16 }}>Recent launches</h2>
+      <div className="spc-feed">
+        {data.social.feed.slice(0, 8).map((f) => (
+          <div key={f.id} className={'row' + (f.deployed ? ' ok' : '')}>
+            <b>{f.ownerName}</b>
+            <span className="what">{f.designName}{f.missionTitle ? ` · ${f.missionTitle}` : ''}</span>
+            <span className="when">{f.deployed ? '🛰 ' : ''}{ago(f.at, data.social.at || Date.now())}</span>
+          </div>
+        ))}
+        {!data.social.feed.length && <div className="none">No launches yet.</div>}
+      </div>
+    </>
   );
 }
 
@@ -604,12 +731,21 @@ function Vab({ design, setDesign, selected, setSelected, stats, chips, busy, nod
           </div>
           {chips != null && <div className="spc-read"><div className="row"><span>Your chips</span><b>🪙 {chips.toLocaleString('en-US')}</b></div></div>}
         </aside>
+        {/* Phones: actions stay pinned to the bottom while the stack, stats and catalog scroll. */}
+        <div className="spc-vab-bar" data-testid="spc-vab-bar">
+          <div className="sum">
+            <b>🪙 {stats.cost.toLocaleString('en-US')}</b>
+            <small className={stats.capable ? 'ok' : 'warn'}>{fmtDv(stats.totalDvVac)} · TWR {stats.liftoffTwr.toFixed(2)}</small>
+          </div>
+          <button type="button" className="spc-btn" disabled={busy} onClick={onSave}>Save</button>
+          <button type="button" className="spc-btn primary" disabled={busy} onClick={onRoll} data-testid="spc-rollout-bar">Roll out</button>
+        </div>
       </div>
     </div>
   );
 }
 
-function MissionControl({ design, flight, setFlight, guidance, setGuidance, warp, setWarp, countdown, setCountdown, launchId, preview, freeze, trail, onDeployed, onBack, camera, mission, onClaim, science, sciDone, sciResult, busy, onRunScience, onDismissResult }: {
+function MissionControl({ design, flight, setFlight, guidance, setGuidance, warp, setWarp, countdown, setCountdown, launchId, preview, freeze, trail, onDeployed, onBack, camera, fleet, feed, mission, onClaim, science, sciDone, sciResult, busy, onRunScience, onDismissResult }: {
   science: ScienceViewData; sciDone: Set<string>; sciResult: ScienceResult | null; busy: boolean;
   onRunScience: (s: FlightState, partUid: string, exp: ExperimentDef, situation: Situation, biome: string) => void;
   onDismissResult: () => void;
@@ -624,6 +760,8 @@ function MissionControl({ design, flight, setFlight, guidance, setGuidance, warp
   onDeployed: (s: FlightState) => void;
   onBack: () => void;
   camera?: McCamera;
+  fleet?: FleetMarker[];
+  feed?: SocialView['feed'];
   mission?: MissionDef | null;
   onClaim?: (s: FlightState) => void;
 }) {
@@ -711,9 +849,9 @@ function MissionControl({ design, flight, setFlight, guidance, setGuidance, warp
       fn(ctx, r.width, r.height);
     };
     const wallT = Date.now() / 1000;
-    paintOne(vis, (ctx, w, h) => drawMission(ctx, s, { w, h, trail: trail.current, tFlame: flame.current, camera, wallT }));
-    paintOne(map, (ctx, w, h) => drawOrbitMap(ctx, s, { w, h, trail: trail.current, wallT }));
-  }, [trail, camera]);
+    paintOne(vis, (ctx, w, h) => drawMission(ctx, s, { w, h, trail: trail.current, tFlame: flame.current, camera, wallT, fleet }));
+    paintOne(map, (ctx, w, h) => drawOrbitMap(ctx, s, { w, h, trail: trail.current, wallT, fleet }));
+  }, [trail, camera, fleet]);
 
   useEffect(() => { paint(); }, [flight, paint]);
   useEffect(() => {
@@ -822,6 +960,17 @@ function MissionControl({ design, flight, setFlight, guidance, setGuidance, warp
               <div key={i} className={e.capcom ? 'cap' : ''}><span className="t">{fmtMet(e.t)}</span>{e.capcom ? 'CAPCOM: ' : ''}{e.text}</div>
             ))}
             {!s.log.length && <div className="cap">CAPCOM: We are go for countdown.</div>}
+          </div>
+          <h2>Recent launches</h2>
+          <div className="spc-feed" data-testid="spc-feed">
+            {(feed ?? []).slice(0, 6).map((f) => (
+              <div key={f.id} className={'row' + (f.deployed ? ' ok' : '')}>
+                <b>{f.ownerName}</b>
+                <span className="what">{f.designName}{f.missionTitle ? ` · ${f.missionTitle}` : ''}</span>
+                <span className="when">{f.deployed ? '🛰 ' : ''}{ago(f.at, preview ? Date.parse('2026-11-13T18:00:00Z') : Date.now())}</span>
+              </div>
+            ))}
+            {!(feed ?? []).length && <div className="none">No launches yet today.</div>}
           </div>
         </aside>
         <div className="spc-console">
