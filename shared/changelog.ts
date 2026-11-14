@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-14T09:00:00-06:00", "title": "Watch rocket launches from the city", "bullets": [
+    "When anyone rolls a rocket out to the pad, everyone on the city map sees it: a countdown on the Space Center pad, then a liftoff with a flame, a billowing pad cloud and an exhaust trail that drifts on the wind as the rocket pitches over and climbs out of sight. Heavy rockets drop their boosters on the way up. On the 2D map, the Space Center tile shows the rocket rising with its trail.",
+    "A short notice like \"🚀 Vega launched Goliath Heavy\" pops up. Tap it to open the Space Center, or tap Watch to swing the camera to the pad. If you open the map partway through a launch, you see the rest of it.",
+    "It is just for show and changes nothing in the game. To turn it off, open Settings, go to Sound & motion and switch off Show rocket launches on the city map. Reduce motion also turns off the 3D animation.",
+  ]},
   {"commit": "", "at": "2026-11-14T08:30:00-06:00", "title": "The Space Program is live", "bullets": [
     "The Space Center in the northwest corner of the city is now a working space program. Walk in, or tap the 🚀 on the 2D map, to open the Hangar, the Vehicle Assembly Building and Mission Control.",
     "In the VAB you stack command pods, probe cores, tanks, engines, boosters, decouplers, fairings and payloads, with a live readout of mass, cost, thrust-to-weight and delta-v for every stage. The catalog has nearly 100 parts in four sizes, with adapters, couplers for engine clusters, radial boosters with a thrust limiter, fins, nose cones, power, antennas and an ion drive, sorted by category with search.",
