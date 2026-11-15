@@ -14,6 +14,11 @@ type SiteView = {
   gearDef?: { name: string; icon: string; price: number; mw: number; chipsPerHour: number; max: number; install?: Array<{ id: string; qty: number; name: string }> };
 };
 
+type HyperPart = { part: string; name: string; need: number; done: number; price: number; have?: number };
+type HyperView = { plotId: string; stage: number; complete: boolean; pct: number; stages: Array<{ id: string; name: string; pct: number; parts: HyperPart[] }> };
+const pctLabel = (v: number) => `${Math.floor(Math.max(0, Math.min(1, v)) * 100)}%`;
+const Bar = ({ v, testid }: { v: number; testid?: string }) => <div className="coop-bar" data-testid={testid}><div style={{ width: `${Math.min(100, Math.max(0, v) * 100)}%` }} /><span>{pctLabel(v)}</span></div>;
+
 type PowerView = {
   gridMw: number; gridPrice: number; plantMw: number; demand: number; supply: number; throttle: number;
   cap: number; paidToday: number; gridOff?: boolean; gridBill?: number; coalPerDay?: number; fuelUntil?: number; fuelDay?: number;
@@ -85,11 +90,38 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
           </div>
         )}
         {kind === 'hyper' && lotId && (
-          <div>
+          <div data-testid="estate-hyper">
             <p>Convert this farm into a Dutch glasshouse. Flowers and other difficult crops unlock when it is finished.</p>
-            <ol>{HYPER_STAGES.map((s) => <li key={s.id}>{s.name} · 🪙 {chips(s.chips)}</li>)}</ol>
-            <button type="button" disabled={!canBuild} onClick={() => void call('estate_hyper_start', { plotId: lotId })}>Start conversion</button>
-            <button type="button" disabled={!canBuild} onClick={() => void call('estate_hyper_contribute', { plotId: lotId, part: 'chips', qty: 10_000 })}>Add 10,000 chips</button>
+            {(() => {
+              const h = ((view?.hyper as HyperView[] | undefined) ?? []).find((x) => x.plotId === lotId);
+              if (!h) return <>
+                <ol>{HYPER_STAGES.map((s) => <li key={s.id}>{s.name} · 🪙 {chips(s.chips)}{s.goods.length ? ` + ${s.goods.map(([, n]) => chips(n)).join(' / ')} materials` : ''}</li>)}</ol>
+                <button type="button" disabled={!canBuild} data-testid="estate-hyper-start" onClick={() => void call('estate_hyper_start', { plotId: lotId })}>Start conversion</button>
+              </>;
+              return <>
+                <p className="estate-sticky-line">{h.complete ? 'Glasshouse finished' : `Stage ${Math.min(h.stage + 1, h.stages.length)} of ${h.stages.length}`} · {pctLabel(h.pct)} complete</p>
+                <Bar v={h.pct} testid="estate-hyper-progress" />
+                <ul className="prestige-list">{h.stages.map((st, i) => (
+                  <li key={st.id} data-testid={`estate-hyper-stage-${st.id}`}>
+                    <div style={{ flex: 1 }}><b>{st.name}</b> — {pctLabel(st.pct)}
+                      <Bar v={st.pct} />
+                      {i === h.stage && !h.complete && st.parts.map((p) => {
+                        const left = Math.max(0, p.need - p.done);
+                        const step = p.part === 'chips' ? Math.min(left, 10_000) : Math.min(left, Math.max(1, Math.ceil(p.need / 10)));
+                        const cost = (n: number) => p.part === 'chips' ? n : Math.max(0, n - (p.have ?? 0)) * p.price;
+                        return <div key={p.part} className="estate-hyper-part">
+                          <small>{p.name}: {chips(p.done)} / {chips(p.need)}{p.part !== 'chips' ? ` · in warehouse ${chips(p.have ?? 0)} · 🪙 ${chips(p.price)} each otherwise` : ''}</small>
+                          {canBuild && left > 0 && <>
+                            <button type="button" data-testid={`estate-hyper-add-${p.part}`} onClick={() => void call('estate_hyper_contribute', { plotId: lotId, part: p.part, qty: step })}>Add {chips(step)}{cost(step) > 0 && p.part !== 'chips' ? ` · 🪙 ${chips(cost(step))}` : ''}</button>
+                            {left > step && <button type="button" onClick={() => void call('estate_hyper_contribute', { plotId: lotId, part: p.part, qty: left })}>Fill {chips(left)}{cost(left) > 0 ? ` · 🪙 ${chips(cost(left))}` : ''}</button>}
+                          </>}
+                        </div>;
+                      })}
+                    </div>
+                  </li>
+                ))}</ul>
+              </>;
+            })()}
           </div>
         )}
         {lotId?.startsWith('winery:') && (

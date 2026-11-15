@@ -3063,3 +3063,5 @@ body.he-full-open .he-table.he-full { visibility: visible; }
   .world-launch-toast .wlt-main { padding: 10px; font-size: 12px; }
   .world-launch-toast .wlt-watch { padding: 0 10px; font-size: 11px; }
 }
+.estate-hyper-part { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; }
+.estate-hyper-part small { flex: 1 1 100%; }

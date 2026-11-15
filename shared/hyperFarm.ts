@@ -16,6 +16,21 @@ export const HYPER_STAGES: HyperStagePlan[] = [
   { id: 'climate', name: 'Climate & irrigation', chips: 240_000, goods: [['pump', 40], ['sensor', 60], ['valve', 80], ['fiber_optic', 40]] },
 ];
 
+/** Catalog value of one stage: its chips plus its materials at their base price. */
+export const hyperStageValue = (st: HyperStagePlan, priceOf: (id: string) => number) => st.chips + st.goods.reduce((a, [id, n]) => a + n * priceOf(id), 0);
+/** 0..1 progress of one stage by value (same rule as private-works stages: chips 1:1, materials at their price). */
+export const hyperStagePct = (st: HyperStagePlan, done: Record<string, number>, priceOf: (id: string) => number) => {
+  const need = hyperStageValue(st, priceOf); if (need <= 0) return 1;
+  const got = Math.min(st.chips, done.chips ?? 0) + st.goods.reduce((a, [id, n]) => a + Math.min(n, done[`good:${id}`] ?? 0) * priceOf(id), 0);
+  return Math.max(0, Math.min(1, got / need));
+};
+/** 0..1 progress of the whole conversion: finished stages count in full, the current one by value. */
+export const hyperPct = (stage: number, doneByStage: Array<Record<string, number> | undefined>, priceOf: (id: string) => number) => {
+  const total = HYPER_STAGES.reduce((a, st) => a + hyperStageValue(st, priceOf), 0); if (total <= 0) return 1;
+  const got = HYPER_STAGES.reduce((a, st, i) => a + hyperStageValue(st, priceOf) * (i < stage ? 1 : i === stage ? hyperStagePct(st, doneByStage[i] ?? {}, priceOf) : 0), 0);
+  return Math.max(0, Math.min(1, got / total));
+};
+
 export const HYPER_GROW_MUL = 0.7;
 export const HYPER_WITHER_FACTOR = 8;
 

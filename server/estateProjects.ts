@@ -19,7 +19,7 @@ import {
   type EstateBuildId, type EstateSiteKind, type EstateSiteState,
 } from '../shared/estateProjects.js';
 import { estateLotOf, RIG_BERTHS, wineryOf } from '../shared/mapExpansion.js';
-import { HYPER_STAGES, HYPER_FARM_TOTAL } from '../shared/hyperFarm.js';
+import { HYPER_STAGES, HYPER_FARM_TOTAL, hyperPct, hyperStagePct } from '../shared/hyperFarm.js';
 import { RIG_STAGES, RIG_LAUNCH_FEE, RIG_CRUDE_PER_HOUR, RIG_MAX_PER_PLAYER, RIG_HOLD_CAP, rigLabel, type RigState } from '../shared/offshoreRig.js';
 import { FORT_IMPORT, PLASTICS_RECIPES, plantRecipe, type FortFeed } from '../shared/plasticsPlant.js';
 import { GOODS, type ItemType } from '../shared/mines.js';
@@ -316,10 +316,14 @@ export class Estate {
       if (left <= 0) throw new EstateError('That part is already full.');
       const qty = Math.min(q, left);
       const item = GOODS[id];
-      const took = item ? this.takeStacks(name, [{ type: item.type, id, qty }]) : false;
-      if (!took) {
-        const price = px((item?.price ?? 0) * qty);
-        this.charge(name, price, `hyper_mat:${plotId}:${h.stage}:${id}:${row[`good:${id}`] ?? 0}:${qty}`, `Hyper farm: ${qty} ${item?.name ?? id}`);
+      // Warehouse stock first (as much as you have), chips at the catalog price for the rest, so the
+      // material parts of every stage can always be filled from this screen.
+      const stock = item ? Math.min(qty, this.warehouseQty(name, item.type, id)) : 0;
+      const took = stock > 0 && item ? (this.takeStacks(name, [{ type: item.type, id, qty: stock }]) ? stock : 0) : 0;
+      const buy = qty - took;
+      if (buy > 0) {
+        try { this.charge(name, px((item?.price ?? 0) * buy), `hyper_mat:${plotId}:${h.stage}:${id}:${row[`good:${id}`] ?? 0}:${qty}`, `Hyper farm: ${buy} ${item?.name ?? id}`); }
+        catch (e) { if (took && item) this.giveStacks(name, [{ type: item.type, id, qty: took }]); throw e; }
       }
       row[`good:${id}`] = (row[`good:${id}`] ?? 0) + qty;
       if (st.goods.every(([gid, n]) => (row[`good:${gid}`] ?? 0) >= n) && (row.chips ?? 0) >= st.chips) h.stage += 1;
@@ -491,7 +495,16 @@ export class Estate {
   }
   hyperView(name: string, plotId: string) {
     const h = this.ecoOf(name).hyper[plotId] ?? { stage: 0, done: [] };
-    return { plotId, stage: h.stage, complete: h.stage >= HYPER_STAGES.length, total: HYPER_FARM_TOTAL, stages: HYPER_STAGES.map((st, i) => ({ ...st, done: h.done[i] ?? {} })) };
+    const priceOfGood = (id: string) => GOODS[id]?.price ?? 0;
+    const stages = HYPER_STAGES.map((st, i) => {
+      const done = h.done[i] ?? {};
+      const parts = [
+        { part: 'chips', name: 'Chips', need: st.chips, done: Math.min(st.chips, done.chips ?? 0), price: 1 },
+        ...st.goods.map(([id, n]) => ({ part: `good:${id}`, name: GOODS[id]?.name ?? id, need: n, done: Math.min(n, done[`good:${id}`] ?? 0), price: px(priceOfGood(id)), have: this.warehouseQty(name, GOODS[id]?.type ?? 'good', id) })),
+      ];
+      return { ...st, done, parts, pct: i < h.stage ? 1 : hyperStagePct(st, done, priceOfGood) };
+    });
+    return { plotId, stage: h.stage, complete: h.stage >= HYPER_STAGES.length, total: HYPER_FARM_TOTAL, pct: hyperPct(h.stage, h.done, priceOfGood), stages };
   }
   rigView(r: RigState) {
     return { ...r, label: rigLabel(r), launchFee: px(RIG_LAUNCH_FEE), berthAt: r.berth != null ? RIG_BERTHS[r.berth] : null, stages: RIG_STAGES };
