@@ -6,6 +6,23 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-15T16:40:00-06:00", "title": "Fields harvest to the pantry again", "bullets": [
+    "Harvesting to the pantry no longer fails when only part of a field fits. The pantry fills up to its limit of 999 per crop, and any ripe tiles that do not fit wait on the field. Nothing withers or gets sold. The message tells you how many tiles are still waiting.",
+    "Auto-harvest runs on every field you have switched on. Before, a big field could fill the pantry and block the next field in the same pass. Auto-harvest also no longer uses up your own harvest limit, so your manual harvests are never turned away because of it.",
+    "Orchards and resort plantations can now switch on auto-harvest. They pick ripe fruit about every 30 minutes, the same as crop fields. The trees stay planted after each harvest.",
+  ]},
+  {"commit": "", "at": "2026-11-15T16:35:00-06:00", "title": "Hyper farm glasshouse takes materials", "bullets": [
+    "The hyper farm (Dutch glasshouse) screen now has a button for every part of the current stage, not just chips. Once a stage's chips are in, you can add its concrete, bricks, steel, glass, cable, pumps, sensors, valves and fiber optic cable, and the next stage opens when every part is full.",
+    "Materials come from your warehouse first. Anything you are short of is bought at the listed price. Chips you already put into a conversion are kept.",
+  ]},
+  {"commit": "", "at": "2026-11-15T16:30:00-06:00", "title": "Glasshouse conversion shows its progress", "bullets": [
+    "The hyper farm screen shows a progress bar and percentage for the whole conversion and for each stage, the same way other building projects do. Each part shows how much is in, how much is needed and how much you have in the warehouse.",
+  ]},
+  {"commit": "", "at": "2026-11-15T16:25:00-06:00", "title": "Fort McChud plastics go to your factory", "bullets": [
+    "At the Fort McChud Commodity Exchange, the new Ship plastics to my factory button sends the plastics in your tanks to your factory storage in Chud City by cargo ship or freight plane. Each unit arrives as one Plastic resin.",
+    "Four new factory recipes use plastic resin. The Assembler makes PVC pipe and Plastic crates, the Wire Drawer makes Insulated cable, and the Fabricator makes Home appliances. Each one is worth about 25 to 35% more than what goes into it, like other factory steps.",
+    "You can still ship and sell plastics at the Chud City Warehouse as before.",
+  ]},
   {"commit": "", "at": "2026-11-14T09:05:00-06:00", "title": "Space program: payouts and costs are 5x higher", "bullets": [
     "Everything in the space program that costs or pays chips is now five times higher, so the profit margins stay the same: every part (and so every launch), all contract payouts, and the satellite bounty (2,000 per deploy, still for your first five deploys). Survey map bounties are now 5,000, 7,500, 10,000 and 15,000 at 25, 50, 75 and 100% coverage. Research grants are 100 chips per science point, up to 10,000 a day.",
     "The daily cap on contract payouts is 150,000 chips. The budget contract now needs a design under 27,500 (Scout I costs 25,125). The daily price index still applies to all of these, and the tech tree still costs the same science.",
