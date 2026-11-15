@@ -80,6 +80,24 @@ export function mineOreSink(account: string, cave: string = 'mine'): OreSink {
   };
 }
 
+/** Factory storage for warehouse goods (type 'good'), e.g. Fort McChud plastics landing as plastic resin. Same rules as mineOreSink. */
+export interface GoodSink { write(cl: Q, items: Array<[string, number]>): Promise<void>; after(items: Array<[string, number]>): void; room(id: string): number }
+export function mineGoodSink(account: string): GoodSink {
+  const m = getMines(); if (m.offline) throw new EmployError(MINES_OFFLINE_MSG);
+  const pack = m.packOf(account);
+  return {
+    room: (id) => Math.max(0, MAX_BANKED_STACK - (pack.get(stackKey({ type: 'good', id }))?.qty ?? 0)),
+    async write(cl, items) {
+      for (const [id, n] of items) if ((pack.get(stackKey({ type: 'good', id }))?.qty ?? 0) + n > MAX_BANKED_STACK) throw new EmployError('Your factory storage is full for that item.');
+      for (const [id, n] of items) await cl.query('INSERT INTO mine_items (player_key, owner_name, item_type, item_id, qty) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (player_key, item_type, item_id) DO UPDATE SET qty = mine_items.qty + EXCLUDED.qty, updated_at = now()', [playerKey(account), account.trim(), 'good', id, n]);
+    },
+    after(items) {
+      for (const [id, n] of items) { const k = stackKey({ type: 'good', id }); const st = pack.get(k); if (st) st.qty += n; else pack.set(k, { type: 'good', id, qty: n }); }
+      void m.savePack(account, []).catch(() => {});
+    },
+  };
+}
+
 export class Employment {
   private locks = new Map<string, Promise<unknown>>();
   private lock<T>(id: string, fn0: () => Promise<T>): Promise<T> {

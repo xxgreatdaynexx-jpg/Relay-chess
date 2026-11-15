@@ -8,12 +8,14 @@ import { Fishing, fishImportQty } from '../server/fishing';
 import { writeImport } from '../server/factory';
 import { CROPS, CROP_SEED_MUL, farmPlots } from '../shared/farm';
 import { TROPICAL_CROPS } from '../shared/resort';
+import { FORT_IMPORT } from '../shared/plasticsPlant';
 import { GOODS, ORES, sellable, isFood } from '../shared/mines';
 import { FRECIPES, KINDS, advance, madeBy, newState, recipeIn, recipeOut, tierOf, usedIn, type Storage } from '../shared/factory';
 
 const T0 = Date.parse('2026-11-01T12:00:00Z');
 const NEW = ['s_steel', 'a_bearing', 'a_motor', 'f_generator', 'f_robot', 'j_bracelet', 'm_flour', 'm_cornmeal', 'm_sugar', 'm_juice', 'm_tropical', 'm_oil', 'm_cocoa', 'm_coconut', 'k_wine', 'k_bread', 'k_chocolate', 'k_canned', 'k_fish_oil', 'k_pie', 'k_salsa', 'k_soup', 'k_banquet'];
-const keyIsRaw = (k: string) => { const [t, id] = k.split(':'); return t === 'ore' ? id in ORES : !!GOODS[id]?.raw; };
+const FORT_GOODS = new Set(Object.values(FORT_IMPORT).map((f) => f.good)); // Fort McChud plastics land in the factory as plastic resin
+const keyIsRaw = (k: string) => { const [t, id] = k.split(':'); return t === 'ore' ? id in ORES : !!GOODS[id]?.raw || (t === 'good' && FORT_GOODS.has(id!)); };
 
 describe('factory: more recipes + game resources in (pt1252u)', () => {
   it('adds 15-25 recipes; each pays a modest premium over its inputs (no chip printer)', () => {

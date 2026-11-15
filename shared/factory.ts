@@ -195,6 +195,11 @@ export const FRECIPES: FRecipe[] = [
   R('f_city_seal', 'fabricator', [['good:scepter', 1], ['good:trophy', 1], ['bar:gold_bar', 2]], ['good:city_seal', 1], 45),
   R('f_grand_clock', 'fabricator', [['good:pocket_watch', 1], ['good:gold_leaf', 2], ['good:gear', 2], ['good:lens', 2]], ['good:grand_clock', 1], 30),
   R('f_vault_door', 'fabricator', [['good:server_rack', 1], ['good:pump', 1], ['good:girder', 1]], ['good:vault_door', 1], 60),
+  // Fort McChud plastics: ship plastics to the factory (they land as plastic resin), then craft these.
+  R('a_pvc_pipe', 'assembler', [['good:plastic_resin', 2]], ['good:pvc_pipe', 1], 6),
+  R('d_insulated_cable', 'drawer', [['good:wire', 3], ['good:plastic_resin', 1]], ['good:insulated_cable', 1], 6),
+  R('a_plastic_crate', 'assembler', [['good:plastic_resin', 3], ['good:screw', 4]], ['good:plastic_crate', 1], 8),
+  R('f_appliance', 'fabricator', [['good:motor', 1], ['good:circuit', 1], ['good:plastic_resin', 4], ['good:iron_sheet', 2]], ['good:appliance', 1], 30),
 ];
 
 export const PRESTIGE_RECIPE_IDS = new Set(['j_cufflinks', 'j_signet', 'j_diadem', 'j_laurel', 'f_chandelier', 'f_limousine', 'f_city_seal', 'f_grand_clock', 'f_vault_door']);

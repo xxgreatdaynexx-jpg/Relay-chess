@@ -431,6 +431,11 @@ export const GOODS: Record<string, ItemDef> = {
   ethylene_tank:  { type: 'good', id: 'ethylene_tank',  name: 'Ethylene tank',   price: 28,    color: '#8ae0d0' },
   gpu:            { type: 'good', id: 'gpu',            name: 'Graphics card',   price: 420,   color: '#3aaa6a' },
   equip_case:     { type: 'good', id: 'equip_case',     name: 'Equipment case',  price: 90,    color: '#4a5560' },
+  // Fort McChud plastics (shipped to the factory as plastic resin): factory recipes at the usual ~1.25-1.35x step margin.
+  pvc_pipe:       { type: 'good', id: 'pvc_pipe',       name: 'PVC pipe',        price: 140,   color: '#e6e9ee' },
+  insulated_cable:{ type: 'good', id: 'insulated_cable',name: 'Insulated cable', price: 172,   color: '#e05a3a' },
+  plastic_crate:  { type: 'good', id: 'plastic_crate',  name: 'Plastic crate',   price: 228,   color: '#3a8ad0' },
+  appliance:      { type: 'good', id: 'appliance',      name: 'Home appliance',  price: 940,   color: '#f2f2f0' },
   crop_tulips:    { type: 'good', id: 'crop_tulips',    name: 'Tulips',          price: 596.84, color: '#e04080', raw: true },
   crop_roses:     { type: 'good', id: 'crop_roses',     name: 'Roses',           price: 738.95, color: '#c01830', raw: true },
   crop_orchids:   { type: 'good', id: 'crop_orchids',   name: 'Orchids',         price: 1108.42, color: '#d890d0', raw: true },

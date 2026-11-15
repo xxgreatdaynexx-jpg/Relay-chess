@@ -13,7 +13,8 @@ import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { px, priceIndex } from './price-index.js';
 import { requireFortMc, TravelError } from './travel.js';
-import { mineOreSink, type OreSink } from './employment.js';
+import { mineGoodSink, mineOreSink, type GoodSink, type OreSink } from './employment.js';
+import { FORT_IMPORT } from '../shared/plasticsPlant.js';
 import { playerKey } from './skins.js';
 import { getLogistics, shipStmt, FreightError, type Shipment } from './logistics.js';
 import { MAX_SHIP_QTY, MODES, isMode } from '../shared/logistics.js';
@@ -51,7 +52,8 @@ export class FortMc {
   private lastOverlaps: ReturnType<typeof auditFortOverlaps> | null = null;
   constructor(private readonly pool: PoolLike | null, private readonly clock = () => Date.now(),
     private readonly oreSink: (account: string) => OreSink = mineOreSink,
-    private readonly gate: (name: string) => Promise<void> = (n) => requireFortMc(n, FortError)) {}
+    private readonly gate: (name: string) => Promise<void> = (n) => requireFortMc(n, FortError),
+    private readonly goodSink: (account: string) => GoodSink = mineGoodSink) {}
   attachIo(io: Server) { this.io = io; }
   overlaps() { return this.lastOverlaps; }
   async init() {
@@ -206,6 +208,7 @@ export class FortMc {
    * factory storage when the truck arrives (factoryDelivered). Room counts loads already on the road.
    */
   private async shipFactoryIn(name: string, s: FortState, b: Record<string, unknown>) {
+    if (b.what === 'plastic') return this.shipPlasticIn(name, s, b);
     const lg = getLogistics(); if (!lg) throw new FortError('Freight is offline right now.');
     const mode: unknown = b.mode ?? 'ship'; if (!isMode(mode)) throw new FortError('Pick how to ship it.'); // Fort McChud is another map: trucks can't haul there (planSell refuses truck/hired)
     const sink = this.oreSink(name); const road = lg.pending(name, 'factory');
@@ -236,14 +239,58 @@ export class FortMc {
     for (const l of loads) lg.admit(l);
     return { shipped: [...sent], petcoke, loads: loads.length, mode, fee, arriveAt: Math.max(...loads.map((l) => l.arriveAt)), partial: stop ? stop.message : null };
   }
+  /**
+   * Ship Fort McChud plastics to your factory storage in Chud City, where each unit lands as one Plastic resin
+   * (FORT_IMPORT) for factory recipes. Same freight rules as ore: one transaction for the stock, fee and shipment rows.
+   */
+  private async shipPlasticIn(name: string, s: FortState, b: Record<string, unknown>) {
+    const lg = getLogistics(); if (!lg) throw new FortError('Freight is offline right now.');
+    const mode: unknown = b.mode ?? 'ship'; if (!isMode(mode)) throw new FortError('Pick how to ship it.');
+    const conv = FORT_IMPORT.plastic; const sink = this.goodSink(name);
+    const room = Math.max(0, sink.room(conv.good) - (lg.pending(name, 'factory').get('plastic') ?? 0) * conv.qty);
+    const want = Math.min(whole(s.stock.plastic), Math.floor(room / conv.qty));
+    if (want < 1) throw new FortError(whole(s.stock.plastic) < 1 ? 'No plastics in your tanks to ship.' : 'Your factory storage is full for plastic resin.');
+    const loads: Shipment[] = []; const skip = new Set<string>(); let stop: Error | null = null; let left = want;
+    while (left > 0 && !stop) {
+      const cap = mode === 'truck' ? (lg.idleTruck(name, skip)?.cap ?? 0) : MODES[mode].cap;
+      if (cap <= 0) { stop = new FortError(lg.owned(name).length ? 'All your trucks are out on deliveries. Hire one, or wait.' : 'You do not own a truck. Buy one at the truck store, or hire one for a fee.'); break; }
+      try { const sh = lg.planSell(name, { mode, from: 'fortmc', type: 'fort', id: 'plastic', qty: Math.min(left, cap, MAX_SHIP_QTY), src: 'fortmc', kind: 'factory', skip }); loads.push(sh); if (sh.truck) skip.add(sh.truck); left -= sh.qty; }
+      catch (e) { stop = e instanceof FreightError ? new FortError(e.message) : (e as Error); }
+    }
+    if (!loads.length) throw stop ?? new FortError('Nothing to ship.');
+    const sent = loads.reduce((a, l) => a + l.qty, 0); s.stock.plastic = (s.stock.plastic ?? 0) - sent;
+    const fee = loads.reduce((a, l) => a + l.fee, 0);
+    await this.commit(name, s, -fee, 'freight', `Fort McChud → your factory: ${sent} Plastics`, async (cl) => { for (const l of loads) { const st = shipStmt(l); await cl.query(st.sql, st.args); } });
+    for (const l of loads) lg.admit(l);
+    return { shipped: [['plastic', sent]], resin: sent * conv.qty, loads: loads.length, mode, fee, arriveAt: Math.max(...loads.map((l) => l.arriveAt)), partial: stop ? stop.message : null };
+  }
   private delivered = new Set<string>();
   /** A Fort McChud → factory load arrived: add it to factory storage exactly once (shipment row flips transit→delivered in the same transaction). */
   async factoryDelivered(sh: Shipment): Promise<void> {
+    if (String(sh.type) === 'fort' && sh.itemId === 'plastic') return this.plasticDelivered(sh);
     if (!isOre(sh.itemId)) throw new FortError('Not an ore.');
     const id = sh.itemId; const items: Array<[OreId, number]> = [[id, sh.qty]];
     return this.lock(playerKey(sh.ownerName), async () => {
       if (this.delivered.has(sh.id)) return;
       const sink = this.oreSink(sh.ownerName);
+      if (!this.pool) { await sink.write({ query: async () => ({ rows: [] }) } as unknown as Q, items); sink.after(items); this.delivered.add(sh.id); return; }
+      const cl = await this.pool.connect(); let fresh = false;
+      try {
+        await cl.query('BEGIN');
+        const u = await cl.query("UPDATE freight_shipments SET status = 'delivered' WHERE id = $1 AND status = 'transit'", [sh.id]) as { rowCount?: number | null };
+        fresh = (u.rowCount ?? 0) === 1;
+        if (fresh) await sink.write(cl, items);
+        await cl.query('COMMIT');
+      } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
+      if (fresh) sink.after(items); this.delivered.add(sh.id);
+    });
+  }
+  /** A Fort McChud plastics load arrived: plastic resin into factory storage exactly once (same pattern as ore). */
+  private async plasticDelivered(sh: Shipment): Promise<void> {
+    const conv = FORT_IMPORT.plastic; const items: Array<[string, number]> = [[conv.good, sh.qty * conv.qty]];
+    return this.lock(playerKey(sh.ownerName), async () => {
+      if (this.delivered.has(sh.id)) return;
+      const sink = this.goodSink(sh.ownerName);
       if (!this.pool) { await sink.write({ query: async () => ({ rows: [] }) } as unknown as Q, items); sink.after(items); this.delivered.add(sh.id); return; }
       const cl = await this.pool.connect(); let fresh = false;
       try {

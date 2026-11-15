@@ -173,6 +173,7 @@ export function FortMcMap() {
             <BuildingInventory building="fortmc" />
             <div className="bldg-modes">To my factory by: {MODE_IDS.filter((m) => truckAllowed(m, 'fortmc', 'city')).map((m) => <button key={m} type="button" className={fMode === m ? 'on' : ''} onClick={() => setFMode(m)} data-testid={`fort-ship-mode-${m}`}>{MODES[m].icon} {MODES[m].label}</button>)}</div>
             <button type="button" disabled={busy} onClick={() => void act({ op: 'ship', mode: fMode })} data-testid="fort-ship">🚚 Ship ore + petcoke (as coal) to my factory{fMode === 'truck' ? ' · your truck, free' : ' · freight fee'}</button>
+            <button type="button" disabled={busy || whole(s?.stock.plastic) < 1} onClick={() => void act({ op: 'ship', what: 'plastic', mode: fMode }, 'Plastics on the way: they land in your factory storage as plastic resin.')} data-testid="fort-ship-plastic">🧴 Ship {chips(whole(s?.stock.plastic))} plastics to my factory (as plastic resin for crafting){fMode === 'truck' ? ' · your truck, free' : ' · freight fee'}</button>
           </>}
           {panel === 'mine' && <>
             <h3>⛏ Deep Ore Mine</h3>

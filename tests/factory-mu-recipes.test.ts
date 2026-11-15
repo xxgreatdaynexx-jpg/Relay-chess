@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { GOODS, isOre } from '../shared/mines';
 import { FRECIPES, KINDS, recipeIn, recipeOut, tierOf } from '../shared/factory';
+import { FORT_IMPORT } from '../shared/plasticsPlant';
 
 // Millionaire Update: the factory recipe list doubled (55 -> 111). The first 55 are the pre-update recipes.
 // The Coral Grotto jewelry recipes (mu-resort) sit inside the old block and are balanced by their own tests.
 const GROTTO = new Set(['j_cut_opal', 'j_pearl_necklace', 'j_tidecrown']); const LIST = FRECIPES.filter((r) => !GROTTO.has(r.id));
 const BASE = 55; const OLD = LIST.slice(0, BASE); const NEW = LIST.slice(BASE);
 const made = new Set(FRECIPES.map((r) => r.out[0]));
-const obtainable = (k: string) => { const [t, id] = k.split(':'); return (t === 'ore' && isOre(id)) || made.has(k) || (GOODS[id]?.type === t && !!GOODS[id]?.raw); };
+const FORT_GOODS = new Set(Object.values(FORT_IMPORT).map((f) => f.good)); // shipped in from Fort McChud (plastics -> plastic resin)
+const obtainable = (k: string) => { const [t, id] = k.split(':'); return (t === 'ore' && isOre(id)) || made.has(k) || (GOODS[id]?.type === t && !!GOODS[id]?.raw) || (t === 'good' && FORT_GOODS.has(id!)); };
 // Crop margins (2026-11-04): crop/farm-food goods are priced at seed chain x 1.3, so a higher-tier one only matches its inputs.
 const CROP_GOODS = new Set(['flour',  'cornmeal',  'sugar',  'berry_juice',  'tropical_juice',  'sunflower_oil',  'cocoa',  'coconut_milk',  'wine',  'bread',  'chocolate',  'pumpkin_pie',  'salsa',  'veggie_soup',  'banquet',  'starch',  'carrot_juice',  'mango_puree',  'grape_juice',  'pumpkin_seeds',  'tomato_paste',  'pasta_dinner',  'choc_cake',  'jam_jar',  'cornbread',  'smoothie',  'fish_pie',  'apple_juice',  'cider',  'apple_pie',  'cherry_pie',  'peach_jam',  'orange_juice']);
 const gainPerSec = (r: (typeof FRECIPES)[number]) => (recipeOut(r) - recipeIn(r)) / r.secs;
