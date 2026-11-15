@@ -169,6 +169,8 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
       .reduce((sum, c) => sum + indexed(cropById(c.crop)?.seed ?? 0, idx), 0);
   };
   const canSaveField = !!view && view.tiles.length > 0;
+  // Saved auto-plant seed only if it grows on this plot (orchard trees, resort tropicals, city crops); else the picked seed.
+  const autoSeed = view?.auto?.crop && CROPS.some((c) => c.id === view.auto!.crop) ? view.auto.crop : seed;
   return (
     <MapSheet className="world-deed world-farm" data-testid="farm-game" data-drag-panel="farm" onPointerDown={dragFarm.onPointerDown} style={dragFarm.style()} ref={dragFarm.ref}>{dragFarm.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
@@ -205,7 +207,7 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
           <button type="button" disabled={busy || !sel.size} onClick={() => plant([...sel])} data-testid="farm-plant-sel">Plant {sel.size || ''} selected<span>🪙 {chips(indexed(crop.seed, idx) * sel.size)}</span></button>
           <button type="button" disabled={busy || !empties.length} onClick={() => plant(empties)} data-testid="farm-plant-all">Plant all {empties.length} empty<span>🪙 {chips(indexed(crop.seed, idx) * empties.length)}</span></button>
           <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', {}, (r) => `Harvested ${r.harvested} for 🪙 ${chips(Number(r.paid))}.`)} data-testid="farm-harvest">Harvest {ready.length} ready{!ready.length && Number.isFinite(nextReadyIn) ? ` · first in ${witherHint(nextReadyIn - t)}` : ''}</button>
-          <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', { pantry: true }, (r) => `🧺 ${r.harvested} crop${r.harvested === 1 ? '' : 's'} into your ${pantryWhere}.`)} title={resortPlot ? 'Keep the crops in the Resort Warehouse for resort kitchen cooking' : 'Keep the crops for cooking instead of selling them'} data-testid="farm-harvest-pantry">🧺 To pantry</button>
+          <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', { pantry: true }, (r) => `🧺 ${r.harvested} crop${r.harvested === 1 ? '' : 's'} into your ${pantryWhere}.${Number(r.left) > 0 ? ` Your pantry is full: ${r.left} ripe tile${Number(r.left) === 1 ? '' : 's'} wait on the field.` : ''}`)} title={resortPlot ? 'Keep the crops in the Resort Warehouse for resort kitchen cooking' : 'Keep the crops for cooking instead of selling them'} data-testid="farm-harvest-pantry">🧺 To pantry</button>
           <div className="farm-templates" data-testid="farm-templates">
             <h4>Crop templates</h4>
             <small>Save the field as it is, or save the current selection (empty selected tiles use the seed you have picked). Apply stamps from the top-left of the field, or from the top-left of your selection. Only empty tiles are planted, and seeds cost the same as planting by hand.</small>
@@ -225,10 +227,10 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
           <div className="farm-auto" data-testid="farm-auto">
             <h4>Auto</h4>
             <label className="farm-auto-row"><input type="checkbox" checked={!!view.auto?.harvest && !view.auto?.pantry} disabled={busy}
-              onChange={(e) => act('farm_auto', { harvest: e.target.checked, pantry: false, plant: view.auto?.plant ?? false, crop: view.auto?.crop ?? seed }, () => e.target.checked ? 'Auto-harvest on (sells for chips).' : 'Auto-harvest off.')}
+              onChange={(e) => act('farm_auto', { harvest: e.target.checked, pantry: false, plant: view.auto?.plant ?? false, crop: autoSeed }, () => e.target.checked ? 'Auto-harvest on (sells for chips).' : 'Auto-harvest off.')}
               data-testid="farm-auto-harvest" /> Auto-harvest ready crops (sells for chips)</label>
             <label className="farm-auto-row"><input type="checkbox" checked={!!view.auto?.pantry} disabled={busy}
-              onChange={(e) => act('farm_auto', { harvest: e.target.checked, pantry: e.target.checked, plant: view.auto?.plant ?? false, crop: view.auto?.crop ?? seed }, () => e.target.checked ? (resortPlot ? 'Auto-harvest to resort pantry on for this plantation.' : 'Auto-harvest to pantry on for this farm.') : 'Auto-harvest to pantry off.')}
+              onChange={(e) => act('farm_auto', { harvest: e.target.checked, pantry: e.target.checked, plant: view.auto?.plant ?? false, crop: autoSeed }, () => e.target.checked ? (resortPlot ? 'Auto-harvest to resort pantry on for this plantation.' : 'Auto-harvest to pantry on for this farm.') : 'Auto-harvest to pantry off.')}
               data-testid="farm-auto-pantry" /> Auto-harvest to {resortPlot ? 'resort pantry (Resort Warehouse)' : 'pantry (kitchen ingredients)'}</label>
             <label className="farm-auto-row"><input type="checkbox" checked={!!view.auto?.plant} disabled={busy}
               onChange={(e) => act('farm_auto', { harvest: view.auto?.harvest ?? false, pantry: view.auto?.pantry ?? false, plant: e.target.checked, crop: seed }, () => e.target.checked ? `Auto-plant on with ${crop.label}.` : 'Auto-plant off.')}

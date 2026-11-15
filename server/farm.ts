@@ -97,7 +97,13 @@ export class Farm {
   async init() { await this.pool.query(FARM_MIGRATION); await this.pool.query('CREATE TABLE IF NOT EXISTS kitchen_harvests (tile_key TEXT PRIMARY KEY NOT NULL, at BIGINT NOT NULL)'); await healStalePropertyDerived(this.pool); }
   private async autoOf(pid: string, ownerKey: string): Promise<FarmAuto> {
     const r = (await this.pool.query('SELECT harvest, plant, crop, pantry FROM farm_auto WHERE plot_id = $1 AND owner_key = $2', [pid, ownerKey])).rows[0] as { harvest: boolean; plant: boolean; crop: string; pantry?: boolean } | undefined;
-    return { harvest: r?.harvest === true, pantry: r?.pantry === true, plant: r?.plant === true, crop: r?.crop ?? 'wheat' };
+    return { harvest: r?.harvest === true, pantry: r?.pantry === true, plant: r?.plant === true, crop: this.autoCrop(pid, r?.crop) };
+  }
+  /** The auto-plant seed if it can grow on this plot, else the plot's default (orchard → apple, resort → pineapple). */
+  private autoCrop(pid: string, crop: unknown): string {
+    const c = cropById(crop); const resort = pid.startsWith('rf:'); const orchard = !!orchardOf(pid);
+    if (c && isTropical(c.id) === resort && isOrchardCrop(c.id) === orchard) return c.id;
+    return resort ? 'pineapple' : orchard ? 'apple' : 'wheat';
   }
 
   private async ownerOf(q: { query: pg.Pool['query'] } | pg.PoolClient, id: string): Promise<{ key: string; name: string } | null> {
@@ -180,11 +186,14 @@ export class Farm {
   /** Per-plot auto plant/harvest toggles (owner only). Crop is the seed used when auto-plant is on. */
   async setAuto(name: string, id: unknown, patch: { harvest?: unknown; plant?: unknown; crop?: unknown; pantry?: unknown }) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.');
-    const cId = patch.crop !== undefined ? String(patch.crop) : undefined;
+    let cId = patch.crop !== undefined ? String(patch.crop) : undefined;
     if (cId !== undefined) {
-      const c = cropById(cId); if (!c) throw new FarmError('Unknown seed.');
-      if (isTropical(c.id) !== p.resort) throw new FarmError(p.resort ? 'Only tropical crops grow at the resort plantation.' : 'Tropical crops only grow at Chud Resort.');
-      if (isOrchardCrop(c.id) !== !!orchardOf(p.pid)) throw new FarmError(orchardOf(p.pid) ? 'Only fruit trees grow on an orchard plot.' : 'Fruit trees only grow on Orchard Ridge.');
+      const c = cropById(cId); if (!c && patch.plant === true) throw new FarmError('Unknown seed.');
+      const wrong = !c ? 'Unknown seed.' : isTropical(c.id) !== p.resort ? (p.resort ? 'Only tropical crops grow at the resort plantation.' : 'Tropical crops only grow at Chud Resort.')
+        : isOrchardCrop(c.id) !== !!orchardOf(p.pid) ? (orchardOf(p.pid) ? 'Only fruit trees grow on an orchard plot.' : 'Fruit trees only grow on Orchard Ridge.') : null;
+      // A seed that cannot grow here only matters when it is being used for auto-plant; for a harvest-only toggle
+      // (e.g. an orchard or plantation with no saved seed yet) keep the plot's own default instead of refusing.
+      if (wrong) { if (patch.plant === true) throw new FarmError(wrong); cId = undefined; }
     }
     return this.lock(p.pid, async () => {
       const o = await this.ownerOf(this.pool, p.pid); if (!o || o.key !== keyOf(name)) throw new FarmError('You do not own this farm plot.');
@@ -201,7 +210,7 @@ export class Farm {
         plant: typeof patch.plant === 'boolean' ? patch.plant : cur.plant,
         crop: cId ?? cur.crop,
       };
-      if (!cropById(next.crop)) next.crop = p.resort ? 'pineapple' : orchardOf(p.pid) ? 'apple' : 'wheat';
+      next.crop = this.autoCrop(p.pid, next.crop);
       await this.pool.query(
         `INSERT INTO farm_auto (plot_id, owner_key, harvest, plant, crop, pantry) VALUES ($1,$2,$3,$4,$5,$6)
          ON CONFLICT (plot_id, owner_key) DO UPDATE SET harvest = EXCLUDED.harvest, plant = EXCLUDED.plant, crop = EXCLUDED.crop, pantry = EXCLUDED.pantry`,
@@ -554,15 +563,21 @@ export class Farm {
    *  Map pools: city plots → warehouse food stacks; resort plantation → Resort Warehouse food (same pool resort kitchens use).
    *  Tile deletes and the stock commit in the SAME transaction: exactly once (a missing tile aborts it all). */
   private async harvestToPantry(name: string, pid: string, key: string, ready: TileRow[], now: number, fertB = 0, background = false) {
-    const counts = new Map<string, number>(); let value = 0; let cropUnits = 0;
+    const ls = getLocStore(); if (!ls.loaded) throw new FarmError('Storage is reconnecting. Nothing was harvested; try again in a minute.');
+    const loc = farmLoc(pid);
+    // Fill the pantry tile by tile up to PANTRY_MAX per crop. Tiles that do not fit stay ripe on the field (never lost,
+    // never sold) so a big field no longer blocks the whole harvest when only part of it fits.
+    const counts = new Map<string, number>(); let value = 0; let cropUnits = 0; const fit: TileRow[] = []; const full = new Set<string>();
     for (const r of ready) {
       const c = cropById(r.crop)!;
       const qty = this.harvestQty(pid, r.crop, fertB, `${r.nonce}:${r.tile}:${r.crop}`, pid.startsWith('rf:') ? RESORT_HARVEST_MUL : 1);
-      counts.set(c.id, (counts.get(c.id) ?? 0) + qty); value += c.sell * qty; cropUnits += qty;
+      const have = ls.qty(name, loc, `food:${c.id}`) + (counts.get(c.id) ?? 0);
+      if (have + qty > PANTRY_MAX) { full.add(c.label); continue; }
+      fit.push(r); counts.set(c.id, (counts.get(c.id) ?? 0) + qty); value += c.sell * qty; cropUnits += qty;
     }
-    const ls = getLocStore(); if (!ls.loaded) throw new FarmError('Storage is reconnecting. Nothing was harvested; try again in a minute.');
-    const loc = farmLoc(pid); const deltas = [...counts].map(([id, n]) => ({ loc, item: `food:${id}`, delta: n }));
-    for (const d of deltas) if (ls.qty(name, loc, d.item) + d.delta > PANTRY_MAX) throw new FarmError('Your pantry is full for that crop.');
+    if (!fit.length) throw new FarmError(`Your pantry is full for ${[...full].join(', ') || 'that crop'} (${PANTRY_MAX} max). The ripe crops wait on the field.`);
+    const left = ready.length - fit.length; ready = fit;
+    const deltas = [...counts].map(([id, n]) => ({ loc, item: `food:${id}`, delta: n }));
     const extra: Array<{ sql: string; args: unknown[] }> = [];
     const up = await this.upgrades(this.pool, pid, key);
     const gmul = combinedGrowMul(farmingGrowMul(await skillLevelAsync(name, 'farming')), up.sprinkler);
@@ -589,7 +604,7 @@ export class Farm {
     awardXp(name, 'farming', Math.min(400, 10 + Math.round(value / 5)));
     this.onChange?.(pid);
     try { emitHaul({ name, from: farmHaulSite(pid), to: farmLoc(pid), kind: 'farm-pantry', background }); } catch { /* visual only */ }
-    return { harvested: cropUnits, paid: 0, pantry: Object.fromEntries(counts), toFactory: undefined as Array<[string, number]> | undefined, chips: this.bank().account(name).chips };
+    return { harvested: cropUnits, paid: 0, pantry: Object.fromEntries(counts), left, toFactory: undefined as Array<[string, number]> | undefined, chips: this.bank().account(name).chips };
   }
 
   /**
@@ -710,8 +725,9 @@ export class Farm {
 
   /**
    * One auto-farm pass for every owned plot with Auto-harvest / Auto-plant on (online or offline).
-   * Only queries farm_auto rows that are enabled. Respects hub sleep and farmGuard rate limits
-   * (clockwork skipped for official auto). Resort plots run offline like city plots (pt2094u); manual
+   * Only queries farm_auto rows that are enabled. Respects hub sleep. The server's own 30-minute sweep does not
+   * spend the owner's farmGuard tokens: it used to, so back-to-back plots in one sweep tripped the 1.5 s gap and
+   * many auto plots ate the hourly harvest budget, blocking the player's own harvests. Resort plots run offline like city plots (pt2094u); manual
    * rf: actions still require being at the resort via the socket gate.
    */
   async autoSweep(): Promise<number> {
@@ -730,7 +746,7 @@ export class Farm {
         if (r.harvest) {
           // pantry destination: crops stay on the field if that map's pantry is full (FarmError); never sold by surprise.
           const toPantry = r.pantry === true;
-          try { await this.harvest(name, pid, undefined, undefined, toPantry, { auto: true }); n++; }
+          try { await this.harvest(name, pid, undefined, undefined, toPantry, { auto: true, skipGuard: true }); n++; }
           catch (e) { if (!(e instanceof FarmError)) console.warn('[farm-auto] harvest', pid, (e as Error).message); }
         }
         if (r.plant) {
@@ -739,7 +755,7 @@ export class Farm {
           const empties: number[] = [];
           for (let i = 0; i < plot.cols * plot.rows; i++) if (!busy.has(i)) empties.push(i);
           if (empties.length) {
-            try { await this.plant(name, pid, r.crop, empties, { auto: true }); n++; }
+            try { await this.plant(name, pid, r.crop, empties, { auto: true, skipGuard: true }); n++; }
             catch (e) { if (!(e instanceof FarmError)) console.warn('[farm-auto] plant', pid, (e as Error).message); }
           }
         }
