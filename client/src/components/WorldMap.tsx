@@ -39,7 +39,7 @@ import { LaunchTile2D, LaunchToast, useWorldLaunchSync } from './LaunchShows';
 import { indexed } from '../../../shared/priceIndex';
 import { skyNow, parseTod, fmtClock, hex } from '../../../shared/daynight';
 import { fmtLap } from '../../../shared/venues';
-import { zoneOf, ZONE_DEED_CAP, FARMLAND_TILE_CAP } from '../../../shared/zoning';
+import { zoneOf, ZONE_DEED_CAP, FARMLAND_TILE_CAP, type ZoningSummary } from '../../../shared/zoning';
 import { optimisticOwn, assessedTaxBasis, taxBasisOf, propertyValue, propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, type OwnedProperty } from '../../../shared/realEstate';
 
 /** Today's price index from /api/real-estate; list prices and tax scale with it. */
@@ -63,6 +63,27 @@ function OwnedHomes2D({ owned, onPick }: { owned: Map<string, OwnedProperty>; on
   return <section className="world-owned2d" data-testid="world-owned2d"><h4>🏠 Owned homes</h4>
     <div>{homes.slice(0, cap).map((o) => <button key={o.id} type="button" className="owner-tag" onClick={() => onPick(o.id)} data-testid={`owner-tag-${o.id}`}><b>{o.owner}</b><small>{propertyById(o.id)?.label ?? o.id}</small></button>)}
       {cap < homes.length && <button type="button" className="owner-tag more" onClick={() => setAll(true)}>+{homes.length - cap} more</button>}</div></section>;
+}
+
+/** Bill Chud 4 zoning meters for the signed-in player: deeds per zone and farmland tiles against the caps the server enforces. */
+export function ZoningMeters({ me, refresh }: { me: string | null; refresh?: unknown }) {
+  const [z, setZ] = useState<ZoningSummary | null>(null);
+  useEffect(() => {
+    if (!me) return;
+    socket.timeout(10_000).emit('re_zoning', {}, (err: Error | null, r?: Ack & { zoning?: ZoningSummary }) => { if (!err && r?.ok && r.zoning) setZ(r.zoning); });
+  }, [me, refresh]);
+  if (!me || !z) return null;
+  const row = (label: string, n: number | null, cap: number, unit: string, testid: string) => {
+    const over = n == null || n > cap; const at = n === cap;
+    return <div className="zoning-row" data-testid={testid}><span>{label}</span><span className={over ? 'text-rose-300' : at ? 'text-amber-300' : ''}>{n == null ? '?' : n.toLocaleString('en-US')} / {cap.toLocaleString('en-US')} {unit}</span>
+      <div className="coop-bar"><div style={{ width: `${Math.min(100, n == null ? 100 : (n / cap) * 100)}%` }} /></div></div>;
+  };
+  return <section className="zoning-meters" data-testid="zoning-meters"><h4>📋 Your zoning limits</h4>
+    {row('🏠 Residential', z.residential.owned, z.residential.cap, 'deeds', 'zoning-residential')}
+    {row('🏪 Commercial', z.commercial.owned, z.commercial.cap, 'deeds', 'zoning-commercial')}
+    {row(`🌾 Farmland (${z.farmland.plots} plot${z.farmland.plots === 1 ? '' : 's'})`, z.farmland.tiles, z.farmland.cap, 'tiles', 'zoning-farmland')}
+    {z.notes.map((n) => <small key={n} className="block">{n}</small>)}
+  </section>;
 }
 
 export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, onAllFarms, onWorks, onHyper }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onAllFarms?: () => void; onKitchen?: () => void; onDone?: (ev: 're_buy' | 're_sell' | 're_buyout', text: string, paid?: number) => void; onWorks?: () => void; onHyper?: () => void }) {
@@ -128,6 +149,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
         <dt>Property tax</dt><dd data-testid="deed-tax">🪙 {chips(taxOf(assessedTaxBasis(cost, p.price, p)))}/day ({(TAX_RATE * 100).toFixed(1)}%)</dd>
         {o && o.arrears > 0 && <><dt>Arrears</dt><dd className="text-rose-300">{o.arrears} unpaid day{o.arrears > 1 ? 's' : ''} (repossessed at {GRACE_DAYS})</dd></>}
       </dl>
+      <ZoningMeters me={me} refresh={owned} />
       {!o && p.retired && <small data-testid="deed-retired">Not for sale: a civic building stands here.</small>}
       {!o && !p.retired && (me ? <button type="button" disabled={!!busy} aria-busy={busy === 're_buy'} onClick={() => (zone?.refusal ? setMsg(zone.refusal) : short ? setMsg(`Not enough chips: ${p.label} costs 🪙 ${chips(total)}; you have 🪙 ${chips(wallet ?? 0)} (need 🪙 ${chips(short)} more).`) : act('re_buy'))} aria-describedby={short ? 'deed-short' : undefined} data-testid="deed-buy">{busy === 're_buy' ? <><span className="world-spin" aria-hidden /> Buying…</> : <>Buy for 🪙 {chips(total)}{me && tax ? ' (incl. wealth tax)' : ''}</>}</button> : <small>Sign in to buy.</small>)}
       {mine && <button type="button" disabled={!!busy} aria-busy={busy === 're_sell'} onClick={() => act('re_sell')} data-testid="deed-sell">{busy === 're_sell' ? <><span className="world-spin" aria-hidden /> Selling…</> : <>Sell to the city for 🪙 {chips(sellBackOf(Math.min(cost, o?.basis ?? cost)))} (70%)</>}</button>}

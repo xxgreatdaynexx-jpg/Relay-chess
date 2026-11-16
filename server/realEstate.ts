@@ -8,7 +8,7 @@
  */
 import { PROPERTY_INCOME_EVERY_MS, incomeEligible } from '../shared/propertyIncome.js';
 import { PropertyIncome, PropertyIncomeFailure } from './propertyIncome.js';
-import { zoneRefusal, zoneUse, zoneLine, zoneOf, type ZoneUse } from '../shared/zoning.js';
+import { zoneRefusal, zoneUse, zoneLine, zoneOf, zoningSummary, type ZoneUse } from '../shared/zoning.js';
 import { cityPerk, treasuryStmtsFor, treasuryCreditStmts, treasuryOpenFor } from './city-rates.js';
 import { treasuryShareOf, taxShareSplit } from '../shared/city.js';
 import { randomUUID } from 'node:crypto';
@@ -165,6 +165,11 @@ export class RealEstate {
   async zoneUse(name: string, cl: { query: pg.Pool['query'] } = this.pool): Promise<ZoneUse> {
     const rows = (await cl.query('SELECT id FROM properties WHERE owner_key = $1', [keyOf(name)])).rows as { id: string }[];
     return zoneUse(rows.map((r) => propertyById(String(r.id))).filter((x): x is NonNullable<typeof x> => !!x));
+  }
+  /** The player's own zoning meters (same deed list and counting as the purchase check). */
+  async zoning(name: string) {
+    const rows = (await this.pool.query('SELECT id FROM properties WHERE owner_key = $1', [keyOf(name)])).rows as { id: string }[];
+    return zoningSummary(rows.map((r) => propertyById(String(r.id))).filter((x): x is NonNullable<typeof x> => !!x));
   }
   /** What this player would pay for a property right now. */
   async quote(name: string, id: unknown) {
@@ -459,6 +464,7 @@ export function registerRealEstate(io: Server, socket: Socket): void {
   on('re_mine', async (_b, e) => ({ properties: await e.mine(need()) }));
   on('re_buy', async (b, e) => { const n = need(); if (typeof b.id === 'string' && /^(r|rf):/.test(b.id)) await requireResort(n, PropertyError); if (typeof b.id === 'string' && /^isl:/.test(b.id)) await requireIsland(n, PropertyError); return e.buy(n, b.id, b.max); });
   on('re_quote', async (b, e) => e.quote(need(), b.id));
+  on('re_zoning', async (_b, e) => ({ zoning: await e.zoning(need()) }));
   on('re_backtax', async (_b, e) => ({ backTax: await e.backTax(need()) }));
   on('re_backtax_pay', async (_b, e) => e.payBackTax(need()));
   on('re_sell', (b, e) => e.sell(need(), b.id));

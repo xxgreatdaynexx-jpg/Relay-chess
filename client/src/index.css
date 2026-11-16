@@ -3065,3 +3065,7 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 }
 .estate-hyper-part { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; }
 .estate-hyper-part small { flex: 1 1 100%; }
+.zoning-meters { margin: 8px 0; padding-top: 6px; border-top: 1px solid rgba(232,194,106,0.25); }
+.zoning-meters h4 { margin: 0 0 4px; }
+.zoning-row { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; font-size: 13px; }
+.zoning-row .coop-bar { grid-column: 1 / -1; height: 8px; margin: 2px 0 6px; }

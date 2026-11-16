@@ -50,3 +50,22 @@ export function zoneLine(use: ZoneUse, p: Pick<Property, 'kind' | 'type' | 'map'
   if (z === 'farmland') return `Farmland: ${tilesOf(p).toLocaleString('en-US')} tiles · you own ${use.farmlandTiles.toLocaleString('en-US')} of ${FARMLAND_TILE_CAP.toLocaleString('en-US')}.`;
   return `${ZONE_LABEL[z]}: you own ${use[z]} of ${ZONE_DEED_CAP}.`;
 }
+
+/** "My zoning" summary for the player: the same counts zoneRefusal() enforces (grandfathered deeds included), plus notes. */
+export interface ZoningSummary {
+  residential: { owned: number; cap: number }; commercial: { owned: number; cap: number };
+  farmland: { tiles: number | null; cap: number; plots: number }; exempt: number; notes: string[];
+}
+export function zoningSummary(owned: ReadonlyArray<Pick<Property, 'kind' | 'type' | 'map' | 'tiles'>>): ZoningSummary {
+  const use = zoneUse(owned); const notes: string[] = [];
+  const plots = owned.filter((p) => zoneOf(p) === 'farmland').length; const exempt = owned.filter((p) => zoneOf(p) === 'exempt').length;
+  for (const z of ['residential', 'commercial'] as const) {
+    const n = use[z]; const l = ZONE_LABEL[z];
+    if (n > ZONE_DEED_CAP) notes.push(`${l}: you own ${n}, over the ${ZONE_DEED_CAP} cap. You keep them all (owned before the cap), but you can't buy more ${l.toLowerCase()} property until you are under it.`);
+    else if (n === ZONE_DEED_CAP) notes.push(`${l}: at the ${ZONE_DEED_CAP}-deed cap. Sell or trade one to buy another.`);
+  }
+  if (!Number.isFinite(use.farmlandTiles)) notes.push('Farmland: a plot size could not be read, so new farmland purchases are paused for safety.');
+  else if (use.farmlandTiles > FARMLAND_TILE_CAP) notes.push(`Farmland: you own ${use.farmlandTiles.toLocaleString('en-US')} tiles, over the ${FARMLAND_TILE_CAP.toLocaleString('en-US')} cap. You keep them (owned before the cap), but you can't buy more farmland.`);
+  if (exempt > 0) notes.push(`${exempt} of your propert${exempt === 1 ? 'y is' : 'ies are'} exempt (Chud Resort or private-island lots and land patches) and ${exempt === 1 ? 'does' : 'do'} not count toward any cap.`);
+  return { residential: { owned: use.residential, cap: ZONE_DEED_CAP }, commercial: { owned: use.commercial, cap: ZONE_DEED_CAP }, farmland: { tiles: Number.isFinite(use.farmlandTiles) ? use.farmlandTiles : null, cap: FARMLAND_TILE_CAP, plots }, exempt, notes };
+}
