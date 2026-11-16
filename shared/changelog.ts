@@ -6,6 +6,17 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-16T07:42:00-06:00", "title": "Bigger pantry", "bullets": [
+    "Your kitchen pantry and the resort pantry now hold up to 100,000 of each item, up from 999. Pantry harvests and auto-harvest keep filling it, and grocery runs can stock up further.",
+  ]},
+  {"commit": "", "at": "2026-11-16T07:41:00-06:00", "title": "See your zoning limits", "bullets": [
+    "Every deed now shows your zoning meters: residential deeds out of 10, commercial deeds out of 10, and farmland tiles out of 2,000. These are the same counts the city checks when you buy.",
+    "If you owned more than a cap before zoning, the meter says so. You keep everything, but you can't buy more in that zone until you are under the cap. Resort and private-island lots and land patches are exempt and listed separately.",
+  ]},
+  {"commit": "", "at": "2026-11-16T07:40:00-06:00", "title": "Finish your hyper farm glasshouse", "bullets": [
+    "A fully built glasshouse now has a Finish glasshouse button, and a note that it is open once you press it. The server checks every stage again before it finishes, and pressing it twice changes nothing.",
+    "Finished glasshouses now list tulips, roses, orchids, saffron, wasabi and vanilla in that farm's seed list. Crops there grow 30% faster, as before.",
+  ]},
   {"commit": "", "at": "2026-11-15T16:40:00-06:00", "title": "Fields harvest to the pantry again", "bullets": [
     "Harvesting to the pantry no longer fails when only part of a field fits. The pantry fills up to its limit of 999 per crop, and any ripe tiles that do not fit wait on the field. Nothing withers or gets sold. The message tells you how many tiles are still waiting.",
     "Auto-harvest runs on every field you have switched on. Before, a big field could fill the pantry and block the next field in the same pass. Auto-harvest also no longer uses up your own harvest limit, so your manual harvests are never turned away because of it.",
