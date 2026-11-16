@@ -575,7 +575,7 @@ export class Farm {
       if (have + qty > PANTRY_MAX) { full.add(c.label); continue; }
       fit.push(r); counts.set(c.id, (counts.get(c.id) ?? 0) + qty); value += c.sell * qty; cropUnits += qty;
     }
-    if (!fit.length) throw new FarmError(`Your pantry is full for ${[...full].join(', ') || 'that crop'} (${PANTRY_MAX} max). The ripe crops wait on the field.`);
+    if (!fit.length) throw new FarmError(`Your pantry is full for ${[...full].join(', ') || 'that crop'} (${PANTRY_MAX.toLocaleString('en-US')} max). The ripe crops wait on the field.`);
     const left = ready.length - fit.length; ready = fit;
     const deltas = [...counts].map(([id, n]) => ({ loc, item: `food:${id}`, delta: n }));
     const extra: Array<{ sql: string; args: unknown[] }> = [];

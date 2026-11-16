@@ -31,6 +31,29 @@ async function setup() {
 beforeEach(() => { resetFarmGuardForTest(); });
 afterEach(() => { setLocStore(new LocStore(null)); });
 
+describe('pantry cap', () => {
+  it('is 100,000 per crop, so a pantry at the old 999 limit keeps taking harvests', async () => {
+    expect(PANTRY_MAX).toBe(100_000);
+    const s = await setup(); const id = 'rf:1'; const plot = propertyById(id)!;
+    await s.fund('Isle', plot.price + 50_000); await s.re.buy('Isle', id);
+    const pine = cropById('pineapple')!;
+    await s.farm.plant('Isle', id, 'pineapple', [0, 1]);
+    s.ls.applyMem('Isle', [{ loc: RESORT_WAREHOUSE, item: 'food:pineapple', delta: 999 }]);
+    s.setNow(T0 + pine.grow + M);
+    const h = await s.farm.harvest('Isle', id, undefined, undefined, true) as { harvested: number; left?: number };
+    expect(h.harvested).toBeGreaterThan(0); expect(h.left ?? 0).toBe(0);
+    expect(s.ls.qty('Isle', RESORT_WAREHOUSE, 'food:pineapple')).toBe(999 + h.harvested);
+  });
+  it('the full-pantry message shows the cap with separators', async () => {
+    const s = await setup(); const id = 'rf:1'; const plot = propertyById(id)!;
+    await s.fund('Isle', plot.price + 50_000); await s.re.buy('Isle', id);
+    await s.farm.plant('Isle', id, 'pineapple', [0]);
+    s.ls.applyMem('Isle', [{ loc: RESORT_WAREHOUSE, item: 'food:pineapple', delta: PANTRY_MAX }]);
+    s.setNow(T0 + cropById('pineapple')!.grow + M);
+    await expect(s.farm.harvest('Isle', id, undefined, undefined, true)).rejects.toThrow(/\(100,000 max\)/);
+  });
+});
+
 describe('pantry harvest fills what fits', () => {
   it('a nearly full pantry takes the tiles that fit and leaves the rest ripe on the field', async () => {
     const s = await setup(); const id = 'rf:1'; const plot = propertyById(id)!;

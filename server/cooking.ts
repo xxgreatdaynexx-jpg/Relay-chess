@@ -180,7 +180,7 @@ export class Cooking {
     const key = keyOf(name);
     return this.lock(`c:${key}`, async () => {
       const home = await this.homeOf(name, want); // groceries are delivered to the kitchen you're shopping for
-      if ((this.pantry(name, home)[s.id] ?? 0) + n > PANTRY_MAX) throw new CookError(`Your pantry holds at most ${PANTRY_MAX} ${s.label}.`);
+      if ((this.pantry(name, home)[s.id] ?? 0) + n > PANTRY_MAX) throw new CookError(`Your pantry holds at most ${PANTRY_MAX.toLocaleString('en-US')} ${s.label}.`);
       const unit = px(s.base); const cost = unit * n;
       let w;
       try { w = this.bank().transferAtomic([{ name, amount: -cost, key: `grocery:${key}:${nonce}`, game: 'grocery', memo: `Grocery Store: ${n} ${s.label}` }]); }

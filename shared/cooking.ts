@@ -58,7 +58,8 @@ export const filletsFrom = (ing: FishIng, value: number) => Math.max(1, Math.min
 export const isFishIng = (id: string): id is FishIng => id in FISH_ING;
 const ALL_CROPS = [...CROPS, ...TROPICAL_CROPS];
 export const cropIng = (id: string) => ALL_CROPS.find((c) => c.id === id);
-export const PANTRY_MAX = 999; // per item
+/** Most of one item a kitchen pantry (or the resort pantry) holds: farm harvests and grocery buys stop here. The one knob for the pantry cap. */
+export const PANTRY_MAX = 100_000; // per item
 /** A pantry/Market food item: a grocery or a crop. */
 export function foodInfo(id: string): { label: string; emoji: string; base: number; kind: 'crop' | 'staple' } | null {
   const s = stapleById(id); if (s) return { label: s.label, emoji: s.emoji, base: s.base, kind: 'staple' };
