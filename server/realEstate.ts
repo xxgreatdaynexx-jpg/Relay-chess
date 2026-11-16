@@ -23,7 +23,7 @@ import { sendPopup } from './popups.js';
 import { BUYOUT_MUL, BUYOUT_PROTECT_MS, buyoutPrice } from '../shared/royalty.js';
 import { px, priceIndex } from './price-index.js';
 import { requireResort, requireIsland } from './travel.js';
-import { assessedTaxBasis, taxBasisOf, propertyValue, GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landMultiplier, type OwnedProperty } from '../shared/realEstate.js';
+import { assessedTaxBasis, taxBasisOf, propertyValue, GRACE_DAYS, propertyById as baseProperty, cityRefundOf, taxOf, landMultiplier, type OwnedProperty } from '../shared/realEstate.js';
 import { skillLevelAsync } from './skills.js';
 import { propertyWorth, propertyPaid, propertyPaidPlusUpgrades, upgradeSpendFromLevels } from '../shared/netWorth.js';
 import { cropById, farmPlots } from '../shared/farm.js';
@@ -299,7 +299,8 @@ export class RealEstate {
     const row = (await this.pool.query('SELECT price, city_price, bought_at FROM properties WHERE id = $1 AND owner_key = $2', [p.id, keyOf(name)])).rows[0] as { price: string; city_price: string | null; bought_at: string } | undefined;
     if (!row) throw new PropertyError('You do not own this property.');
     // After a hostile buyout the city still only refunds 70% of what IT was paid (no buyout -> sell-back loop between alts).
-    const paid = Number(row.price); const back = sellBackOf(Math.min(paid, Number(row.city_price ?? paid))); const bank = this.bank();
+    // Empty land is also capped at its current buy price, so land bought before the 90% price cut can't be sold back for more than it costs to rebuy.
+    const paid = Number(row.price); const back = cityRefundOf(paid, row.city_price == null ? null : Number(row.city_price), p, p.price); const bank = this.bank();
     await this.atomic(name, back, 'property_sell', `Sold ${p.label} (${p.id}) to the city`, async (cl) => {
       await this.income.settle(cl, p.id, this.clock(), { key: keyOf(name), boughtAt: Number(row.bought_at), price: paid });
       const r = await cl.query('DELETE FROM properties WHERE id = $1 AND owner_key = $2 AND price = $3 RETURNING id', [p.id, keyOf(name), paid]);

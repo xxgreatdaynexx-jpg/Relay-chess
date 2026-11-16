@@ -40,7 +40,7 @@ import { indexed } from '../../../shared/priceIndex';
 import { skyNow, parseTod, fmtClock, hex } from '../../../shared/daynight';
 import { fmtLap } from '../../../shared/venues';
 import { zoneOf, ZONE_DEED_CAP, FARMLAND_TILE_CAP, type ZoningSummary } from '../../../shared/zoning';
-import { optimisticOwn, assessedTaxBasis, taxBasisOf, propertyValue, propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, type OwnedProperty } from '../../../shared/realEstate';
+import { optimisticOwn, assessedTaxBasis, taxBasisOf, propertyValue, propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, cityRefundOf, isEmptyLand, TAX_RATE, GRACE_DAYS, workerBonusOf, type OwnedProperty } from '../../../shared/realEstate';
 
 /** Today's price index from /api/real-estate; list prices and tax scale with it. */
 let IDX = 1;
@@ -141,7 +141,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
         {o ? <><dt>{mine ? 'You paid' : 'Paid'}</dt><dd data-testid="deed-price">🪙 {chips(cost)}</dd></> : <><dt>Price</dt><dd data-testid="deed-price">🪙 {chips(cost)}</dd><dt>Zoning</dt><dd data-testid="deed-zone">{zoneText}{zone?.refusal && <small className="block text-amber-300" data-testid="deed-zone-cap">{zone.refusal.replace(' Nothing was charged.', '')}</small>}</dd></>}
         {!o && tax > 0 && <><dt>Wealth tax</dt><dd data-testid="deed-wealth-tax" className="text-amber-300">{wtax!.line}<small className="block">Your purchase wealth tax is added at the current city rate. Total 🪙 {chips(total)}.</small></dd></>}
         <dt>Owner</dt><dd data-testid="deed-owner">{o ? (mine ? 'You' : o.owner) : 'City of Chud Hub (for sale)'}</dd>
-        <dt>Sell-back</dt><dd data-testid="deed-sellback">🪙 {chips(sellBackOf(Math.min(cost, o?.basis ?? cost)))} (70% of {o?.basis ? 'what the city was paid' : o ? 'what was paid' : 'your price'})</dd>
+        <dt>Sell-back</dt><dd data-testid="deed-sellback">🪙 {chips(cityRefundOf(cost, o?.basis ?? null, p, p.price))} (70% of {o?.basis ? 'what the city was paid' : o ? 'what was paid' : 'your price'}{isEmptyLand(p) && o && sellBackOf(Math.min(cost, o.basis ?? cost)) > p.price ? `, capped at today's empty-land price of 🪙 ${chips(p.price)}` : ''})</dd>
         {workerBonusOf(p.id) > 0 && <><dt>Worker cap</dt><dd data-testid="deed-workers">+{workerBonusOf(p.id)} Employment Office worker{workerBonusOf(p.id) > 1 ? 's' : ''}</dd></>}
         {p.kind === 'landmark' && ROYALTY_VENUE[p.type] && <><dt>Royalty</dt><dd data-testid="deed-royalty">{royaltyPct(p.type)} of {ROYALTY_VENUE[p.type]}, minted to the owner on top (the player keeps 100%). Not paid on the owner's own earnings.{o && <small className="block text-amber-300" data-testid="deed-royalty-income">Royalty income{mine ? '' : ` (${o.owner})`}: 🪙 {chips(ROY[p.id] ?? 0)} since bought</small>}</dd></>}
         <PropertyIncomeDetails id={p.id} cost={cost} cityBasis={o?.basis} />

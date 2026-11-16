@@ -7,7 +7,7 @@ import { farmBarns, barnPrice } from './farmBarns.js';
  * every player). Trailer Park (Chud Acres) lots are not properties: they stay free and auto-assigned.
  *
  * Price table (chips, before the size factor):
- *   Empty lot 8,000 · Park 20,000 · Plaza 25,000
+ *   Empty lot 8,000 · Park 20,000 · Plaza 25,000 (empty land then sells at EMPTY_LAND_PRICE_MUL = 10% of this)
  *   Housing with 1/2/3 employee slots: 10,000 / 20,000 / 30,000 base, independent of footprint.
  *   Four-slot housing keeps its existing price. Legacy size-based references below preserve existing slot counts.
  *   Landmarks: Casino / Bank 2,000,000 · Stock Exchange 1,500,000 · Arena / Chess Club / Market 1,000,000
@@ -98,6 +98,18 @@ export function optimisticOwn(prev: OwnedProperty | undefined, ev: 're_buy' | 'r
   return { id, owner: me, price: paid, arrears: 0, boughtAt: now, ...(basis != null && basis !== paid ? { basis } : {}) };
 }
 export const sellBackOf = (price: number) => Math.floor(price * SELL_BACK);
+/**
+ * Empty land (city "Empty lot" patches and open East Estates construction lots) sells at this fraction of its
+ * base price; the live price index still applies on top. Parks, plazas, turnkey power plants, buildings, farmland and
+ * resort/island lots are not empty land. Owned rows and paid prices are never changed.
+ */
+export const EMPTY_LAND_PRICE_MUL = 0.1;
+export const isEmptyLand = (p: Pick<Property, 'kind' | 'type'> | null | undefined) => !!p && p.kind === 'patch' && (p.type === 'lot' || p.type === 'estate_lot');
+/** Sell-back to the city: 70% of what was paid (capped as before), and for empty land never more than the land costs to buy now. */
+export const cityRefundOf = (paid: number, cityPrice: number | null | undefined, p: Pick<Property, 'kind' | 'type'> | null | undefined, buyNow: number) => {
+  const back = sellBackOf(Math.min(paid, cityPrice ?? paid));
+  return isEmptyLand(p) ? Math.min(back, Math.max(0, Math.floor(buyNow))) : back;
+};
 /** Land surcharge (pt1388u, replaces the old ×1.5-per-parcel growth): the next purchase costs list × (1 + surcharge),
  * surcharge % = SURCHARGE_PCT_PER_1K × (total paid value plus upgrades of the properties the buyer already owns ÷ 1,000). No cap.
  * Owning nothing = 0%. A 5,000 farm owned = +5%; 100,000 owned = +100%. Tax policy is unchanged; sell-back is 70% of
@@ -166,6 +178,7 @@ export function properties(): Property[] {
   // Reprice only housing. Capture the actual old employment bonus BEFORE lowering its base price: otherwise
   // a two-slot home priced at 20k would silently lose a slot, and a three-slot home at 30k would become two-slot.
   // No owned rows, paid prices, IDs, geometry or equipment are changed. Slots outside 1–3 keep their old price.
+  for (const p of out) if (isEmptyLand(p)) p.price = Math.max(50, Math.round(p.price * EMPTY_LAND_PRICE_MUL));
   for (const p of out) if (isEmployeeHousing(p)) {
     p.housingEmployees = employeesForPrice(p.price);
     if (p.housingEmployees >= 1 && p.housingEmployees <= 3) p.price = p.housingEmployees * HOUSING_BASE_PER_EMPLOYEE;

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 import baseline from './fixtures/housing-price-baseline.json';
-import { properties, propertyById, workerBonusOf, workerBonusTotal, isEmployeeHousing, landPrice, sellBackOf, taxOf } from '../shared/realEstate';
+import { properties, propertyById, workerBonusOf, workerBonusTotal, isEmployeeHousing, landPrice, sellBackOf, taxOf, isEmptyLand, EMPTY_LAND_PRICE_MUL } from '../shared/realEstate';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { Employment, EMPLOY_MIGRATION } from '../server/employment';
@@ -44,7 +44,7 @@ describe('housing price per actual employee capacity',()=>{
   const luxury=new Set(['sky:1','sky:2','sky:3','sky:4','sky:5','sky:6','isl:1','isl:2','isl:3','isl:4']);
   const isExp=(id:string)=>/^(lot:estate:|winery:|b:mansion:|orchard:)/.test(id)||/^cf:2\d{3}$/.test(id);
   expect(properties().some(p=>p.id==='lm:factory')).toBe(false); // Bill Chud 3: Factory monument deed retired (building stays)
-  expect(hash(properties().filter(p=>!isEmployeeHousing(p)&&!added.has(p.id)&&!isExp(p.id)).map((p)=>withoutNewRetired(p)))).toBe('b26e48988bca759586cebdd6587bdaef770f34d3f18cdae5ed02adc025f0c3f0'); // prior nonHousingHash minus lm:factory; plants additive, Bill Chud 1 tile counts only. Club/Sky Tower lots stay in the catalog as retired
+  expect(hash(properties().filter(p=>!isEmployeeHousing(p)&&!added.has(p.id)&&!isExp(p.id)).map((p)=>withoutNewRetired(isEmptyLand(p)?{...p,price:Math.round(p.price/EMPTY_LAND_PRICE_MUL)}:p)))).toBe('b26e48988bca759586cebdd6587bdaef770f34d3f18cdae5ed02adc025f0c3f0'); // prior nonHousingHash minus lm:factory; plants additive, Bill Chud 1 tile counts only. Club/Sky Tower lots stay in the catalog as retired
   expect(properties().filter(p=>isEmployeeHousing(p)&&!luxury.has(p.id)&&!isExp(p.id)).map(p=>p.id)).toEqual(baseline.housing.map(p=>p.id));
   expect([...luxury].every(id=>isEmployeeHousing(propertyById(id)!))).toBe(true);
   for(const p of properties().filter(p=>!isEmployeeHousing(p))){const expected=p.type==='barn'||p.type==='factory_plant'||!['building','landmark'].includes(p.kind)?0:p.price<25000?1:p.price<75000?2:p.price<250000?3:4;expect(workerBonusOf(p.id)).toBe(expected);}

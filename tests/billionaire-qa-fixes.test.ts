@@ -49,8 +49,8 @@ const ecoOf = (e: Estate, name: string) => (e as unknown as { ecoOf(n: string): 
 describe('East Estates property tax', () => {
   it('assesses Lot 7 at ordinary land value, 238 chips/day, not 57,125', () => {
     const p = propertyById('lot:estate:7');
-    expect(p).toMatchObject({ type: 'estate_lot', w: 34, d: 28, price: 11_425_000 });
-    expect(taxOf(p!.price)).toBe(57_125); // list-price tax, no longer used for these lots
+    expect(p).toMatchObject({ type: 'estate_lot', w: 34, d: 28, price: 1_142_500 }); // 11,425,000 base x the 10% empty-land price
+    expect(taxOf(11_425_000)).toBe(57_125); // old list-price tax, no longer used for these lots
     const basis = assessedTaxBasis(p!.price, p!.price, p);
     expect(basis).toBe(Math.max(500, Math.round((34 * 28 * ORDINARY_LAND_PER_AREA) / 500) * 500));
     expect(basis).toBe(47_500);

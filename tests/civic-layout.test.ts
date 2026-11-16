@@ -4,7 +4,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { BUILDING_IDS, CIVIC_PLOTS, civicPad, civicPlot, inCivic } from '../shared/city';
-import { properties, propertyById } from '../shared/realEstate';
+import { properties, propertyById, isEmptyLand, EMPTY_LAND_PRICE_MUL } from '../shared/realEstate';
 import { outskirts } from '../shared/outskirts';
 import { clearOfRoads, landmarks, nearestTangent, obbOverlap, PARK_AREA, PLATE, roadClearance } from '../shared/worldLayout';
 import { RealEstate, PropertyError } from '../server/realEstate';
@@ -46,7 +46,7 @@ describe('ownership and stable ids', () => {
     expect(ps.filter((p) => added.includes(p.id)).map((p) => p.id).sort()).toEqual([...added].sort());
     expect(prior.length).toBe(BASE.n); expect(ps.filter((p) => /^rf:(1[3-9]|20)$/.test(p.id)).map((p) => p.id).sort()).toEqual(['rf:13','rf:14','rf:15','rf:16','rf:17','rf:18','rf:19','rf:20']);
     expect(h(prior.map((p) => p.id).sort())).toBe(BASE.ids);
-    expect(h(prior.map((p) => [p.id, p.x, p.z, p.w, p.d, p.rot, p.price]))).toBe(BASE.geo);
+    expect(h(prior.map((p) => [p.id, p.x, p.z, p.w, p.d, p.rot, isEmptyLand(p) ? Math.round(p.price / EMPTY_LAND_PRICE_MUL) : p.price]))).toBe(BASE.geo); // empty land: 10% price cut on top of the unchanged base
     expect(h(outskirts().buildings)).toBe(BASE.buildings); expect(h(outskirts().fields)).toBe(BASE.fields);
   });
   it('exactly the civic and midtown-pad lots are retired (still resolvable), and none of the owned city lots', () => {
