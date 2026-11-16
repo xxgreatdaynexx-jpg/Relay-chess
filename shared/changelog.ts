@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-16T13:20:00-06:00", "title": "Empty land now costs 10%", "bullets": [
+    "City empty lots and open East Estates construction lots now cost 10% of their old price. The daily price index still applies. Parks, plazas, turnkey power plants, buildings and farmland are unchanged.",
+    "Land you already own keeps the price you paid. Selling empty land back to the city never pays more than it costs to buy it today.",
+  ]},
   {"commit": "", "at": "2026-11-16T07:42:00-06:00", "title": "Bigger pantry", "bullets": [
     "Your kitchen pantry and the resort pantry now hold up to 100,000 of each item, up from 999. Pantry harvests and auto-harvest keep filling it, and grocery runs can stock up further.",
   ]},
