@@ -158,7 +158,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
       {isBarnProperty(id) && <small>This barn is sold separately from every farm. Owning this barn unlocks All my farms; it does not buy or transfer nearby farmland.</small>}
       {mine && isBarnProperty(id) && onAllFarms && <button type="button" onClick={onAllFarms} data-testid="deed-barn">🏡 Barn · All my farms</button>}
       {mine && onWorks && canDemolish(p).ok && <button type="button" onClick={onWorks} data-testid="deed-works">🏗️ Demolish & start a private project…</button>}
-      {mine && onHyper && p.kind === 'farm' && <button type="button" onClick={onHyper} data-testid="deed-hyper">🌿 Convert to a Dutch glasshouse…</button>}
+      {mine && onHyper && p.kind === 'farm' && <button type="button" onClick={onHyper} data-testid="deed-hyper">🌿 Dutch glasshouse (hyper farm)…</button>}
       {p.kind === 'farm' && !o && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
       {msg && <small role="status" data-testid="deed-msg">{msg}</small>}
@@ -472,7 +472,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       {toast && <div className="world-toast" role="status" data-testid="world-toast">{toast}</div>}
       {!driving && <LaunchToast me={me} onOpen={() => setPanel({ k: 'spacesim' })} onWatch={mode === '3d' ? () => worldRef.current?.watchLaunch() : () => document.querySelector('[data-testid="world-tile-spacecenter"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' })} />}
       {farm && <FarmGame onAllFarms={hasBarn ? openAllFarms : undefined} id={farm} label={propertyById(farm)?.label ?? 'Farm'} onClose={() => setFarm(null)} />}
-      {farm && me && owned.get(farm)?.owner.toLowerCase() === me.toLowerCase() && <button type="button" className="estate-hyper-open" data-testid="farm-hyper" onClick={() => setPanel({ k: 'estate', id: farm, kind: 'hyper' })}>🌿 Convert to a Dutch glasshouse…</button>}
+      {farm && me && owned.get(farm)?.owner.toLowerCase() === me.toLowerCase() && <button type="button" className="estate-hyper-open" data-testid="farm-hyper" onClick={() => setPanel({ k: 'estate', id: farm, kind: 'hyper' })}>🌿 Dutch glasshouse (hyper farm)…</button>}
       {farm?.startsWith('winery:') && me && owned.get(farm)?.owner.toLowerCase() === me.toLowerCase() && <button type="button" className="estate-hyper-open" data-testid="farm-wine-press" onClick={() => setPanel({ k: 'estate', id: farm, kind: 'estate' })}>🍷 Open the press…</button>}
       {deeds && <DeedList owned={owned} me={me} onOpen={(id) => setDeed(id)} onClose={() => setDeeds(false)} />}
       {panel.k === 'estate' && <EstatePanel lotId={panel.id} kind={panel.kind} me={me} mine={!!(me && panel.id && owned.get(panel.id)?.owner.toLowerCase() === me.toLowerCase())} onClose={() => setPanel(NONE)} />}

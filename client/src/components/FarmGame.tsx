@@ -5,7 +5,7 @@ import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
 import { TROPICAL_CROPS } from '../../../shared/resort';
 import { FARM_UPGRADES, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradePrice } from '../../../shared/farmUpgrades';
-import { CROPS as CITY_CROPS, ORCHARD_TREES, cropById, cropSellValue, growProgressPct, orchardTree, type FarmView } from '../../../shared/farm';
+import { CROPS as CITY_CROPS, HYPER_CROPS, ORCHARD_TREES, cropById, cropSellValue, growProgressPct, orchardTree, type FarmView } from '../../../shared/farm';
 import { boxOrigin, boxTiles, FARM_TEMPLATE_NAME_MAX, packSelection, stampLayout, tileAtPoint, type FarmTemplate } from '../../../shared/farmTemplates';
 import { usePanelDrag } from '@/lib/panelDrag';
 
@@ -23,7 +23,9 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
   const [skew, setSkew] = useState(0); // server now - client now
   const [now, setNow] = useState(Date.now());
   const orchardPlot = id.startsWith('orchard:');
-  const CROPS = id.startsWith('rf:') ? TROPICAL_CROPS : orchardPlot ? ORCHARD_TREES : CITY_CROPS;
+  const hyperOpen = !!view?.hyper && !id.startsWith('rf:') && !orchardPlot;
+  // A finished hyper-farm glasshouse adds its flowers to this plot's seed list (the server checks it on every planting).
+  const CROPS = id.startsWith('rf:') ? TROPICAL_CROPS : orchardPlot ? ORCHARD_TREES : hyperOpen ? [...CITY_CROPS, ...HYPER_CROPS] : CITY_CROPS;
   const resortPlot = id.startsWith('rf:');
   const pantryWhere = resortPlot ? 'resort pantry (Resort Warehouse)' : 'kitchen pantry';
   const [seed, setSeed] = useState(CROPS[0]!.id);
@@ -43,7 +45,7 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
   const load = useCallback(() => {
     socket.timeout(10_000).emit('farm_view', { id }, (err: Error | null, r?: Ack) => {
       if (err || !r?.ok) { setMsg(err ? 'No answer from the server.' : r?.error ?? 'Could not load the farm.'); return; }
-      const v = r.farm as FarmView; setView(v); setSkew(v.now - Date.now()); if (v.auto?.crop && CROPS.some((c) => c.id === v.auto!.crop)) setSeed(v.auto.crop);
+      const v = r.farm as FarmView; setView(v); setSkew(v.now - Date.now()); if (v.auto?.crop && (CROPS.some((c) => c.id === v.auto!.crop) || (v.hyper && HYPER_CROPS.some((c) => c.id === v.auto!.crop)))) setSeed(v.auto.crop);
     });
   }, [id]);
   const loadTpl = useCallback(() => {

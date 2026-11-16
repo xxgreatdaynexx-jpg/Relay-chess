@@ -180,7 +180,7 @@ export class Farm {
     const tiles = o ? (await this.tiles(pid, o.key)).map((r) => this.toTile(r, now, this.withers(upgrades))).filter((t): t is FarmTile => !!t) : [];
     const mine = !!o && !!name && o.key === keyOf(name);
     const auto = mine ? await this.autoOf(pid, o!.key) : undefined;
-    return { id: pid, owner: o?.name ?? null, mine, cols: p.cols, rows: p.rows, tiles, now, today: mine ? await this.today(o!.key) : { gross: 0, paid: 0 }, index: priceIndex(), upgrades, auto };
+    return { id: pid, owner: o?.name ?? null, mine, cols: p.cols, rows: p.rows, tiles, now, today: mine ? await this.today(o!.key) : { gross: 0, paid: 0 }, index: priceIndex(), upgrades, auto, hyper: !!o && !!getEstate()?.hyperComplete(o.name, pid) };
   }
 
   /** Per-plot auto plant/harvest toggles (owner only). Crop is the seed used when auto-plant is on. */

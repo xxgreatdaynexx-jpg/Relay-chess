@@ -15,7 +15,7 @@ type SiteView = {
 };
 
 type HyperPart = { part: string; name: string; need: number; done: number; price: number; have?: number };
-type HyperView = { plotId: string; stage: number; complete: boolean; pct: number; stages: Array<{ id: string; name: string; pct: number; parts: HyperPart[] }> };
+type HyperView = { plotId: string; stage: number; complete: boolean; finished?: boolean; pct: number; stages: Array<{ id: string; name: string; pct: number; parts: HyperPart[] }> };
 const pctLabel = (v: number) => `${Math.floor(Math.max(0, Math.min(1, v)) * 100)}%`;
 const Bar = ({ v, testid }: { v: number; testid?: string }) => <div className="coop-bar" data-testid={testid}><div style={{ width: `${Math.min(100, Math.max(0, v) * 100)}%` }} /><span>{pctLabel(v)}</span></div>;
 
@@ -101,6 +101,8 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
               return <>
                 <p className="estate-sticky-line">{h.complete ? 'Glasshouse finished' : `Stage ${Math.min(h.stage + 1, h.stages.length)} of ${h.stages.length}`} · {pctLabel(h.pct)} complete</p>
                 <Bar v={h.pct} testid="estate-hyper-progress" />
+                {h.complete && !h.finished && canBuild && <button type="button" className="estate-hyper-finish" data-testid="estate-hyper-finish" onClick={() => void call('estate_hyper_finish', { plotId: lotId })}>🌷 Finish glasshouse</button>}
+                {h.complete && (h.finished || !canBuild) && <p className="estate-hyper-done" data-testid="estate-hyper-done">🌷 Glasshouse open: tulips, roses, orchids, saffron, wasabi and vanilla are in this farm's seed list, and every crop here grows 30% faster.</p>}
                 <ul className="prestige-list">{h.stages.map((st, i) => (
                   <li key={st.id} data-testid={`estate-hyper-stage-${st.id}`}>
                     <div style={{ flex: 1 }}><b>{st.name}</b> — {pctLabel(st.pct)}

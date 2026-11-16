@@ -52,9 +52,14 @@ type PlayerEco = {
   gridOff: boolean;
   /** Last unpaid utility bill (chips), 0 when the grid is live. */
   gridBill: number;
-  hyper: Record<string, { stage: number; done: Array<Record<string, number>> }>;
+  hyper: Record<string, HyperRec>;
 };
 
+/** finishedAt: set once by the owner's Finish step (additive field; completion itself is the stage count). */
+type HyperRec = { stage: number; done: Array<Record<string, number>>; finishedAt?: number };
+/** Advance past every stage whose parts are all full (a fully funded stage can never stay "current"). */
+const hyperStageFull = (h: HyperRec, i: number) => { const st = HYPER_STAGES[i]; const row = h.done[i] ?? {}; return !!st && st.goods.every(([gid, n]) => (row[`good:${gid}`] ?? 0) >= n) && (row.chips ?? 0) >= st.chips; };
+export const settleHyper = (h: HyperRec) => { while (h.stage < HYPER_STAGES.length && hyperStageFull(h, h.stage)) h.stage += 1; return h.stage >= HYPER_STAGES.length; };
 const emptyEco = (): PlayerEco => ({ gridMw: 0, digitalDay: '', digitalPaid: 0, plantFuelUntil: 0, gridOff: false, gridBill: 0, hyper: {} });
 const dayKey = (ms: number) => new Date(ms).toISOString().slice(0, 10); // UTC day, same as other sinks
 
@@ -118,7 +123,7 @@ export class Estate {
   siteByLot(lotId: string) { return [...this.sites.values()].find((s) => s.lotId === lotId); }
   sitesOf(name: string) { return [...this.sites.values()].filter((s) => playerKey(s.owner) === playerKey(name)); }
   hyperOf(name: string, plotId: string) { return this.ecoOf(name).hyper[plotId] ?? null; }
-  hyperComplete(name: string, plotId: string) { return (this.ecoOf(name).hyper[plotId]?.stage ?? 0) >= HYPER_STAGES.length; }
+  hyperComplete(name: string, plotId: string) { const h = this.ecoOf(name).hyper[plotId]; return !!h && settleHyper(h); }
 
   private charge(name: string, amount: number, key: string, memo: string, game = 'estate') {
     if (amount <= 0) return;
@@ -326,16 +331,33 @@ export class Estate {
         catch (e) { if (took && item) this.giveStacks(name, [{ type: item.type, id, qty: took }]); throw e; }
       }
       row[`good:${id}`] = (row[`good:${id}`] ?? 0) + qty;
-      if (st.goods.every(([gid, n]) => (row[`good:${gid}`] ?? 0) >= n) && (row.chips ?? 0) >= st.chips) h.stage += 1;
+      settleHyper(h);
     } else if (partS === 'chips') {
       const left = st.chips - (row.chips ?? 0);
       if (left <= 0) throw new EstateError('That part is already full.');
       const qty = Math.min(q, left);
       this.charge(name, px(qty), `hyper_chip:${plotId}:${h.stage}:${row.chips ?? 0}:${qty}`, `Hyper farm: chips for ${st.name}`);
       row.chips = (row.chips ?? 0) + qty;
-      if (st.goods.every(([gid, n]) => (row[`good:${gid}`] ?? 0) >= n) && (row.chips ?? 0) >= st.chips) h.stage += 1;
+      settleHyper(h);
     } else throw new EstateError('That is not needed for this stage.');
     await this.saveEco(name);
+    return this.hyperView(name, plotId);
+  }
+
+  /** Owner's "Finish glasshouse" step. Server-authoritative and idempotent: it re-checks every stage from the saved
+   *  contributions, advances any fully funded stage, and only then stamps finishedAt (once). Unlocking flowers and the
+   *  faster grow speed depend on the stages, not on this stamp, so a finished glasshouse is never held back by it. */
+  async finishHyper(name: string, plotId: string) {
+    await this.assertOwns(name, plotId);
+    const e = this.ecoOf(name); const h = e.hyper[plotId];
+    if (!h) throw new EstateError('Start the glasshouse conversion first.');
+    const before = h.stage;
+    if (!settleHyper(h)) {
+      if (h.stage !== before) await this.saveEco(name);
+      const st = HYPER_STAGES[h.stage]!; const pct = this.hyperView(name, plotId).pct;
+      throw new EstateError(`Not finished yet: ${st.name} still needs parts (${Math.floor(pct * 100)}% of the glasshouse is done).`);
+    }
+    if (!h.finishedAt || h.stage !== before) { h.finishedAt ??= this.clock(); await this.saveEco(name); }
     return this.hyperView(name, plotId);
   }
 
@@ -494,7 +516,8 @@ export class Estate {
     };
   }
   hyperView(name: string, plotId: string) {
-    const h = this.ecoOf(name).hyper[plotId] ?? { stage: 0, done: [] };
+    const h: HyperRec = this.ecoOf(name).hyper[plotId] ?? { stage: 0, done: [] };
+    settleHyper(h);
     const priceOfGood = (id: string) => GOODS[id]?.price ?? 0;
     const stages = HYPER_STAGES.map((st, i) => {
       const done = h.done[i] ?? {};
@@ -504,7 +527,7 @@ export class Estate {
       ];
       return { ...st, done, parts, pct: i < h.stage ? 1 : hyperStagePct(st, done, priceOfGood) };
     });
-    return { plotId, stage: h.stage, complete: h.stage >= HYPER_STAGES.length, total: HYPER_FARM_TOTAL, pct: hyperPct(h.stage, h.done, priceOfGood), stages };
+    return { plotId, stage: h.stage, complete: h.stage >= HYPER_STAGES.length, finished: h.stage >= HYPER_STAGES.length && !!h.finishedAt, finishedAt: h.finishedAt ?? null, total: HYPER_FARM_TOTAL, pct: hyperPct(h.stage, h.done, priceOfGood), stages };
   }
   rigView(r: RigState) {
     return { ...r, label: rigLabel(r), launchFee: px(RIG_LAUNCH_FEE), berthAt: r.berth != null ? RIG_BERTHS[r.berth] : null, stages: RIG_STAGES };
@@ -670,6 +693,7 @@ export function registerEstate(_io: Server, socket: Socket): void {
   on('estate_grid_restore', async (_b, e) => e.restoreGrid(need()));
   on('estate_demolish', async (b, e) => e.demolish(need(), String(b.id ?? ''), b.confirm));
   on('estate_hyper_start', async (b, e) => e.startHyper(need(), String(b.plotId ?? '')));
+  on('estate_hyper_finish', async (b, e) => e.finishHyper(need(), String(b.plotId ?? '')));
   on('estate_hyper_contribute', async (b, e) => e.contributeHyper(need(), String(b.plotId ?? ''), b.part, b.qty));
   on('estate_rig_start', async (_b, e) => e.startRig(need()));
   on('estate_rig_contribute', async (b, e) => e.contributeRig(need(), String(b.id ?? ''), b.part, b.qty));
