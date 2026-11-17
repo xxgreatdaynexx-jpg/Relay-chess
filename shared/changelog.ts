@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-17T09:10:00-06:00", "title": "Shore Construction Dock opens on phones", "bullets": [
+    "The Shore Construction Dock now opens as a full-screen sheet on phones, so you can read it, scroll it and close it. The plastics plant and other private-works screens use the same sheet. Gameplay is unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-17T09:10:00-06:00", "title": "Bigger fish cooler, and auto-process to the factory", "bullets": [
     "Your fish cooler now holds up to 2,000 fish, up from 40. Hired fishers still hold any overflow until there is room. Daily sell caps, catch rules and prices are unchanged.",
     "You can switch on Auto-process to the factory at the fishing cooler or on the Factory's Bring in tab. About every 30 minutes, even while you are logged out, city-warehouse cooler fish become Fish Fillets (or Cooked Fish Portions for pan-fried cooler dishes), the same as the manual Process city fish button, and only as many as fit in factory storage. The rest stay in the cooler. It does not sell fish, touch daily caps, or take kitchen fridge dishes or resort fish — ship resort stock to the city first.",

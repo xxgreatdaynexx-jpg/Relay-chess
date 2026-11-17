@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { MapSheet } from './MapSheet';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { request } from '@/lib/net';
 import { DEMOLISH_RULES, ESTATE_BUILD_ORDER, ESTATE_BUILDS, type EstateBuildId } from '../../../shared/estateProjects';
@@ -29,7 +30,7 @@ const chips = (n: number) => n.toLocaleString('en-US');
 export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?: string; me: string | null; mine?: boolean; kind?: 'estate' | 'plastics' | 'rigdock' | 'hyper'; onClose: () => void }) {
   const [view, setView] = useState<Record<string, unknown> | null>(null);
   const [msg, setMsg] = useState('');
-  const drag = usePanelDrag('estate');
+  const dragEstate = usePanelDrag('estate');
   const load = () => { void request('estate_view', {}).then((r) => { if (r && (r as { ok?: boolean }).ok !== false) setView(r as unknown as Record<string, unknown>); }); };
   useEffect(() => { load(); }, []);
   const call = async (ev: string, body: Record<string, unknown>) => {
@@ -44,8 +45,10 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
   const heading = kind === 'plastics' ? '🧴 Plastics Plant' : kind === 'rigdock' ? '🛢️ Shore Construction Dock' : kind === 'hyper' ? '🌿 Hyper farm' : site?.plan ? `${site.plan.icon} ${site.plan.name}` : '🏗️ Private works';
   const gearRate = site?.complete && site.gearDef ? site.gear * site.gearDef.chipsPerHour : 0;
   return (
-    <div className="hub-win sol-panel estate-panel" data-testid="estate-panel" data-drag-panel="estate" ref={drag.ref} style={drag.style()} onPointerDown={drag.onPointerDown}>
-      <div className="hub-win-bar">{drag.handle}<b>{heading}</b><button type="button" onClick={onClose} aria-label="Close">✕</button></div>
+    <MapSheet className="world-deed estate-panel" data-testid="estate-panel" data-drag-panel="estate" ref={dragEstate.ref} style={dragEstate.style()} onPointerDown={dragEstate.onPointerDown}>
+      {dragEstate.handle}
+      <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
+      <h3>{heading}</h3>
       <div className="estate-sticky" data-testid="estate-sticky">
         {site?.plan && (
           <p className="estate-sticky-line">
@@ -62,7 +65,6 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
         {msg && <p className="estate-msg" data-testid="estate-msg">{msg}</p>}
         {!mine && (!kind || kind === 'estate') && <p className="estate-msg">Only the owner can build on this lot.</p>}
       </div>
-      <div className="hub-win-body">
         {kind === 'plastics' && (
           <div>
             <p>Import Fort McChud naphtha, ethylene or plastics, then make resin, computers and graphics cards for private works and furniture. Recipes consume and produce real warehouse items.</p>
@@ -186,7 +188,6 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
             )}
           </div>
         )}
-      </div>
-    </div>
+    </MapSheet>
   );
 }

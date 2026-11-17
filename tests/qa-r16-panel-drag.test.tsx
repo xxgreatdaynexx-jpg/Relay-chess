@@ -20,7 +20,7 @@ describe('every floating panel uses the shared drag behaviour', () => {
     'Venues.tsx': ['venue'], 'FarmGame.tsx': ['farm'], 'ResortMap.tsx': ['resortDeeds', 'resortAir'], 'WorldMap.tsx': ['deed', 'deeds', 'home'],
     'Dealership.tsx': ['dealer'], 'StocksPage.tsx': ['stocks'], 'Skills.tsx': ['skills'], 'SkinsPanel.tsx': ['inventory'],
     'PlayerProfile.tsx': ['profile'], 'AccountPanel.tsx': ['account'], 'WalletButton.tsx': ['wallet'], 'ConquestPanel.tsx': ['cqRules'],
-    'AdminPopup.tsx': ['admin'], 'FishingPanel.tsx': ['fishing'], 'RoomScreen.tsx': ['bailout'],
+    'AdminPopup.tsx': ['admin'], 'FishingPanel.tsx': ['fishing'], 'EstatePanel.tsx': ['estate'], 'RoomScreen.tsx': ['bailout'],
   };
   for (const [f, ids] of Object.entries(expected)) it(`${f} panels are draggable`, () => {
     const s = src(f);
