@@ -32,7 +32,7 @@ import { cookPayout, cookSellValue, FISH_DISH_RECIPES } from '../shared/cooking.
 import { isFishSpot, type FishSpot } from '../shared/fishing.js';
 import { fishingLoc, WAREHOUSE, FACTORY, isPool } from '../shared/inventoryLocations.js';
 import { FLEET_MAX_CUT } from '../shared/coop3.js';
-import { isAtResort, awayFromMarket } from './travel.js';
+import { isAtResort, awayFromFishmonger } from './travel.js';
 import { baitLuckRoll, gearDef } from '../shared/fishGear.js';
 import { eventCredit, eventTrade } from './weeklyEvent.js';
 
@@ -387,7 +387,7 @@ export function registerFishing(io: Server, socket: Socket): void {
   on('fish_hook', async (_b, f, n) => { const r = await f.hook(n); pose(n, { pose: 'reel' }); return r; });
   on('fish_land', async (b, f, n) => { const r = await f.land(n, b.inputs); pose(n, r.caught && r.fish ? { pose: 'catch', fish: r.fish.fish } : { pose: 'idle' }); return r; });
   on('fish_reel_in', (_b, f, n) => { f.reelIn(n); pose(n, { pose: 'idle' }); return {}; });
-  on('fish_sell', (b, f, n) => { awayFromMarket(n, FishError); return f.sell(n, b.ids, b.qty); });
+  on('fish_sell', (b, f, n) => { awayFromFishmonger(n, FishError); return f.sell(n, b.ids, b.qty); });
   on('fish_release', (b, f, n) => f.release(n, b.ids));
   on('fish_here', (b, _f, n) => {
     const scene = sceneOf(n, b.spot);

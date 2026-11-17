@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-17T09:08:00-06:00", "title": "Sell fish at the resort fishmonger", "bullets": [
+    "You can sell your catch to the fishmonger at Chud Resort. Open the Reef Pier or a deep-sea trip from the Marina, then use Sell all to the fishmonger — the same button as at the city dock.",
+    "Prices, the daily lake / reef / deep caps (scaled with the house-sell cap index, never below the floor) and the cooking-sales cap are unchanged. The diner and other city markets still only buy in person in Chud City.",
+  ]},
   {"commit": "", "at": "2026-11-16T13:20:00-06:00", "title": "Empty land now costs 10%", "bullets": [
     "City empty lots and open East Estates construction lots now cost 10% of their old price. The daily price index still applies. Parks, plazas, turnkey power plants, buildings and farmland are unchanged.",
     "Land you already own keeps the price you paid. Selling empty land back to the city never pays more than it costs to buy it today.",

@@ -190,7 +190,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
       const thatch = mat({ color: 0xc8a050, roughness: 1 }); box(2.6, 2, 2.4, mat({ color: 0xf2e6cc }), 0, 1.7, -9, g); const hut = new THREE.Mesh(geo(new THREE.ConeGeometry(2.4, 1.6, 4)), thatch); hut.rotation.y = Math.PI / 4; hut.position.set(0, 3.5, -9); hut.castShadow = true; g.add(hut);
       for (const x of [-3, -1, 1, 3]) { const rod = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.03, 0.05, 3, 5)), mat({ color: 0x1d2633 })); rod.position.set(x, 1.9, 13.6); rod.rotation.x = 0.55; g.add(rod); }
       for (const x of [-3.3, 3.3]) { box(0.12, 2, 0.12, wood, x, 1.7, 13.8, g); const l = new THREE.Mesh(geo(new THREE.SphereGeometry(0.25, 10, 8)), mat({ color: 0xffb060, emissive: 0xff8a30, emissiveIntensity: 2 })); l.position.set(x, 2.8, 13.8); g.add(l); }
-      label('🎣 Reef Pier', 'Tropical fishing', '#3ad8c8', s.x, 9, s.z);
+      label('🎣 Reef Pier', 'Fish · sell to the fishmonger', '#3ad8c8', s.x, 9, s.z);
     } else if (s.id === 'r-marina') {
       box(30, 0.5, 3, wood, 0, 0.3, -6, g); for (const x of [-10, 0, 10]) box(2, 0.5, 12, wood, x, 0.3, 1, g);
       // mu-visuals marina pass: timber piles, cleats, lamp posts with warm glow, life rings and a harbourmaster hut.

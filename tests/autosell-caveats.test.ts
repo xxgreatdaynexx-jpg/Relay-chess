@@ -114,7 +114,7 @@ describe('warehouse-only rule for fish and dishes', () => {
   });
   it('both sell sockets are gated', async () => {
     const fs = await import('node:fs');
-    expect(fs.readFileSync('server/fishing.ts', 'utf8')).toMatch(/on\('fish_sell', \(b, f, n\) => \{ awayFromMarket\(n, FishError\)/);
+    expect(fs.readFileSync('server/fishing.ts', 'utf8')).toMatch(/on\('fish_sell', \(b, f, n\) => \{ awayFromFishmonger\(n, FishError\)/);
     expect(fs.readFileSync('server/cooking.ts', 'utf8')).toMatch(/on\('cook_sell', \(b, c, n\) => \{ awayFromMarket\(n, CookError\)/);
   });
 });
