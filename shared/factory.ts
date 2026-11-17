@@ -3,7 +3,7 @@
  * Items are stack keys `type:id` (same as mine_items / stackKey), so input/output chests read and write banked storage directly.
  */
 import { GOODS, ORES, MAX_BANKED_STACK, isOre, priceOf, nameOf, sellable, type ItemType, type Stack } from './mines.js';
-import { CROPS, CROP_SEED_MUL, ORCHARD_TREES, cropUnitSeed } from './farm.js';
+import { CROPS, CROP_SEED_MUL, HYPER_CROPS, ORCHARD_TREES, cropSellValue, cropUnitSeed, isHyperCrop } from './farm.js';
 import { TROPICAL_CROPS } from './resort.js';
 
 export const TICK_MS = 500;
@@ -544,12 +544,12 @@ export function applyFarmFishFoodPrices(markup = FOOD_STEP_MARKUP): string[] {
   }
   return touched;
 }
-/** Keep raw crop GOODS prices in lockstep with CROP_SEED_MUL (seed x margin). */
+/** Keep raw crop GOODS prices in lockstep with harvest value (seed x margin, plus the glasshouse flower buff). */
 export function applyRawCropPrices(mul = CROP_SEED_MUL): string[] {
   const touched: string[] = [];
-  for (const c of [...CROPS, ...TROPICAL_CROPS, ...ORCHARD_TREES]) {
+  for (const c of [...CROPS, ...TROPICAL_CROPS, ...ORCHARD_TREES, ...HYPER_CROPS]) {
     const id = `crop_${c.id}`; const g = GOODS[id]; if (!g) throw new Error(`GOODS missing for ${id}`);
-    g.price = mul * cropUnitSeed(c); touched.push(id);
+    g.price = isHyperCrop(c.id) ? cropSellValue(c) : mul * cropUnitSeed(c); touched.push(id);
   }
   return touched;
 }

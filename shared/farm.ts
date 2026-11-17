@@ -30,6 +30,8 @@ export const growMs = (ms: number) => Math.round(ms * GROW_SCALE);
 export const CROP_SEED_MUL = 1.35;
 /** Farming profit -5% (Dayne, 2026-11-04): a harvest sells each crop at 95% of its listed value. Seed costs are unchanged. */
 export const FARM_SELL_MUL = 0.95;
+/** Glasshouse flowers (HYPER_CROPS) pay 50% more on harvest and as factory raw goods. Seed costs are unchanged. */
+export const HYPER_CROP_SELL_MUL = 1.5;
 /** Listed sell so cropSellValue (= sell x FARM_SELL_MUL) ≈ seed x CROP_SEED_MUL. */
 export const cropListSell = (seed: number) => Math.round((seed * CROP_SEED_MUL) / FARM_SELL_MUL * 100) / 100;
 
@@ -47,9 +49,10 @@ export const CROPS: Crop[] = [
   { id: 'grapes', label: 'Grapes', emoji: '🍇', seed: 150, grow: growMs(16 * H), sell: cropListSell(150), color: 0x8a4ac0 },
   { id: 'sunflower', label: 'Sunflowers', emoji: '🌻', seed: 250, grow: growMs(24 * H), sell: cropListSell(250), color: 0xf0c830 },
 ];
-export const cropSellValue = (c: Pick<Crop, 'sell'>) => c.sell * FARM_SELL_MUL;
+export const cropSellValue = (c: Pick<Crop, 'sell'> & { id?: string }) =>
+  c.sell * FARM_SELL_MUL * (c.id && isHyperCrop(c.id) ? HYPER_CROP_SELL_MUL : 1);
 /** Base profit for one harvested crop (sale value minus seed), never negative. */
-export const cropProfit = (c: Pick<Crop, 'sell' | 'seed'>) => Math.max(0, cropSellValue(c) - c.seed);
+export const cropProfit = (c: Pick<Crop, 'sell' | 'seed'> & { id?: string }) => Math.max(0, cropSellValue(c) - c.seed);
 /** Flowers and other difficult crops. Only plantable on a finished hyper farm. */
 export const HYPER_CROPS: Crop[] = [
   { id: 'tulips', label: 'Tulips', emoji: '🌷', seed: 420, grow: growMs(20 * H), sell: cropListSell(420), color: 0xe04080 },

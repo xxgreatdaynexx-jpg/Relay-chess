@@ -436,12 +436,12 @@ export const GOODS: Record<string, ItemDef> = {
   insulated_cable:{ type: 'good', id: 'insulated_cable',name: 'Insulated cable', price: 172,   color: '#e05a3a' },
   plastic_crate:  { type: 'good', id: 'plastic_crate',  name: 'Plastic crate',   price: 228,   color: '#3a8ad0' },
   appliance:      { type: 'good', id: 'appliance',      name: 'Home appliance',  price: 940,   color: '#f2f2f0' },
-  crop_tulips:    { type: 'good', id: 'crop_tulips',    name: 'Tulips',          price: 596.84, color: '#e04080', raw: true },
-  crop_roses:     { type: 'good', id: 'crop_roses',     name: 'Roses',           price: 738.95, color: '#c01830', raw: true },
-  crop_orchids:   { type: 'good', id: 'crop_orchids',   name: 'Orchids',         price: 1108.42, color: '#d890d0', raw: true },
-  crop_saffron:   { type: 'good', id: 'crop_saffron',   name: 'Saffron',         price: 1705.26, color: '#e8b020', raw: true },
-  crop_wasabi:    { type: 'good', id: 'crop_wasabi',    name: 'Wasabi',          price: 909.47, color: '#3aaa4a', raw: true },
-  crop_vanilla:   { type: 'good', id: 'crop_vanilla',   name: 'Vanilla',         price: 1278.95, color: '#f0e0c0', raw: true },
+  crop_tulips:    { type: 'good', id: 'crop_tulips',    name: 'Tulips',          price: 850.5, color: '#e04080', raw: true },
+  crop_roses:     { type: 'good', id: 'crop_roses',     name: 'Roses',           price: 1053, color: '#c01830', raw: true },
+  crop_orchids:   { type: 'good', id: 'crop_orchids',   name: 'Orchids',         price: 1579.5, color: '#d890d0', raw: true },
+  crop_saffron:   { type: 'good', id: 'crop_saffron',   name: 'Saffron',         price: 2430, color: '#e8b020', raw: true },
+  crop_wasabi:    { type: 'good', id: 'crop_wasabi',    name: 'Wasabi',          price: 1296, color: '#3aaa4a', raw: true },
+  crop_vanilla:   { type: 'good', id: 'crop_vanilla',   name: 'Vanilla',         price: 1822.5, color: '#f0e0c0', raw: true },
 };
 
 

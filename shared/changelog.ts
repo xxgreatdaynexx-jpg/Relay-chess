@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-17T13:10:00-06:00", "title": "Glasshouse flowers pay 50% more", "bullets": [
+    "Tulips, roses, orchids, saffron, wasabi and vanilla — the crops you unlock by finishing a hyper farm glasshouse — now pay 50% more when you harvest them. Their factory value matches the new harvest price. Seed costs and grow times are unchanged, and every other crop is the same.",
+  ]},
   {"commit": "", "at": "2026-11-17T11:50:00-06:00", "title": "Shore Construction Dock shows build progress", "bullets": [
     "The dock now lets you add chips or materials to a rig, or fill what is left, instead of only a 10,000-chip button. Each stage has a progress bar, and a message appears when a contribution or launch works or fails. Construction costs and rules are the same; 10,000 chips was only a step, not a cap.",
   ]},
