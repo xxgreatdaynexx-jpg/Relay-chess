@@ -168,6 +168,7 @@ export function buildWiki(): WikiSection[] {
         `Rarity odds: ${Object.entries(RARITY_ODDS).map(([k, v]) => `${k} ${v}`).join(', ')}.`,
         'Hired fishers use the lake table (no junk) and deposit to your cooler.',
         'Sell your catch to the fishmonger at the city dock or at Chud Resort (Reef Pier or the Marina). Same prices and daily caps in both places.',
+        'Auto-process to factory (opt-in at the cooler or the Factory Bring in tab) sends city cooler fish into factory storage about every 30 minutes, only as many as fit. Resort fish must be shipped to the city first.',
         'Each spot\'s daily sell cap starts at the floor in the table and scales with the same house-sell cap index as factory house sales, never below that floor. The cap is on base (pre-index) sale value; payouts are then multiplied by the daily price index.',
       ],
       headers: ['Spot', 'Daily cap (floor)', '# species'],

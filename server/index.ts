@@ -51,12 +51,13 @@ import { initLootMatch } from './lootMatch.js';
 import { initMayor } from './mayor.js';
 import { initCity } from './city.js';
 import { databaseUrl as cityDbUrl } from './leaderboard-store.js';
-import { initFishing } from './fishing.js';
+import { initFishing, setFishAutoSink } from './fishing.js';
 import { initCigarettes } from './cigarettes.js';
 import { initFishPan } from './fishPan.js';
 import { initCooking } from './cooking.js';
 import { getMines, initMinesStorage } from './mines.js';
-import { getFactory, initFactory } from './factory.js';
+import { MAX_BANKED_STACK, stackKey } from '../shared/mines.js';
+import { getFactory, initFactory, factorySink } from './factory.js';
 import { bootCarbonTax } from './carbon-tax.js';
 import { initAccountStorage } from './accounts.js';
 import { getConquest, initConquestStorage } from './conquest.js';
@@ -123,6 +124,18 @@ await initMayor();
 await initCity(cityDbUrl());
 await bootCarbonTax();
 await initFishing();
+setFishAutoSink((name) => {
+  try {
+    const m = getMines();
+    if (m.offline) return null;
+    getFactory().get(name, Date.now());
+    const pack = m.packOf(name);
+    const room = (id: string) => Math.max(0, MAX_BANKED_STACK - (pack.get(stackKey({ type: 'good', id }))?.qty ?? 0));
+    return { sink: factorySink(name), room };
+  } catch {
+    return null;
+  }
+});
 await initCigarettes();
 initFishPan();
 startWealthTax();

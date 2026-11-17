@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-17T09:10:00-06:00", "title": "Bigger fish cooler, and auto-process to the factory", "bullets": [
+    "Your fish cooler now holds up to 2,000 fish, up from 40. Hired fishers still hold any overflow until there is room. Daily sell caps, catch rules and prices are unchanged.",
+    "You can switch on Auto-process to the factory at the fishing cooler or on the Factory's Bring in tab. About every 30 minutes, even while you are logged out, city-warehouse cooler fish become Fish Fillets (or Cooked Fish Portions for pan-fried cooler dishes), the same as the manual Process city fish button, and only as many as fit in factory storage. The rest stay in the cooler. It does not sell fish, touch daily caps, or take kitchen fridge dishes or resort fish — ship resort stock to the city first.",
+  ]},
   {"commit": "", "at": "2026-11-17T09:08:00-06:00", "title": "Sell fish at the resort fishmonger", "bullets": [
     "You can sell your catch to the fishmonger at Chud Resort. Open the Reef Pier or a deep-sea trip from the Marina, then use Sell all to the fishmonger — the same button as at the city dock.",
     "Prices, the daily lake / reef / deep caps (scaled with the house-sell cap index, never below the floor) and the cooking-sales cap are unchanged. The diner and other city markets still only buy in person in Chud City.",

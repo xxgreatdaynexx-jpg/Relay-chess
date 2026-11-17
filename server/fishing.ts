@@ -33,6 +33,7 @@ import { isFishSpot, type FishSpot } from '../shared/fishing.js';
 import { fishingLoc, WAREHOUSE, FACTORY, isPool } from '../shared/inventoryLocations.js';
 import { FLEET_MAX_CUT } from '../shared/coop3.js';
 import { isAtResort, awayFromFishmonger } from './travel.js';
+import { isMillionairePrelaunch } from '../shared/millionairePrelaunch.js';
 import { baitLuckRoll, gearDef } from '../shared/fishGear.js';
 import { eventCredit, eventTrade } from './weeklyEvent.js';
 
@@ -66,7 +67,14 @@ CREATE TABLE IF NOT EXISTS kitchen_daily (player_key TEXT NOT NULL, day TEXT NOT
 CREATE TABLE IF NOT EXISTS fish_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 CREATE TABLE IF NOT EXISTS kitchen_dishes (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, recipe TEXT NOT NULL, quality REAL NOT NULL, value INTEGER NOT NULL, cooked_at BIGINT NOT NULL, sold_at BIGINT, loc TEXT);
 CREATE INDEX IF NOT EXISTS kitchen_dishes_player ON kitchen_dishes (player_key, sold_at);
+CREATE TABLE IF NOT EXISTS fish_auto (player_key TEXT PRIMARY KEY, name TEXT NOT NULL, process BOOLEAN NOT NULL DEFAULT false, updated_at BIGINT NOT NULL);
 `;
+/** Background auto-process interval (same cadence as farm auto-harvest). */
+export const FISH_AUTO_SWEEP_MS = 30 * 60_000;
+export type FishAutoIo = { sink: ImportSink; room: (id: string) => number };
+let autoSink: ((name: string) => FishAutoIo | null) | null = null;
+export function setFishAutoSink(fn: ((name: string) => FishAutoIo | null) | null) { autoSink = fn; }
+
 /** Factory units for one cooler fish (base value): raw -> fillets (8 each), cooked -> portions (10 each). */
 export const fishImportQty = (value: number, cooked: boolean) => Math.floor(value / (cooked ? 10 : 8));
 export class FishError extends Error {}
@@ -111,7 +119,18 @@ export class Fishing {
     const key = keyOf(name);
     const best = (await this.pool.query("SELECT species, weight_g FROM fish_catches WHERE player_key = $1 AND COALESCE(hired, FALSE) = FALSE ORDER BY weight_g DESC, caught_at ASC, id ASC LIMIT 1", [key])).rows[0];
     const n = (await this.pool.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1', [key])).rows[0];
-    return { cooler: await this.cooler(key), today: await this.today(key), todayBySpot: { lake: await this.today(key, 'lake'), reef: await this.today(key, 'reef'), deep: await this.today(key, 'deep') }, index: priceIndex(), capIndex: houseCapIndexOrFloor(), best: best ? { fish: String(best.species), grams: Number(best.weight_g) } : null, totals: { caught: Number(n?.n ?? 0) } };
+    const auto = (await this.pool.query('SELECT process FROM fish_auto WHERE player_key = $1', [key])).rows[0] as { process?: boolean } | undefined;
+    return { cooler: await this.cooler(key), today: await this.today(key), todayBySpot: { lake: await this.today(key, 'lake'), reef: await this.today(key, 'reef'), deep: await this.today(key, 'deep') }, index: priceIndex(), capIndex: houseCapIndexOrFloor(), best: best ? { fish: String(best.species), grams: Number(best.weight_g) } : null, totals: { caught: Number(n?.n ?? 0) }, autoProcess: auto?.process === true };
+  }
+
+  /** Opt-in per player: background sweep moves city cooler fish into factory storage (same conversion as manual Bring-in). */
+  async setAutoProcess(name: string, process: unknown): Promise<{ autoProcess: boolean }> {
+    const key = keyOf(name); const on = process === true;
+    await this.pool.query(
+      'INSERT INTO fish_auto (player_key, name, process, updated_at) VALUES ($1,$2,$3,$4) ON CONFLICT (player_key) DO UPDATE SET process = EXCLUDED.process, name = EXCLUDED.name, updated_at = EXCLUDED.updated_at',
+      [key, name.trim(), on, this.clock()],
+    );
+    return { autoProcess: on };
   }
 
   /** Throw a line. The fish (and when it bites) is decided now and stays server-side. */
@@ -247,18 +266,40 @@ export class Fishing {
    * Raw cooler fish -> fillets (1 per 8 base value); pan-fried cooler dishes and kitchen fish recipes
    * (fried_fish, fish_tacos, …) -> Cooked Fish Portions (1 per 10). Same transaction: claim source rows
    * (sold_at) + storage write. Junk / tiny fish and non-fish fridge meals stay put. */
-  async toFactory(name: string, ids: unknown, sink: ImportSink): Promise<{ moved: number; items: Array<[string, number]> }> {
+  async toFactory(name: string, ids: unknown, sink: ImportSink, opts?: { partial?: boolean; coolerOnly?: boolean; emptyOk?: boolean; room?: (id: string) => number }): Promise<{ moved: number; items: Array<[string, number]> }> {
     const key = keyOf(name);
     return this.lock(`c:${key}`, async () => {
-      const all = (await this.pool.query("SELECT id, species, value, dish FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND loc IN ('factory', 'warehouse')", [key]) /* map pools: any city-map fish, no hauling */).rows as Array<{ id: string; species: string; value: number; dish: string | null }>;
+      const all = (await this.pool.query("SELECT id, species, value, dish FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND loc IN ('factory', 'warehouse') ORDER BY caught_at ASC, id ASC", [key]) /* map pools: any city-map fish, no hauling */).rows as Array<{ id: string; species: string; value: number; dish: string | null }>;
       const want = Array.isArray(ids) ? new Set(ids.filter((x): x is string => typeof x === 'string').slice(0, COOLER_MAX)) : null;
-      const rows = all.filter((r) => (!want || want.has(r.id)) && fishById(r.species)?.rarity !== 'junk' && fishImportQty(Number(r.value), !!r.dish) > 0);
-      // Kitchen fridge fish dishes (recipe table) — only on a full Bring-in (no id filter); city map only.
-      const dishRows = want ? [] : ((await this.pool.query(
+      let rows = all.filter((r) => (!want || want.has(r.id)) && fishById(r.species)?.rarity !== 'junk' && fishImportQty(Number(r.value), !!r.dish) > 0);
+      // Kitchen fridge fish dishes (recipe table) — only on a full manual Bring-in (no id filter); city map only. Auto-process is cooler fish only.
+      const dishRows = (want || opts?.coolerOnly) ? [] : ((await this.pool.query(
         "SELECT id, recipe, value FROM kitchen_dishes WHERE player_key = $1 AND sold_at IS NULL AND loc IN ('factory', 'warehouse') AND recipe = ANY($2::text[])",
         [key, FISH_DISH_RECIPES],
       )).rows as Array<{ id: string; recipe: string; value: number }>).filter((r) => fishImportQty(Number(r.value), true) > 0);
+      if (opts?.partial && opts.room) {
+        const cap: Record<string, number> = {};
+        const used: Record<string, number> = {};
+        const roomOf = (id: string) => (cap[id] ??= Math.max(0, opts.room!(id)));
+        const keep: typeof rows = [];
+        for (const r of rows) {
+          const cooked = !!r.dish; const n = fishImportQty(Number(r.value), cooked); const id = cooked ? 'fish_portion' : 'fish_fillet';
+          used[id] ??= 0;
+          if (used[id]! + n <= roomOf(id)) { keep.push(r); used[id]! += n; }
+        }
+        rows = keep;
+        if (dishRows.length) {
+          const keepD: typeof dishRows = [];
+          for (const r of dishRows) {
+            const n = fishImportQty(Number(r.value), true);
+            used.fish_portion ??= 0;
+            if (used.fish_portion + n <= roomOf('fish_portion')) { keepD.push(r); used.fish_portion += n; }
+          }
+          dishRows.length = 0; dishRows.push(...keepD);
+        }
+      }
       if (!rows.length && !dishRows.length) {
+        if (opts?.emptyOk) return { moved: 0, items: [] as Array<[string, number]> };
         throw new FishError(want
           ? "Only fish on the city map can go in (ship resort fish to the city first; junk and tiny fish can't)."
           : 'Nothing to process: need city-warehouse cooler fish (raw or pan-fried) or kitchen fridge fish dishes (Pan-Fried Fish, Fish Tacos, Fish & Chips, …). Other fridge meals sell from the Kitchen. Ship resort stock to the city first.');
@@ -297,7 +338,35 @@ export class Fishing {
       return { released: r.rowCount ?? 0 };
     }).then(async result => { await refillCooler(name); return result; });
   }
-  /** Biggest catch by weight (heaviest first, ties to the earliest catch; (one entry per player, junk excluded, QA accounts hidden). */
+  /** Server auto-process: city cooler fish only, move what fits, never throw on empty / full storage. */
+  async autoProcess(name: string, sink: ImportSink, room: (id: string) => number): Promise<{ moved: number; items: Array<[string, number]> }> {
+    return this.toFactory(name, undefined, sink, { partial: true, coolerOnly: true, emptyOk: true, room });
+  }
+
+  /**
+   * One auto-process pass for every player who opted in (online or offline). Runs on the server timer, not a
+   * client action, so it does not spend the fishing socket rate-limit tokens. Does not sell fish or touch
+   * daily payout tiers. Kitchen fridge dishes and resort-map fish stay put (same rules as manual Bring-in for those).
+   */
+  async autoSweep(makeSink?: (name: string) => FishAutoIo | null): Promise<number> {
+    if (isMillionairePrelaunch(this.clock())) return 0;
+    const hook = makeSink ?? autoSink;
+    if (!hook) return 0;
+    const rows = (await this.pool.query('SELECT name FROM fish_auto WHERE process = true')).rows as Array<{ name: string }>;
+    let n = 0;
+    for (const r of rows) {
+      const name = String(r.name);
+      try {
+        const io = hook(name);
+        if (!io) continue;
+        const result = await this.autoProcess(name, io.sink, io.room);
+        if (result.moved) n++;
+      } catch (e) { console.warn('[fish-auto]', name, (e as Error).message); }
+    }
+    return n;
+  }
+
+    /** Biggest catch by weight (heaviest first, ties to the earliest catch; (one entry per player, junk excluded, QA accounts hidden). */
   async board(limit = 10): Promise<Array<{ name: string; fish: string; grams: number; value: number; at: number }>> {
     const real = FISH.filter((f) => f.rarity !== 'junk').map((f) => `'${f.id}'`).join(',');
     const r = await this.pool.query(`SELECT name, player_key, species, weight_g, COALESCE(raw_value, value) AS value, caught_at FROM fish_catches WHERE species IN (${real}) AND COALESCE(hired, FALSE) = FALSE ORDER BY weight_g DESC, caught_at ASC, id ASC LIMIT 400`);
@@ -312,6 +381,16 @@ export class Fishing {
 
 let fishing: Fishing | null = null;
 export const getFishing = () => fishing;
+
+let autoTimer: ReturnType<typeof setInterval> | null = null;
+export function startFishAutoSweep() {
+  if (autoTimer) return;
+  const run = () => { void fishing?.autoSweep().catch((e) => console.error('[fish-auto] sweep failed:', (e as Error).message)); };
+  setTimeout(run, 15_000).unref?.();
+  autoTimer = setInterval(run, FISH_AUTO_SWEEP_MS);
+  autoTimer.unref?.();
+}
+
 export async function initFishing(): Promise<void> {
   const url = databaseUrl();
   try {
@@ -321,7 +400,7 @@ export async function initFishing(): Promise<void> {
       const { newDb } = await import('pg-mem'); const { Pool } = newDb({ noAstCoverageCheck: true }).adapters.createPg(); pool = new Pool() as pg.Pool;
       await new PgCasinoStore(pool).init();
     } else return;
-    const f = new Fishing(pool); await f.init(); fishing = f; console.log('[fishing] ready');
+    const f = new Fishing(pool); await f.init(); fishing = f; startFishAutoSweep(); console.log('[fishing] ready');
   } catch (e) { console.error('[fishing] init failed:', (e as Error).message); }
 }
 
@@ -389,6 +468,7 @@ export function registerFishing(io: Server, socket: Socket): void {
   on('fish_reel_in', (_b, f, n) => { f.reelIn(n); pose(n, { pose: 'idle' }); return {}; });
   on('fish_sell', (b, f, n) => { awayFromFishmonger(n, FishError); return f.sell(n, b.ids, b.qty); });
   on('fish_release', (b, f, n) => f.release(n, b.ids));
+  on('fish_auto', (b, f, n) => f.setAutoProcess(n, b.process));
   on('fish_here', (b, _f, n) => {
     const scene = sceneOf(n, b.spot);
     const room = fishRoom(scene.spot, scene.trip);

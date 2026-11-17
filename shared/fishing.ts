@@ -124,7 +124,10 @@ export function fishPayout(gross: number, already: number, spot: FishSpot = 'lak
   return Math.floor(pay + 1e-9);
 }
 
-export const COOLER_MAX = 40;
+/** Unsold catches per player (one row each, not a stacked pantry item). 2,000 is 50× the old 40:
+ *  three hired fishers (the base worker cap) land 1,440 a day, so this holds more than a full unprocessed day
+ *  for a standard crew. 100,000 like the pantry would mean 100k unique rows per player. */
+export const COOLER_MAX = 2_000;
 export const CAST_COOLDOWN_MS = 1200;
 export const BITE_MIN_MS = 1500, BITE_MAX_MS = 6500;
 /** How long after the bite you can still set the hook (server side, latency included). */
@@ -165,7 +168,7 @@ export function replayReel(seed: number, diff: number, inputs: string): 'caught'
 }
 
 export interface FishCatch { id: string; fish: string; grams: number; value: number; at: number; /** truck logistics: where this fish is (fishing:<spot>, factory, warehouse, kitchen:<home>, transit:<id>) */ loc?: string | null }
-export interface FishView { cooler: FishCatch[]; today: { gross: number; paid: number }; /** per-spot sold today (base gross) */ todayBySpot?: Record<FishSpot, { gross: number; paid: number }>; index: number; /** House-sell cap index used to scale per-spot daily caps (floor stays FISH_SPOT_CAP). */ capIndex?: number; best: { fish: string; grams: number } | null; totals: { caught: number } }
+export interface FishView { cooler: FishCatch[]; today: { gross: number; paid: number }; /** per-spot sold today (base gross) */ todayBySpot?: Record<FishSpot, { gross: number; paid: number }>; index: number; /** House-sell cap index used to scale per-spot daily caps (floor stays FISH_SPOT_CAP). */ capIndex?: number; best: { fish: string; grams: number } | null; totals: { caught: number }; /** Opt-in: auto-process city cooler fish into factory storage. */ autoProcess?: boolean }
 
 /** What other players see of an angler at the dock (pt242u). Derived on the server from fish_* actions only:
  *  'cast' = line out (bobber floats; the bite time stays secret), 'reel' = fighting a fish, 'catch' = just landed one. */

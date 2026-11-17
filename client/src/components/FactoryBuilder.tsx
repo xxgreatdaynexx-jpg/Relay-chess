@@ -6,7 +6,7 @@ import { FactoryMachineSell, type SellAsk } from './FactoryMachineSell';
 import { itemIconUriKey } from '../../../shared/itemIcons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ix, usePriceIndex } from '../lib/priceIndex';
-import { socket } from '@/lib/net';
+import { socket, request } from '@/lib/net';
 import { LOW, bolt, dropShadow, floorTiles, glow, hazard, lighting, metal, rrect, shade, sparks, steam, steel, vent } from '@/lib/factoryLook';
 import { GOODS, type Stack } from '../../../shared/mines';
 import { madeBy, tierOf, usedIn, CHEST_ITEMS, DX, DY, FLOOR_LEVELS, FRECIPES, KINDS, KIND_ORDER, TICK_MS, colorOfKey, floorSize, frecipe, gridOf, cellId, nameOfKey, priceOfKey, recipeTicks, recipesFor, step, canPlace, splitWeights, splitLabel, MAX_SPLIT_W, isPrestigeRecipe, type Dir, type Ent, type FState, type Grid, type Kind, undergroundPairs } from '../../../shared/factory';
@@ -37,6 +37,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
   const [clip, setClip] = useState<FactoryClip | null>(null);
   const [movingGroup, setMovingGroup] = useState(false);
   const [side, setSide] = useState<'build' | 'shop' | 'recipes' | 'import'>('build');
+  const [fishAuto, setFishAuto] = useState(false);
   const [chain, setChain] = useState<string>('');
   const [buyN, setBuyN] = useState(1);
   const [plant, setPlant] = useState<string | null>(null);
@@ -72,6 +73,10 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
   });
   const ask: SellAsk = (ev, body) => new Promise((res) => socket.timeout(15000).emit(ev, { ...body, ...(plantRef.current ? { plant: plantRef.current } : {}) }, (err: Error | null, r?: FAck) => { if (err || !r) return res({ ok: false, error: 'Factory busy, try again.' }); apply(r); res(r); }));
   useEffect(() => { if (guest) return; call('fac_state', {}); const t = window.setInterval(() => call('fac_state', {}), 3000); return () => window.clearInterval(t); }, [guest, plant]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (guest || side !== 'import') return;
+    void request('fish_state').then((r) => { if (r.ok) setFishAuto(!!(r as { state?: { autoProcess?: boolean } }).state?.autoProcess); });
+  }, [guest, side]);
 
   // ---- render loop
   useEffect(() => {
@@ -361,7 +366,8 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
             <p className="mines-note" data-testid="fac-import-note">One city inventory: this factory works straight from your Chud City Warehouse stock (ore, bars, goods, food), so there is nothing to truck here. Harvest crops into it, or process city-warehouse cooler fish and kitchen fridge fish dishes into fillets / cooked portions.</p>
             <button type="button" className="fac-btn" onClick={() => call('fac_import_farm', {}, (r) => { const g = (r.result as { toFactory?: Array<[string, number]> } | undefined)?.toFactory ?? []; flash(`Sent to the factory: ${g.map(([id, n]) => `${n} ${nameOfKey(`good:${id}`)}`).join(', ')}`); })} data-testid="fac-import-farm">🌾 Harvest every ready crop into the factory</button>
             <button type="button" className="fac-btn" onClick={() => call('fac_import_fish', {}, (r) => { const g = (r.result as { items?: Array<[string, number]>; moved?: number } | undefined); flash(`Moved ${g?.moved ?? 0}: ${(g?.items ?? []).map(([id, n]) => `${n} ${nameOfKey(`good:${id}`)}`).join(', ')}`); })} data-testid="fac-import-fish">🐟 Process city fish & fridge fish dishes</button>
-            <small className="mines-note">Raw cooler fish → Fish Fillets (1 per 8 chips of value). Pan-fried cooler dishes and kitchen fridge fish recipes (Pan-Fried Fish, Fish Tacos, …) → Cooked Fish Portions (1 per 10). Junk, tiny fish and non-fish fridge meals stay — sell those from the Kitchen. Imported crops and fish can't be sold raw to the house: craft them.</small>
+            {!guest && <label className="fac-auto-row" data-testid="fac-fish-auto"><input type="checkbox" checked={fishAuto} onChange={(e) => { const on = e.target.checked; void request('fish_auto', { process: on }).then((r) => { if (r.ok) { setFishAuto(on); flash(on ? 'Auto-process cooler fish to the factory is on.' : 'Auto-process cooler fish to the factory is off.'); } else flash(('error' in r ? String((r as { error?: string }).error) : null) ?? 'Could not save that.'); }); }} /> Auto-process city cooler fish to the factory</label>}
+            <small className="mines-note">Raw cooler fish → Fish Fillets (1 per 8 chips of value). Pan-fried cooler dishes and kitchen fridge fish recipes (Pan-Fried Fish, Fish Tacos, …) → Cooked Fish Portions (1 per 10). Junk, tiny fish and non-fish fridge meals stay — sell those from the Kitchen. Imported crops and fish can't be sold raw to the house: craft them. Auto-process (opt-in) runs about every 30 minutes even while you are logged out: it moves only city cooler fish, only what fits in factory storage, and never sells fish or touches daily caps. Fridge dishes and resort fish stay until you process or ship them yourself.</small>
             <h4>Imported stock</h4>
             <ul className="fac-stock">{CHEST_ITEMS.filter((k) => isRawKey(k) && (sim.current.store.get(k) ?? 0) > 0).map((k) => <li key={k}><Dot k={k} />{sim.current.store.get(k)} {nameOfKey(k)}</li>)}</ul>
           </div>}

@@ -5,7 +5,7 @@ import { request, socket } from '@/lib/net';
 import { makeFishingSfx, type FishingSfx } from '@/lib/fishingSfx';
 import { reloadOnceForChunkError } from '@/lib/chunkReload';
 import type { Fishing3D } from '@/lib/fishing3d';
-import { fishSellValue, fishById, fmtKg, RARITY_COLOR, Reel, REEL_DT, type AnglerState, type FishCatch, type FishSpot, type FishView } from '../../../shared/fishing';
+import { fishSellValue, fishById, fmtKg, RARITY_COLOR, Reel, REEL_DT, COOLER_MAX, type AnglerState, type FishCatch, type FishSpot, type FishView } from '../../../shared/fishing';
 import { FishGlyph } from './FishGlyph';
 import { boostXp } from '../../../shared/skills'; // recheck #8: show the +20% XP actually awarded
 
@@ -120,7 +120,7 @@ export function Fishing3DGame({ me, onClose, onChange, spot = 'lake' }: { me: st
       <canvas ref={cv} className="fish3d-canvas" onPointerDown={(e) => { e.preventDefault(); aim(e.clientX); press(); }} onPointerMove={(e) => aim(e.clientX)} />
       <div className="fish3d-top">
         <b>{spot === 'deep' ? '🌊 Deep Sea' : spot === 'reef' ? '🌴 Reef Pier' : '🎣 Fishing Dock'}</b>
-        <span data-testid="fish3d-cooler">🧊 {cooler.length}/40</span>
+        <span data-testid="fish3d-cooler">🧊 {cooler.length}/{COOLER_MAX}</span>
         {cooler.length > 0 && <button type="button" data-testid="fish3d-sell" disabled={phase !== 'idle' && phase !== 'show'} onClick={() => void sell()}>💰 Sell catch</button>}
         <button type="button" className="fish3d-x" onClick={onClose} aria-label="Close">✕</button>
       </div>

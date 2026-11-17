@@ -7,7 +7,7 @@ import { lazyWithReload } from '@/lib/lazyWithReload';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { request } from '@/lib/net';
-import { fishSellValue, FISH_SPOT_CAP, fishSpotCap, fishById, fishPayout, spotOf, fmtKg, RARITY_COLOR, Reel, REEL_DT, type FishCatch, type FishSpot, type FishView } from '../../../shared/fishing';
+import { fishSellValue, FISH_SPOT_CAP, fishSpotCap, fishById, fishPayout, spotOf, fmtKg, RARITY_COLOR, Reel, REEL_DT, COOLER_MAX, type FishCatch, type FishSpot, type FishView } from '../../../shared/fishing';
 import { FishGlyph } from './FishGlyph';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { canBuyGear, FISH_BAITS, FISH_FLIES, type FishGearDef, type FishGearView } from '../../../shared/fishGear';
@@ -47,7 +47,7 @@ export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null
   useDoing('fishing', spot === 'deep' ? 'Deep sea' : spot === 'reef' ? 'Resort reef' : 'Lake');
   const dragFishing = usePanelDrag('fishing');
   const reef = spot === 'reef' || spot === 'deep'; const deep = spot === 'deep';
-  const [view, setView] = useState<FishView | null>(null); const [board, setBoard] = useState<BoardRow[]>([]);
+  const [view, setView] = useState<FishView | null>(null); const [board, setBoard] = useState<BoardRow[]>([]); const [showAllFish, setShowAllFish] = useState(false);
   const [phase, setPhase] = useState<Phase>({ k: 'idle' }); const [play3d, setPlay3d] = useState(false); const [msg, setMsg] = useState<string | null>(null);
   const [reelUi, setReelUi] = useState<{ x: number; c: number; h: number; prog: number } | null>(null);
   const holdRef = useRef(false); const phaseRef = useRef(phase); phaseRef.current = phase;
@@ -131,10 +131,21 @@ export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null
         </div>
         {msg && <small data-testid="fish-msg" className="fish-msg">{msg}</small>}
         <TackleShop me={me} />
-        <h4>🧊 Cooler · {cooler.length}/40</h4>
-        {cooler.length ? <ul className="fish-cooler" data-testid="fish-cooler">{cooler.map((c) => { const f = fishById(c.fish); return (
-          <li key={c.id}><span style={{ color: f ? RARITY_COLOR[f.rarity] : undefined }}><FishGlyph id={c.fish} /> {f?.label ?? c.fish}</span> <small>{fmtKg(c.grams)}</small> <b>🪙 {chips(Math.floor(fishSellValue(c.value) * idx))}</b> <button type="button" title="Release" onClick={() => void release(c.id)}>↩</button></li>); })}</ul>
-          : <small>Empty. Go catch something!</small>}
+        <h4>🧊 Cooler · {cooler.length}/{COOLER_MAX}</h4>
+        {cooler.length ? <>
+          {cooler.length > 80 && <small><button type="button" data-testid="fish-cooler-toggle" onClick={() => setShowAllFish((s) => !s)}>{showAllFish ? 'Group by species' : 'Show each fish'}</button></small>}
+          <ul className="fish-cooler" data-testid="fish-cooler">{
+            (cooler.length > 80 && !showAllFish
+              ? Object.values(cooler.reduce((m, c) => { const k = c.fish; const x = m.get(k) ?? { fish: k, n: 0, grams: 0, value: 0 }; x.n += 1; x.grams += c.grams; x.value += c.value; m.set(k, x); return m; }, new Map<string, { fish: string; n: number; grams: number; value: number }>()))
+                  .map((g) => { const f = fishById(g.fish); return (
+                    <li key={g.fish}><span style={{ color: f ? RARITY_COLOR[f.rarity] : undefined }}><FishGlyph id={g.fish} /> {g.n}× {f?.label ?? g.fish}</span> <small>{fmtKg(g.grams)}</small> <b>🪙 {chips(Math.floor(fishSellValue(g.value) * idx))}</b></li>); })
+              : cooler.map((c) => { const f = fishById(c.fish); return (
+                  <li key={c.id}><span style={{ color: f ? RARITY_COLOR[f.rarity] : undefined }}><FishGlyph id={c.fish} /> {f?.label ?? c.fish}</span> <small>{fmtKg(c.grams)}</small> <b>🪙 {chips(Math.floor(fishSellValue(c.value) * idx))}</b> <button type="button" title="Release" onClick={() => void release(c.id)}>↩</button></li>); }))
+          }</ul>
+        </> : <small>Empty. Go catch something!</small>}
+        {me && <label className="fish-auto-row" data-testid="fish-auto"><input type="checkbox" checked={!!view?.autoProcess} disabled={phase.k !== 'idle'}
+          onChange={(e) => { const on = e.target.checked; void request('fish_auto', { process: on }).then((r) => { if (r.ok) { setView((v) => v ? { ...v, autoProcess: on } : v); setMsg(on ? 'Auto-process to the factory is on.' : 'Auto-process to the factory is off.'); } else setMsg(('error' in r ? String((r as { error?: string }).error) : null) ?? 'Could not save that.'); }); }} /> Auto-process city fish to the factory</label>}
+        {me && <small>Runs on the server about every 30 minutes even while you are logged out. Raw cooler fish become Fish Fillets and pan-fried cooler dishes become Cooked Fish Portions, the same as Process city fish on the Factory Bring in tab, and only as many as fit in factory storage. The rest stay in the cooler. It does not sell fish or touch daily caps. Kitchen fridge dishes and resort fish are left alone (ship resort stock to the city first).</small>}
         {cooler.length > 1 && view && <SellQtyPicker owned={cooler.length} unit="fish" testid="fish-qty" disabled={phase.k !== 'idle'} preview={(n) => estFor(pickForQty(cooler, n))} onSell={(n) => sell(undefined, n)} />}
         {cooler.length > 0 && <button type="button" disabled={phase.k !== 'idle' || est <= 0} onClick={() => void sell()} data-testid="fish-sell">💰 Sell all to the fishmonger <span>🪙 {chips(est)}</span></button>}
         {view && <small data-testid="fish-cap">{spot === 'deep' ? 'Deep sea' : spot === 'reef' ? 'Reef' : 'Lake'} today: 🪙 {chips(spotToday(spot).paid)} sold. Full price up to {chips(capMax)} a day here; the cap follows the same index as the house-sell cap and never drops below {chips(FISH_SPOT_CAP[spot])}. Lake, reef and deep sea each have their own cap (resets 00:00 UTC). {capLeft > 0 ? '' : 'The fishmonger is full for today.'}</small>}
