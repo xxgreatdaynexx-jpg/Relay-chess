@@ -2847,6 +2847,30 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .estate-msg { color: #f5c16c; }
 .estate-power, .estate-demolish { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(232,194,106,0.25); }
 .estate-hyper-open { position: absolute; right: 16px; bottom: 18px; z-index: 35; background: #1d3a22; color: #c6f0c8; border: 1px solid #6adf7a; border-radius: 999px; padding: 8px 14px; cursor: pointer; }
+
+.estate-toast { margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; font-weight: 700; line-height: 1.35; }
+.estate-toast.ok { background: #1d3a22; color: #c6f0c8; border: 1px solid #6adf7a; }
+.estate-toast.err { background: #4a1520; color: #ffd0d4; border: 1px solid #f07178; }
+.estate-dock { display: flex; flex-direction: column; gap: 12px; min-width: 0; overflow-x: hidden; }
+.estate-dock-blurb, .estate-dock-hold, .estate-dock-plan { margin: 0; line-height: 1.4; overflow-wrap: anywhere; }
+.estate-dock-plan { padding-left: 1.15em; display: flex; flex-direction: column; gap: 4px; font-size: 13px; opacity: .9; }
+.estate-dock-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.estate-dock-toolbar small { flex: 1 1 140px; opacity: .85; }
+.estate-dock-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.estate-dock-card { border: 1px solid #ffffff22; border-radius: 12px; padding: 12px; min-width: 0; display: flex; flex-direction: column; gap: 8px; background: #ffffff08; }
+.estate-dock-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 10px; align-items: baseline; }
+.estate-dock-head b { font-size: 16px; color: #f4efe4; }
+.estate-dock-badge { opacity: .8; font-size: 12px; }
+.estate-dock-stage { min-width: 0; padding: 8px 0 4px; border-top: 1px solid #ffffff14; }
+.estate-dock-stage.is-upcoming { opacity: .62; }
+.estate-dock-stage-head { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.estate-dock-part { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 0; min-width: 0; }
+.estate-dock-part small { line-height: 1.35; overflow-wrap: anywhere; }
+.estate-dock-actions { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; min-width: 0; }
+.estate-dock-btn { flex: 1 1 140px; min-height: 44px; min-width: min(100%, 140px); padding: 10px 14px; border: 0; border-radius: 10px; font-weight: 800; background: #b8975a; color: #1b1d2e; cursor: pointer; }
+.estate-dock-fill { background: #d4b36a; }
+.estate-dock-btn:disabled { opacity: .45; cursor: not-allowed; }
+.estate-panel .map-sheet-body { overflow-x: hidden; }
 @media (max-width: 700px) {
   .ff-shots { grid-template-columns: 1fr; }
   .ff-shots img { height: 140px; }

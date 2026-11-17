@@ -8,6 +8,8 @@ export const RIG_LAUNCH_FEE = 200_000;
 export const RIG_CRUDE_PER_HOUR = 90;
 export const RIG_MAX_PER_PLAYER = 3;
 export const RIG_HOLD_CAP = 8_000;
+/** Convenient chip step on the dock panel (not a contribution cap). */
+export const RIG_CHIP_STEP = 10_000;
 
 export type RigStageId = 'hull' | 'derrick' | 'decks' | 'fitout';
 export interface RigStagePlan { id: RigStageId; name: string; chips: number; goods: Array<[string, number]> }
@@ -32,3 +34,19 @@ export interface RigState {
 
 export const rigLabel = (r: Pick<RigState, 'status' | 'stage'>) =>
   r.status === 'launched' ? 'On station' : r.status === 'ready' ? 'Ready to launch' : `Building · ${RIG_STAGES[Math.min(r.stage, 3)]!.name}`;
+
+/** Catalog value of one stage: its chips plus its materials at their base price. */
+export const rigStageValue = (st: RigStagePlan, priceOf: (id: string) => number) => st.chips + st.goods.reduce((a, [id, n]) => a + n * priceOf(id), 0);
+/** 0..1 progress of one stage by value (chips 1:1, materials at their price). */
+export const rigStagePct = (st: RigStagePlan, done: Record<string, number>, priceOf: (id: string) => number) => {
+  const need = rigStageValue(st, priceOf); if (need <= 0) return 1;
+  const got = Math.min(st.chips, done.chips ?? 0) + st.goods.reduce((a, [id, n]) => a + Math.min(n, done[`good:${id}`] ?? 0) * priceOf(id), 0);
+  return Math.max(0, Math.min(1, got / need));
+};
+/** 0..1 progress of the whole rig: finished stages count in full, the current one by value. Ready or launched is 1. */
+export const rigPct = (stage: number, doneByStage: Array<Record<string, number> | undefined>, priceOf: (id: string) => number, status?: RigStatus) => {
+  if (status === 'ready' || status === 'launched') return 1;
+  const total = RIG_STAGES.reduce((a, st) => a + rigStageValue(st, priceOf), 0); if (total <= 0) return 1;
+  const got = RIG_STAGES.reduce((a, st, i) => a + rigStageValue(st, priceOf) * (i < stage ? 1 : i === stage ? rigStagePct(st, doneByStage[i] ?? {}, priceOf) : 0), 0);
+  return Math.max(0, Math.min(1, got / total));
+};

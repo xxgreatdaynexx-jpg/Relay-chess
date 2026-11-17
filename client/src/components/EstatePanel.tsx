@@ -4,8 +4,9 @@ import { usePanelDrag } from '@/lib/panelDrag';
 import { request } from '@/lib/net';
 import { DEMOLISH_RULES, ESTATE_BUILD_ORDER, ESTATE_BUILDS, type EstateBuildId } from '../../../shared/estateProjects';
 import { PLASTICS_RECIPES } from '../../../shared/plasticsPlant';
-import { RIG_STAGES } from '../../../shared/offshoreRig';
+import { RIG_CHIP_STEP, RIG_CRUDE_PER_HOUR, RIG_HOLD_CAP, RIG_LAUNCH_FEE, RIG_MAX_PER_PLAYER, RIG_STAGES, rigPct, rigStagePct, type RigStatus } from '../../../shared/offshoreRig';
 import { HYPER_STAGES } from '../../../shared/hyperFarm';
+import { GOODS } from '../../../shared/mines';
 
 type SiteView = {
   lotId: string; build: EstateBuildId | null; stage: number; complete: boolean; gear: number; kind: string;
@@ -19,6 +20,60 @@ type HyperPart = { part: string; name: string; need: number; done: number; price
 type HyperView = { plotId: string; stage: number; complete: boolean; finished?: boolean; pct: number; stages: Array<{ id: string; name: string; pct: number; parts: HyperPart[] }> };
 const pctLabel = (v: number) => `${Math.floor(Math.max(0, Math.min(1, v)) * 100)}%`;
 const Bar = ({ v, testid }: { v: number; testid?: string }) => <div className="coop-bar" data-testid={testid}><div style={{ width: `${Math.min(100, Math.max(0, v) * 100)}%` }} /><span>{pctLabel(v)}</span></div>;
+const priceOf = (id: string) => GOODS[id]?.price ?? 0;
+
+type RigView = {
+  id: string; label: string; status: RigStatus; stage: number;
+  done?: Array<Record<string, number>>; hold?: number; launchFee?: number;
+};
+type EstateMsg = { text: string; ok: boolean };
+
+function isRigPayload(r: unknown): r is RigView {
+  if (!r || typeof r !== 'object') return false;
+  const o = r as Partial<RigView>;
+  return typeof o.id === 'string' && typeof o.status === 'string' && Array.isArray(o.done);
+}
+
+function patchRigs(v: Record<string, unknown> | null, rig: RigView): Record<string, unknown> {
+  const list = [...((v?.rigs as RigView[] | undefined) ?? [])];
+  const i = list.findIndex((x) => x.id === rig.id);
+  if (i >= 0) list[i] = { ...list[i], ...rig };
+  else list.push(rig);
+  return { ...(v ?? {}), rigs: list };
+}
+
+function partMeta(part: string) {
+  if (part === 'chips') return { key: 'chips', name: 'chips' };
+  const gid = part.replace(/^good:/, '');
+  return { key: `good:${gid}`, name: GOODS[gid]?.name ?? gid };
+}
+
+function addedForPart(before: RigView | undefined, after: RigView, key: string, fullNeed: number) {
+  const idx = before?.stage ?? after.stage;
+  const prev = before?.done?.[idx]?.[key] ?? 0;
+  const next = after.done?.[idx]?.[key] ?? (after.stage > idx || after.status !== 'building' ? fullNeed : 0);
+  return Math.max(0, next - prev);
+}
+
+function rigActionMessage(ev: string, body: Record<string, unknown>, before: RigView | undefined, after: RigView): string {
+  if (ev === 'estate_rig_start') return `Started a new rig. First stage: ${RIG_STAGES[0]!.name}.`;
+  if (ev === 'estate_rig_launch') return `Launched. The rig is on station and pumps ${RIG_CRUDE_PER_HOUR} crude an hour to your Fort McChud tanks.`;
+  if (ev !== 'estate_rig_contribute') return 'Done.';
+  const st = RIG_STAGES[Math.min(before?.stage ?? after.stage, RIG_STAGES.length - 1)]!;
+  const part = String(body.part ?? 'chips');
+  const meta = partMeta(part);
+  const need = meta.key === 'chips' ? st.chips : (st.goods.find(([id]) => `good:${id}` === meta.key)?.[1] ?? 0);
+  const added = addedForPart(before, after, meta.key, need);
+  const lead = added > 0 ? `Added ${added.toLocaleString('en-US')} ${meta.name}` : 'Contribution landed';
+  if (after.status === 'ready' && before?.status !== 'ready') return `${lead}. ${st.name} is finished — the rig is ready to launch.`;
+  if (before && after.stage > before.stage) {
+    const next = RIG_STAGES[after.stage]!;
+    return `${lead}. ${st.name} is finished. Now building ${next.name} (${pctLabel(rigPct(after.stage, after.done ?? [], priceOf, after.status))} of the rig).`;
+  }
+  const cur = RIG_STAGES[after.stage]!;
+  const row = after.done?.[after.stage] ?? {};
+  return `${lead} to ${cur.name}. This stage is ${pctLabel(rigStagePct(cur, row, priceOf))} complete.`;
+}
 
 type PowerView = {
   gridMw: number; gridPrice: number; plantMw: number; demand: number; supply: number; throttle: number;
@@ -29,14 +84,22 @@ const chips = (n: number) => n.toLocaleString('en-US');
 
 export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?: string; me: string | null; mine?: boolean; kind?: 'estate' | 'plastics' | 'rigdock' | 'hyper'; onClose: () => void }) {
   const [view, setView] = useState<Record<string, unknown> | null>(null);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState<EstateMsg | null>(null);
   const dragEstate = usePanelDrag('estate');
   const load = () => { void request('estate_view', {}).then((r) => { if (r && (r as { ok?: boolean }).ok !== false) setView(r as unknown as Record<string, unknown>); }); };
   useEffect(() => { load(); }, []);
   const call = async (ev: string, body: Record<string, unknown>) => {
+    const beforeRigs = ((view?.rigs as RigView[] | undefined) ?? []);
     const r = await request(ev, body) as { ok?: boolean; error?: string };
-    if (r && r.ok === false) { setMsg(r.error ?? 'That did not work.'); return; }
-    setMsg(''); load();
+    if (r && r.ok === false) { setMsg({ text: r.error ?? 'That did not work.', ok: false }); return; }
+    if (isRigPayload(r)) {
+      const before = beforeRigs.find((x) => x.id === r.id);
+      setView((v) => patchRigs(v, r));
+      setMsg({ text: rigActionMessage(ev, body, before, r), ok: true });
+    } else {
+      setMsg(null);
+    }
+    load();
   };
   const sites = (view?.sites as SiteView[] | undefined) ?? [];
   const site = lotId ? sites.find((s) => s.lotId === lotId) : sites[0];
@@ -62,7 +125,12 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
             {canBuild && <button type="button" data-testid="estate-grid-restore" onClick={() => void call('estate_grid_restore', {})}>Pay bill & restore power</button>}
           </div>
         )}
-        {msg && <p className="estate-msg" data-testid="estate-msg">{msg}</p>}
+        {kind === 'rigdock' && (
+          <p className="estate-sticky-line" data-testid="estate-dock-status">
+            Rigs {((view?.rigs as RigView[] | undefined) ?? []).length} / {RIG_MAX_PER_PLAYER} · launched rigs pump {RIG_CRUDE_PER_HOUR} crude/h to Fort McChud
+          </p>
+        )}
+        {msg && <p className={`estate-msg estate-toast${msg.ok ? ' ok' : ' err'}`} data-testid="estate-msg" data-estate-msg-kind={msg.ok ? 'ok' : 'err'} role={msg.ok ? 'status' : 'alert'}>{msg.text}</p>}
         {!mine && (!kind || kind === 'estate') && <p className="estate-msg">Only the owner can build on this lot.</p>}
       </div>
         {kind === 'plastics' && (
@@ -76,21 +144,7 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
             </ul>
           </div>
         )}
-        {kind === 'rigdock' && (
-          <div>
-            <p>Build a rig on the dock in four stages, then launch it. Launched rigs pump crude to your Fort McChud tanks.</p>
-            <ol>{RIG_STAGES.map((s) => <li key={s.id}>{s.name} · 🪙 {chips(s.chips)}</li>)}</ol>
-            <button type="button" disabled={!me} onClick={() => void call('estate_rig_start', {})}>Start a new rig</button>
-            <ul className="prestige-list">
-              {((view?.rigs as Array<{ id: string; label: string; status: string }>) ?? []).map((r) => (
-                <li key={r.id}><div><b>{r.label}</b><small>{r.status}</small></div>
-                  {r.status === 'ready' && <button type="button" onClick={() => void call('estate_rig_launch', { id: r.id })}>Launch</button>}
-                  {r.status === 'building' && <button type="button" onClick={() => void call('estate_rig_contribute', { id: r.id, part: 'chips', qty: 10_000 })}>Add 10,000 chips</button>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {kind === 'rigdock' && <RigDock me={!!me} chips={typeof view?.chips === 'number' ? (view.chips as number) : undefined} rigs={((view?.rigs as RigView[] | undefined) ?? [])} onCall={call} />}
         {kind === 'hyper' && lotId && (
           <div data-testid="estate-hyper">
             <p>Convert this farm into a Dutch glasshouse. Flowers and other difficult crops unlock when it is finished.</p>
@@ -189,5 +243,92 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
           </div>
         )}
     </MapSheet>
+  );
+}
+
+function RigDock({ me, chips: wallet, rigs, onCall }: { me: boolean; chips?: number; rigs: RigView[]; onCall: (ev: string, body: Record<string, unknown>) => Promise<void> }) {
+  const atCap = rigs.length >= RIG_MAX_PER_PLAYER;
+  const afford = wallet == null ? Number.POSITIVE_INFINITY : Math.max(0, wallet);
+  return (
+    <div className="estate-dock" data-testid="estate-dock">
+      <p className="estate-dock-blurb">Build a rig on the dock in four stages, then launch it. Add chips and materials to the current stage — warehouse stock is used first, then the catalog price.</p>
+      <ol className="estate-dock-plan">
+        {RIG_STAGES.map((s) => <li key={s.id}>{s.name}</li>)}
+      </ol>
+      <div className="estate-dock-toolbar">
+        <button type="button" className="estate-dock-btn" data-testid="estate-dock-start" disabled={!me || atCap} onClick={() => void onCall('estate_rig_start', {})}>Start a new rig</button>
+        {atCap && <small data-testid="estate-dock-cap">You can have at most {RIG_MAX_PER_PLAYER} rigs.</small>}
+      </div>
+      <ul className="estate-dock-list">
+        {rigs.map((r) => {
+          const overall = rigPct(r.stage, r.done ?? [], priceOf, r.status);
+          const fee = r.launchFee ?? RIG_LAUNCH_FEE;
+          return (
+            <li key={r.id} className={`estate-dock-card is-${r.status}`} data-testid={`estate-dock-rig-${r.id}`}>
+              <div className="estate-dock-head">
+                <b>{r.label}</b>
+                <small className="estate-dock-badge">{r.status === 'building' ? `Stage ${Math.min(r.stage + 1, RIG_STAGES.length)} of ${RIG_STAGES.length}` : r.status === 'ready' ? 'Ready to launch' : 'On station'}</small>
+              </div>
+              <Bar v={overall} testid={`estate-dock-progress-${r.id}`} />
+              {r.status === 'launched' && <p className="estate-dock-hold">Hold {chips(r.hold ?? 0)} / {chips(RIG_HOLD_CAP)} crude · {RIG_CRUDE_PER_HOUR}/h to Fort McChud</p>}
+              {r.status === 'ready' && (
+                <div className="estate-dock-actions">
+                  <button type="button" className="estate-dock-btn" data-testid={`estate-dock-launch-${r.id}`} disabled={!me} onClick={() => void onCall('estate_rig_launch', { id: r.id })}>Launch · 🪙 {chips(fee)}</button>
+                </div>
+              )}
+              {r.status === 'building' && RIG_STAGES.map((st, i) => {
+                const row = r.done?.[i] ?? {};
+                const pct = i < r.stage ? 1 : i === r.stage ? rigStagePct(st, row, priceOf) : 0;
+                const current = i === r.stage;
+                return (
+                  <div key={st.id} className={`estate-dock-stage${current ? ' is-current' : i < r.stage ? ' is-done' : ' is-upcoming'}`} data-testid={`estate-dock-stage-${r.id}-${st.id}`}>
+                    <div className="estate-dock-stage-head"><b>{st.name}</b> <span>{i < r.stage ? 'Done' : pctLabel(pct)}</span></div>
+                    <Bar v={pct} />
+                    {current && (
+                      <>
+                        {(() => {
+                          const left = Math.max(0, st.chips - (row.chips ?? 0));
+                          const add = Math.min(left, RIG_CHIP_STEP, afford);
+                          const fill = Math.min(left, afford);
+                          return (
+                            <div className="estate-dock-part">
+                              <small>Chips: {chips(row.chips ?? 0)} / {chips(st.chips)}</small>
+                              {me && left > 0 && (
+                                <div className="estate-dock-actions">
+                                  <button type="button" className="estate-dock-btn" data-testid={`estate-dock-add-chips-${r.id}`} disabled={add < 1} onClick={() => void onCall('estate_rig_contribute', { id: r.id, part: 'chips', qty: add })}>Add {chips(add)}</button>
+                                  {fill > add && <button type="button" className="estate-dock-btn estate-dock-fill" data-testid={`estate-dock-fill-chips-${r.id}`} onClick={() => void onCall('estate_rig_contribute', { id: r.id, part: 'chips', qty: fill })}>Fill {chips(fill)}</button>}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                        {st.goods.map(([id, need]) => {
+                          const have = row[`good:${id}`] ?? 0;
+                          const left = Math.max(0, need - have);
+                          const step = Math.min(left, Math.max(1, Math.ceil(need / 10)));
+                          const catalog = (n: number) => n * priceOf(id);
+                          const name = GOODS[id]?.name ?? id;
+                          return (
+                            <div key={id} className="estate-dock-part">
+                              <small>{name}: {chips(have)} / {chips(need)} · 🪙 {chips(priceOf(id))} each if you need to buy</small>
+                              {me && left > 0 && (
+                                <div className="estate-dock-actions">
+                                  <button type="button" className="estate-dock-btn" data-testid={`estate-dock-add-good:${id}-${r.id}`} onClick={() => void onCall('estate_rig_contribute', { id: r.id, part: id, qty: step })}>Add {chips(step)}{catalog(step) > 0 ? ` · 🪙 ${chips(catalog(step))}` : ''}</button>
+                                  {left > step && <button type="button" className="estate-dock-btn estate-dock-fill" data-testid={`estate-dock-fill-good:${id}-${r.id}`} onClick={() => void onCall('estate_rig_contribute', { id: r.id, part: id, qty: left })}>Fill {chips(left)} · 🪙 {chips(catalog(left))}</button>}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

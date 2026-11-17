@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-17T11:50:00-06:00", "title": "Shore Construction Dock shows build progress", "bullets": [
+    "The dock now lets you add chips or materials to a rig, or fill what is left, instead of only a 10,000-chip button. Each stage has a progress bar, and a message appears when a contribution or launch works or fails. Construction costs and rules are the same; 10,000 chips was only a step, not a cap.",
+  ]},
   {"commit": "", "at": "2026-11-17T09:10:00-06:00", "title": "Shore Construction Dock opens on phones", "bullets": [
     "The Shore Construction Dock now opens as a full-screen sheet on phones, so you can read it, scroll it and close it. The plastics plant and other private-works screens use the same sheet. Gameplay is unchanged.",
   ]},
