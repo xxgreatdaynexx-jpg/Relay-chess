@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-18T13:30:00-06:00", "title": "Cooler auto-process now sells fish too small to fillet", "bullets": [
+    "When Auto-process to the factory runs, city cooler fish that are too small to make a single fillet (and junk like boots and cans) are now sold to the fishmonger instead of piling up in your cooler. They sell at the normal prices and count toward the normal daily lake / reef / deep caps — once a cap is reached, the rest wait in the cooler for the next day.",
+    "Fish that are only waiting for factory storage space are not sold; they still become fillets once there is room. Nothing is sold while Auto-process is off.",
+  ]},
   {"commit": "", "at": "2026-11-18T08:30:00-06:00", "title": "Corn buffed: higher harvest value and new corn products", "bullets": [
     "Corn now pays 25% more when you harvest it, and its factory value matches. Seed cost and grow time are unchanged, so a corn field earns about twice the profit it did. Cornmeal, sugar and everything made from them are worth a little more too.",
     "Three new corn products: the Mill & Press turns 2 corn into Corn Syrup, and the Food Line makes Kettle Corn (corn, corn syrup and sugar) and Corn Whiskey (cornmeal and corn syrup). They are priced like every other farm food step.",

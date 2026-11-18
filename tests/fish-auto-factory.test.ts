@@ -83,7 +83,7 @@ describe('auto-process cooler fish to the factory', () => {
     expect(s.qty('fish_fillet')).toBe(fishImportQty(24, false)); // bass only
     expect(s.qty('fish_portion')).toBe(fishImportQty(60, true)); // pan-fried cooler salmon
     const left = await s.unsold();
-    expect(left.map((r) => r.id).sort()).toEqual(['c', 'd']); // junk + resort stay
+    expect(left.map((r) => r.id).sort()).toEqual(['d']); // resort stays; city junk is auto-sold (tests/fish-auto-sell-small)
     expect((await s.pool.query('SELECT sold_at FROM kitchen_dishes WHERE id = $1', ['k1'])).rows[0].sold_at).toBeNull(); // fridge dishes are manual only
     // Second pass creates nothing extra.
     expect(await f.autoSweep((name) => s.hook(name))).toBe(0);

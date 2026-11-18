@@ -192,7 +192,7 @@ export class Fishing {
   reelIn(name: string) { this.casts.delete(keyOf(name)); }
 
   /** Sell from the cooler (all, or the given ids) for chips: daily tiers on base value, then the price index. */
-  async sell(name: string, ids?: unknown, qtyIn?: unknown): Promise<{ sold: number; gross: number; paid: number; chips: number; captainCut?: number }> {
+  async sell(name: string, ids?: unknown, qtyIn?: unknown, memoLabel = 'Fish market'): Promise<{ sold: number; gross: number; paid: number; chips: number; captainCut?: number }> {
     const key = keyOf(name);
     return this.lock(`c:${key}`, async () => {
       const all = await this.cooler(key);
@@ -222,7 +222,7 @@ export class Fishing {
       const fPaid = live.reduce((a, b) => a + b.paid, 0); const paid = fPaid + dPaid;
       if (paid <= 0 || !rows.length) throw new FishError(rawRows.length && !live.length ? "The fishmonger has bought all they can from you today. Come back after 00:00 UTC (or release your catch)." : 'You have hit today\'s cooking sales cap (shared by every dish you cook). Come back after 00:00 UTC (6 PM CST).');
       const counts = new Map<string, number>(); for (const r of rows) counts.set(fishById(r.fish)?.label ?? r.fish, (counts.get(fishById(r.fish)?.label ?? r.fish) ?? 0) + 1);
-      const memo = `Fish market: sold ${[...counts].map(([l, n]) => `${n} ${l}`).join(', ')}`.slice(0, 200);
+      const memo = `${memoLabel}: sold ${[...counts].map(([l, n]) => `${n} ${l}`).join(', ')}`.slice(0, 200);
       const body = async (cl: pg.PoolClient) => {
         const ph = rows.map((_, i) => `$${i + 3}`).join(',');
         const u = await cl.query(`UPDATE fish_catches SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND loc IN ('warehouse', 'resort') AND id IN (${ph})`, [this.clock(), key, ...rows.map((r) => r.id)]);
@@ -339,14 +339,35 @@ export class Fishing {
     }).then(async result => { await refillCooler(name); return result; });
   }
   /** Server auto-process: city cooler fish only, move what fits, never throw on empty / full storage. */
-  async autoProcess(name: string, sink: ImportSink, room: (id: string) => number): Promise<{ moved: number; items: Array<[string, number]> }> {
-    return this.toFactory(name, undefined, sink, { partial: true, coolerOnly: true, emptyOk: true, room });
+  async autoProcess(name: string, sink: ImportSink, room: (id: string) => number): Promise<{ moved: number; items: Array<[string, number]>; sold: number; paid: number }> {
+    const r = await this.toFactory(name, undefined, sink, { partial: true, coolerOnly: true, emptyOk: true, room });
+    const s = await this.sellUnprocessable(name);
+    return { ...r, ...s };
+  }
+  /**
+   * Auto-process follow-up: city-warehouse cooler fish that can never become factory goods (junk, or too small
+   * to yield one fillet / portion) go through the normal sell() path — same prices, buffs and daily caps.
+   * Whatever a capped spot can't take stays in the cooler (never deleted). Fish waiting only on factory room are
+   * not touched here: they still yield goods once storage frees up.
+   */
+  async sellUnprocessable(name: string): Promise<{ sold: number; paid: number }> {
+    const key = keyOf(name);
+    const rows = (await this.pool.query("SELECT id, species, value, dish FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND loc = $2", [key, WAREHOUSE])).rows as Array<{ id: string; species: string; value: number; dish: string | null }>;
+    const ids = rows.filter((r) => fishById(r.species)?.rarity === 'junk' || fishImportQty(Number(r.value), !!r.dish) <= 0).map((r) => r.id);
+    if (!ids.length) return { sold: 0, paid: 0 };
+    try {
+      const r = await this.sell(name, ids, undefined, 'Cooler auto-sell (too small to fillet)');
+      return { sold: r.sold, paid: r.paid };
+    } catch (e) {
+      if (e instanceof FishError) return { sold: 0, paid: 0 }; // daily cap reached / nothing sellable: leave them in the cooler
+      throw e;
+    }
   }
 
   /**
    * One auto-process pass for every player who opted in (online or offline). Runs on the server timer, not a
-   * client action, so it does not spend the fishing socket rate-limit tokens. Does not sell fish or touch
-   * daily payout tiers. Kitchen fridge dishes and resort-map fish stay put (same rules as manual Bring-in for those).
+   * client action, so it does not spend the fishing socket rate-limit tokens. Only fish too small to fillet (and
+   * junk) are sold, through the normal sell() caps; everything else is factory-only. Kitchen fridge dishes and resort-map fish stay put (same rules as manual Bring-in for those).
    */
   async autoSweep(makeSink?: (name: string) => FishAutoIo | null): Promise<number> {
     if (isMillionairePrelaunch(this.clock())) return 0;
@@ -360,7 +381,7 @@ export class Fishing {
         const io = hook(name);
         if (!io) continue;
         const result = await this.autoProcess(name, io.sink, io.room);
-        if (result.moved) n++;
+        if (result.moved || result.sold) n++;
       } catch (e) { console.warn('[fish-auto]', name, (e as Error).message); }
     }
     return n;
