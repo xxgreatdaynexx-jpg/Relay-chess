@@ -11,7 +11,7 @@ const made = new Set(FRECIPES.map((r) => r.out[0]));
 const FORT_GOODS = new Set(Object.values(FORT_IMPORT).map((f) => f.good)); // shipped in from Fort McChud (plastics -> plastic resin)
 const obtainable = (k: string) => { const [t, id] = k.split(':'); return (t === 'ore' && isOre(id)) || made.has(k) || (GOODS[id]?.type === t && !!GOODS[id]?.raw) || (t === 'good' && FORT_GOODS.has(id!)); };
 // Crop margins (2026-11-04): crop/farm-food goods are priced at seed chain x 1.3, so a higher-tier one only matches its inputs.
-const CROP_GOODS = new Set(['flour',  'cornmeal',  'sugar',  'berry_juice',  'tropical_juice',  'sunflower_oil',  'cocoa',  'coconut_milk',  'wine',  'bread',  'chocolate',  'pumpkin_pie',  'salsa',  'veggie_soup',  'banquet',  'starch',  'carrot_juice',  'mango_puree',  'grape_juice',  'pumpkin_seeds',  'tomato_paste',  'pasta_dinner',  'choc_cake',  'jam_jar',  'cornbread',  'smoothie',  'fish_pie',  'apple_juice',  'cider',  'apple_pie',  'cherry_pie',  'peach_jam',  'orange_juice']);
+const CROP_GOODS = new Set(['flour',  'cornmeal',  'sugar',  'berry_juice',  'tropical_juice',  'sunflower_oil',  'cocoa',  'coconut_milk',  'wine',  'bread',  'chocolate',  'pumpkin_pie',  'salsa',  'veggie_soup',  'banquet',  'starch',  'carrot_juice',  'mango_puree',  'grape_juice',  'pumpkin_seeds',  'tomato_paste',  'pasta_dinner',  'choc_cake',  'jam_jar',  'cornbread',  'smoothie',  'fish_pie',  'apple_juice',  'cider',  'apple_pie',  'cherry_pie',  'peach_jam',  'orange_juice', 'corn_syrup', 'kettle_corn', 'corn_whiskey']);
 const gainPerSec = (r: (typeof FRECIPES)[number]) => (recipeOut(r) - recipeIn(r)) / r.secs;
 
 describe('mu-factory: doubled recipes stay balanced', () => {

@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-18T08:30:00-06:00", "title": "Corn buffed: higher harvest value and new corn products", "bullets": [
+    "Corn now pays 25% more when you harvest it, and its factory value matches. Seed cost and grow time are unchanged, so a corn field earns about twice the profit it did. Cornmeal, sugar and everything made from them are worth a little more too.",
+    "Three new corn products: the Mill & Press turns 2 corn into Corn Syrup, and the Food Line makes Kettle Corn (corn, corn syrup and sugar) and Corn Whiskey (cornmeal and corn syrup). They are priced like every other farm food step.",
+  ]},
   {"commit": "", "at": "2026-11-17T13:10:00-06:00", "title": "Glasshouse flowers pay 50% more", "bullets": [
     "Tulips, roses, orchids, saffron, wasabi and vanilla — the crops you unlock by finishing a hyper farm glasshouse — now pay 50% more when you harvest them. Their factory value matches the new harvest price. Seed costs and grow times are unchanged, and every other crop is the same.",
   ]},

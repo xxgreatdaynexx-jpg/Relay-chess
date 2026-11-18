@@ -410,6 +410,10 @@ export const GOODS: Record<string, ItemDef> = {
   cornbread: { type: 'good', id: 'cornbread', name: 'Cornbread', price: 97.5, color: '#e0b040', food: true },
   smoothie: { type: 'good', id: 'smoothie', name: 'Tropical Smoothie', price: 188.5, color: '#f0a0b0', food: true },
   fish_pie: { type: 'good', id: 'fish_pie', name: 'Fish Pie', price: 152, color: '#e8c890', food: true },
+  // Corn products (placeholder prices; applyFarmFishFoodPrices sets them from inputs).
+  corn_syrup: { type: 'good', id: 'corn_syrup', name: 'Corn Syrup', price: 91, color: '#f0c050', food: true },
+  kettle_corn: { type: 'good', id: 'kettle_corn', name: 'Kettle Corn', price: 90, color: '#f6e6a0', food: true },
+  corn_whiskey: { type: 'good', id: 'corn_whiskey', name: 'Corn Whiskey', price: 250, color: '#c8822a', food: true },
   // Coral Grotto exclusives (#10d)
   cut_opal:        { type: 'good', id: 'cut_opal',        name: 'Cut Fire Opal',    price: 70,   color: '#ff7a4a' },
   pearl_necklace:  { type: 'good', id: 'pearl_necklace',  name: 'Pearl Necklace',   price: 370,  color: '#eef2ff' },

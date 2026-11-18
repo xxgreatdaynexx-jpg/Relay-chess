@@ -34,6 +34,8 @@ export const FARM_SELL_MUL = 0.95;
 export const HYPER_CROP_SELL_MUL = 1.5;
 /** Listed sell so cropSellValue (= sell x FARM_SELL_MUL) ≈ seed x CROP_SEED_MUL. */
 export const cropListSell = (seed: number) => Math.round((seed * CROP_SEED_MUL) / FARM_SELL_MUL * 100) / 100;
+/** Corn pays 25% more than the standard raw margin (harvest, pantry and factory raw value). Seed cost is unchanged. */
+export const CORN_SELL_MUL = 1.25;
 
 /** Crop margins: raw harvest profits 35% of seed (after FARM_SELL_MUL). Factory food steps add +8% on inputs separately. */
 /** Base chips. Fast crops pay little per hour unless you keep coming back; slow ones are the big money per click. */
@@ -41,7 +43,7 @@ export const CROPS: Crop[] = [
   { id: 'strawberry', label: 'Strawberries', emoji: '🍓', seed: 5, grow: growMs(4 * M), sell: cropListSell(5), color: 0xd84a5a },
   { id: 'wheat', label: 'Wheat', emoji: '🌾', seed: 10, grow: growMs(10 * M), sell: cropListSell(10), color: 0xd8b860 },
   { id: 'carrot', label: 'Carrots', emoji: '🥕', seed: 15, grow: growMs(30 * M), sell: cropListSell(15), color: 0xe08a3a },
-  { id: 'corn', label: 'Corn', emoji: '🌽', seed: 25, grow: growMs(60 * M), sell: cropListSell(25), color: 0xe8d050 },
+  { id: 'corn', label: 'Corn', emoji: '🌽', seed: 25, grow: growMs(60 * M), sell: cropListSell(25 * CORN_SELL_MUL), color: 0xe8d050 },
   { id: 'tobacco', label: 'Tobacco', emoji: '🌿', seed: 30, grow: growMs(90 * M), sell: cropListSell(30), color: 0x8a6a3a },
   { id: 'tomato', label: 'Tomatoes', emoji: '🍅', seed: 40, grow: growMs(2 * H), sell: cropListSell(40), color: 0xd8443a },
   { id: 'potato', label: 'Potatoes', emoji: '🥔', seed: 60, grow: growMs(4 * H), sell: cropListSell(60), color: 0xb08a5a },
@@ -63,6 +65,8 @@ export const HYPER_CROPS: Crop[] = [
   { id: 'vanilla', label: 'Vanilla', emoji: '🌾', seed: 900, grow: growMs(32 * H), sell: cropListSell(900), color: 0xf0e0c0 },
 ];
 export const isHyperCrop = (id: unknown) => HYPER_CROPS.some((c) => c.id === id);
+/** Crops whose sell value is above the standard seed x CROP_SEED_MUL margin; their factory raw price follows cropSellValue. */
+export const hasBuffedSell = (id: unknown) => id === 'corn' || isHyperCrop(id);
 /**
  * Fruit trees for Orchard Ridge. `seed` is the one-time sapling cost (house-cap planting bonus applies).
  * `grow` is sapling → first fruit (several real days after GROW_SCALE). `cycle` is the repeating

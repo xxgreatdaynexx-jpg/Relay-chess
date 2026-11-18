@@ -3,7 +3,7 @@
  * Items are stack keys `type:id` (same as mine_items / stackKey), so input/output chests read and write banked storage directly.
  */
 import { GOODS, ORES, MAX_BANKED_STACK, isOre, priceOf, nameOf, sellable, type ItemType, type Stack } from './mines.js';
-import { CROPS, CROP_SEED_MUL, HYPER_CROPS, ORCHARD_TREES, cropSellValue, cropUnitSeed, isHyperCrop } from './farm.js';
+import { CROPS, CROP_SEED_MUL, HYPER_CROPS, ORCHARD_TREES, cropSellValue, cropUnitSeed, hasBuffedSell } from './farm.js';
 import { TROPICAL_CROPS } from './resort.js';
 
 export const TICK_MS = 500;
@@ -200,6 +200,10 @@ export const FRECIPES: FRecipe[] = [
   R('d_insulated_cable', 'drawer', [['good:wire', 3], ['good:plastic_resin', 1]], ['good:insulated_cable', 1], 6),
   R('a_plastic_crate', 'assembler', [['good:plastic_resin', 3], ['good:screw', 4]], ['good:plastic_crate', 1], 8),
   R('f_appliance', 'fabricator', [['good:motor', 1], ['good:circuit', 1], ['good:plastic_resin', 4], ['good:iron_sheet', 2]], ['good:appliance', 1], 30),
+  // Corn products: priced like every farm food step (inputs x FOOD_STEP_MARKUP).
+  R('m_corn_syrup', 'mill', [['good:crop_corn', 2]], ['good:corn_syrup', 1], 4),
+  R('k_kettle_corn', 'cannery', [['good:crop_corn', 2], ['good:corn_syrup', 1], ['good:sugar', 1]], ['good:kettle_corn', 2], 6),
+  R('k_corn_whiskey', 'cannery', [['good:cornmeal', 3], ['good:corn_syrup', 1]], ['good:corn_whiskey', 1], 12),
 ];
 
 export const PRESTIGE_RECIPE_IDS = new Set(['j_cufflinks', 'j_signet', 'j_diadem', 'j_laurel', 'f_chandelier', 'f_limousine', 'f_city_seal', 'f_grand_clock', 'f_vault_door']);
@@ -544,12 +548,12 @@ export function applyFarmFishFoodPrices(markup = FOOD_STEP_MARKUP): string[] {
   }
   return touched;
 }
-/** Keep raw crop GOODS prices in lockstep with harvest value (seed x margin, plus the glasshouse flower buff). */
+/** Keep raw crop GOODS prices in lockstep with harvest value (seed x margin, plus the corn and glasshouse flower buffs). */
 export function applyRawCropPrices(mul = CROP_SEED_MUL): string[] {
   const touched: string[] = [];
   for (const c of [...CROPS, ...TROPICAL_CROPS, ...ORCHARD_TREES, ...HYPER_CROPS]) {
     const id = `crop_${c.id}`; const g = GOODS[id]; if (!g) throw new Error(`GOODS missing for ${id}`);
-    g.price = isHyperCrop(c.id) ? cropSellValue(c) : mul * cropUnitSeed(c); touched.push(id);
+    g.price = hasBuffedSell(c.id) ? cropSellValue(c) : mul * cropUnitSeed(c); touched.push(id);
   }
   return touched;
 }

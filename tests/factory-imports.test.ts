@@ -6,7 +6,7 @@ import { RealEstate } from '../server/realEstate';
 import { Farm, type ImportSink } from '../server/farm';
 import { Fishing, fishImportQty } from '../server/fishing';
 import { writeImport } from '../server/factory';
-import { CROPS, CROP_SEED_MUL, farmPlots } from '../shared/farm';
+import { CROPS, CROP_SEED_MUL, cropSellValue, farmPlots } from '../shared/farm';
 import { TROPICAL_CROPS } from '../shared/resort';
 import { FORT_IMPORT } from '../shared/plasticsPlant';
 import { GOODS, ORES, sellable, isFood } from '../shared/mines';
@@ -31,7 +31,7 @@ describe('factory: more recipes + game resources in (pt1252u)', () => {
   });
   it('every input is either raw (ore / imported crop or fish) or made by another recipe; chains go several tiers deep', () => {
     for (const r of FRECIPES) for (const [k] of r.in) expect(keyIsRaw(k) || !!madeBy(k), `${r.id} needs ${k}`).toBe(true);
-    for (const c of [...CROPS, ...TROPICAL_CROPS]) { const g = GOODS[`crop_${c.id}`]; expect(g?.raw, c.id).toBe(true); expect(g!.price).toBeCloseTo(c.seed * CROP_SEED_MUL, 2); } // crop margins: reference = seed x CROP_SEED_MUL (raw harvest value)
+    for (const c of [...CROPS, ...TROPICAL_CROPS]) { const g = GOODS[`crop_${c.id}`]; expect(g?.raw, c.id).toBe(true); expect(g!.price, c.id).toBeCloseTo(c.id === 'corn' ? cropSellValue(c) : c.seed * CROP_SEED_MUL, 2); } // crop margins: reference = seed x CROP_SEED_MUL (raw harvest value)
     for (const c of [...CROPS, ...TROPICAL_CROPS]) expect(usedIn(`good:crop_${c.id}`).length, `${c.id} has a use`).toBeGreaterThan(0);
     expect(usedIn('good:fish_fillet').length).toBeGreaterThan(0); expect(usedIn('good:fish_portion').length).toBeGreaterThan(0);
     expect(tierOf('good:robot')).toBeGreaterThanOrEqual(4); expect(tierOf('good:chocolate')).toBe(2); expect(tierOf('good:banquet')).toBe(3);

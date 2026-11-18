@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CROPS, FARM_SELL_MUL, CROP_SEED_MUL, cropProfit, cropSellValue } from '../shared/farm';
+import { CROPS, CORN_SELL_MUL, FARM_SELL_MUL, CROP_SEED_MUL, cropProfit, cropSellValue } from '../shared/farm';
 import { TROPICAL_CROPS } from '../shared/resort';
 import { GOODS, priceOf } from '../shared/mines';
 import { FRECIPES, FOOD_STEP_MARKUP, applyFarmFishFoodPrices, farmFishFoodRecipes, madeBy, recipeIn } from '../shared/factory';
@@ -8,18 +8,20 @@ import { sellBuffOf, houseSellPrice } from '../shared/sellBuff';
 // Raw farm output = seed x CROP_SEED_MUL (1.35); each farm/fish factory step adds FOOD_STEP_MARKUP (1.08).
 const ALL = [...CROPS, ...TROPICAL_CROPS];
 const seedOf = new Map(ALL.map((c) => [`good:crop_${c.id}`, c.seed]));
+/** Corn carries its own sell buff on top of the standard margin. */
+const rawMul = (id: string) => CROP_SEED_MUL * (id === 'corn' ? CORN_SELL_MUL : 1);
 
 describe('Crop margins: raw 35% over seed, factory +8% per step', () => {
   it('raw harvest profit is 35% of the seed for every crop (after FARM_SELL_MUL)', () => {
-    for (const c of ALL) expect(cropProfit(c)).toBeCloseTo((CROP_SEED_MUL - 1) * c.seed, 1);
+    for (const c of ALL) expect(cropProfit(c), c.id).toBeCloseTo((rawMul(c.id) - 1) * c.seed, 1);
     expect(FARM_SELL_MUL).toBe(0.95);
     expect(CROP_SEED_MUL).toBe(1.35);
   });
   it('crop reference prices (recipe value) = seed x 1.35', () => {
-    for (const c of ALL) expect(GOODS[`crop_${c.id}`].price).toBeCloseTo(CROP_SEED_MUL * c.seed, 2);
+    for (const c of ALL) expect(GOODS[`crop_${c.id}`].price, c.id).toBeCloseTo(c.id === 'corn' ? cropSellValue(c) : CROP_SEED_MUL * c.seed, 2);
   });
   it('cropSellValue matches seed x 1.35', () => {
-    for (const c of ALL) expect(cropSellValue(c)).toBeCloseTo(CROP_SEED_MUL * c.seed, 1);
+    for (const c of ALL) expect(cropSellValue(c), c.id).toBeCloseTo(rawMul(c.id) * c.seed, 1);
   });
   it('every farm/fish food craft output equals (input sum / out qty) x FOOD_STEP_MARKUP', () => {
     applyFarmFishFoodPrices(); // idempotent
