@@ -330,7 +330,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
           <div className="fac-tabs">
             {(['build', 'shop', 'recipes', 'import'] as const).map((t) => <button type="button" key={t} className={side === t ? 'on' : ''} onClick={() => setSide(t)} data-testid={`fac-tab-${t}`}>{t === 'build' ? '🧰 Build' : t === 'shop' ? '🛒 Machinist' : t === 'recipes' ? '📜 Recipes' : '🚚 Bring in'}</button>)}
           </div>
-          {selEnt && <Inspect e={selEnt} storage={storageList} store={sim.current.store} onEdit={(b) => call('fac_edit', { id: selEnt.id, ...b })} onRemove={() => { call('fac_remove', { ids: [selEnt.id] }); clearSel(); }} sell={<FactoryMachineSell key={selEnt.id} id={selEnt.id} kind={selEnt.k} name={KINDS[selEnt.k].name} ask={ask} flash={flash} onSold={() => clearSel()} />} onMove={() => { setMoving(selEnt.id); setMovingGroup(false); setDir(selEnt.d); }} onClose={() => clearSel()} />}
+          {selEnt && <Inspect e={selEnt} storage={storageList} store={sim.current.store} onEdit={(b) => call('fac_edit', { id: selEnt.id, ...b })} onRemove={() => { call('fac_remove', { ids: [selEnt.id] }); clearSel(); }} onTake={(item, qty) => call('fac_chest_take', { id: selEnt.id, ...(item ? { item } : {}), ...(qty ? { qty } : {}) }, (r) => { const res = r.result as { moved?: Array<[string, number]>; full?: boolean } | undefined; const m = res?.moved ?? []; flash(`Took out ${m.map(([k, q]) => `${q}× ${nameOfKey(k)}`).join(', ') || 'nothing'}${res?.full ? '. Storage is full; the rest stays in the chest.' : '.'}`); })} sell={<FactoryMachineSell key={selEnt.id} id={selEnt.id} kind={selEnt.k} name={KINDS[selEnt.k].name} ask={ask} flash={flash} onSold={() => clearSel()} />} onMove={() => { setMoving(selEnt.id); setMovingGroup(false); setDir(selEnt.d); }} onClose={() => clearSel()} />}
           {side === 'build' && <div className="fac-palette">
             {KIND_ORDER.map((k) => (
               <button type="button" key={k} disabled={!kitN(k)} className={tool === k ? 'on' : ''} onClick={() => { setTool(k); clearSel(); }} title={KINDS[k].desc} data-testid={`fac-pal-${k}`}>
@@ -395,7 +395,7 @@ function Chain({ k, pick }: { k: string; pick: (k: string) => void }) {
 
 function Dot({ k }: { k: string }) { return <ItemIcon k={k} size={16} />; }
 
-export function Inspect({ e, storage, store, onEdit, onRemove, onMove, onClose, sell }: { e: Ent; storage: string[]; store: Map<string, number>; onEdit: (b: object) => void; onRemove: () => void; onMove: () => void; onClose: () => void; sell?: React.ReactNode }) {
+export function Inspect({ e, storage, store, onEdit, onRemove, onMove, onClose, sell, onTake }: { e: Ent; storage: string[]; store: Map<string, number>; onEdit: (b: object) => void; onRemove: () => void; onMove: () => void; onClose: () => void; sell?: React.ReactNode; onTake?: (item?: string, qty?: number) => void }) {
   const d = KINDS[e.k]; const r = frecipe(e.r);
   return (
     <div className="fac-inspect" data-testid="fac-inspect">
@@ -415,6 +415,7 @@ export function Inspect({ e, storage, store, onEdit, onRemove, onMove, onClose, 
         <p className="mines-note">Sells delivered items to the house at the normal price. When the daily house cap is reached, items wait here.</p>
         <FactorySearchSelect label="Only accept" value={e.f ?? ''} testid="fac-sell-filter" placeholder={{ value: '', label: '— anything sellable —' }} onPick={(v) => onEdit({ f: v || null })} opts={[...new Set([...storage, ...Object.keys(e.ib ?? {})])].map((k) => ({ value: k, label: nameOfKey(k) }))} />
         {!!Object.values(e.ib ?? {}).some((q) => q > 0) && <p className="mines-note" data-testid="fac-sell-waiting">Waiting: {Object.entries(e.ib ?? {}).filter(([, q]) => q > 0).map(([k, q]) => `${q}× ${nameOfKey(k)}`).join(', ')}</p>}
+        {onTake && <ChestTake e={e} onTake={onTake} />}
       </>}
       {e.k === 'chest_in' && <FactorySearchSelect label="Pulls" value={e.f ?? ''} testid="fac-filter" placeholder={{ value: '', label: '— nothing —' }} onPick={(v) => onEdit({ f: v || null })} opts={storage.map((k) => ({ value: k, label: `${nameOfKey(k)} (${store.get(k) ?? 0} banked)`, search: nameOfKey(k) }))} />}
       <div className="fac-iact">
@@ -423,6 +424,25 @@ export function Inspect({ e, storage, store, onEdit, onRemove, onMove, onClose, 
         <button type="button" onClick={onRemove}>🧲 Pick up</button>
         {d.machine && sell}
       </div>
+    </div>
+  );
+}
+
+/** Take waiting items out of an auto-sell chest back to factory storage (only what fits; the rest stays). */
+export function ChestTake({ e, onTake }: { e: Ent; onTake: (item?: string, qty?: number) => void }) {
+  const waiting = Object.entries(e.ib ?? {}).filter(([, q]) => q > 0);
+  const [n, setN] = useState<Record<string, number>>({});
+  if (!waiting.length) return null;
+  return (
+    <div className="fac-chest-take" data-testid="fac-chest-take">
+      <div><b>Take out</b> <small>(back to factory storage; only what fits)</small></div>
+      {waiting.map(([k, q]) => <div key={k} className="fac-iact">
+        <span>{nameOfKey(k)} ({q})</span>
+        <input type="number" min={1} max={q} step={1} value={n[k] ?? ''} placeholder="qty" data-testid={`fac-take-n-${k}`} onChange={(ev) => setN((o) => ({ ...o, [k]: Math.max(1, Math.min(q, Math.floor(Number(ev.target.value) || 1))) }))} style={{ width: '5em', background: 'rgba(0,0,0,.4)', border: '1px solid #666', borderRadius: 4, color: 'inherit', padding: '0 4px' }} />
+        <button type="button" data-testid={`fac-take-${k}`} disabled={!n[k]} onClick={() => onTake(k, n[k])}>Take</button>
+        <button type="button" data-testid={`fac-take-all-${k}`} onClick={() => onTake(k)}>All</button>
+      </div>)}
+      {waiting.length > 1 && <div className="fac-iact"><button type="button" data-testid="fac-take-everything" onClick={() => onTake()}>Take everything</button></div>}
     </div>
   );
 }

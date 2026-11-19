@@ -95,7 +95,7 @@ export class FactoryWorld {
     if (now - s.at >= TICK_MS) s.at = now - ((now - s.at) % TICK_MS); // idle past the 8h window: skip, no production
     if (owner) s.seen = now;
     if (s.at !== before || owner) this.mark(account, plant);
-    this.scheduleAutoSell(account, s, now);
+    this.scheduleAutoSell(account, s, now, plant);
     return s;
   }
   /** Old timed jobs: every job (finished or not) is paid out as finished output, so nobody loses a batch. */
@@ -190,13 +190,13 @@ export class FactoryWorld {
   private autoSelling = new Set<string>();
   private autoSellTail = new Map<string, Promise<unknown>>();
   /** Test hook: wait until a scheduled auto-sell for this account finishes (or is already idle). */
-  async waitAutoSell(account: string) { const p = this.autoSellTail.get(playerKey(account)); if (p) await p; }
+  async waitAutoSell(account: string, plant?: string | null) { const p = this.autoSellTail.get(this.plantKey(account, plant)); if (p) await p; }
 
-  private scheduleAutoSell(account: string, s: FState, now: number) {
-    const k = playerKey(account);
+  private scheduleAutoSell(account: string, s: FState, now: number, plant?: string | null) {
+    const k = this.plantKey(account, plant);
     if (this.autoSelling.has(k) || this.selling.has(k)) return;
     if (!s.ents.some((e) => e.k === 'chest_sell' && stacksInChest(e).length)) return;
-    const p = this.flushAutoSell(account, s, now).catch((err) => { console.error('[factory] auto-sell failed:', (err as Error).message); });
+    const p = this.flushAutoSell(account, s, now, plant).catch((err) => { console.error('[factory] auto-sell failed:', (err as Error).message); });
     this.autoSellTail.set(k, p);
     void p.finally(() => { if (this.autoSellTail.get(k) === p) this.autoSellTail.delete(k); });
   }
@@ -205,8 +205,8 @@ export class FactoryWorld {
    * Sell whatever auto-sell chests currently hold, up to the remaining daily house cap. Leftovers stay in the chest.
    * Chips, the daily cap, and the factory_v2 row commit in one transaction (same fail-closed pattern as machine sales).
    */
-  private async flushAutoSell(account: string, s: FState, now: number): Promise<{ paid: number; sold: Stack[] } | null> {
-    const k = playerKey(account);
+  private async flushAutoSell(account: string, s: FState, now: number, plant?: string | null): Promise<{ paid: number; sold: Stack[] } | null> {
+    const k = this.plantKey(account, plant);
     if (this.autoSelling.has(k) || this.selling.has(k)) return null;
     const chests = s.ents.filter((e) => e.k === 'chest_sell');
     if (!chests.length) return null;
@@ -261,7 +261,7 @@ export class FactoryWorld {
       if (made > 0) awardXp(account, 'engineering', made * 2);
       if (food > 0) awardXp(account, 'cooking', food * 2);
     };
-    const unlock = () => { this.selling.delete(k); this.autoSelling.delete(k); this.mark(account); };
+    const unlock = () => { this.selling.delete(k); this.autoSelling.delete(k); this.mark(account, plant); };
     let done: Promise<unknown> = Promise.resolve(); let failed: Error | null = null; let unknown = false; let late: boolean | null = null; let rows: unknown[] | null = null;
     const ok = mines.adjustStacks(account, [], [upsert(k, account.trim(), s), ...sale.stmts], (r) => { rows = r; }, {
       after: sale.w.after,
@@ -359,6 +359,42 @@ export class FactoryWorld {
     if (unknown) { if (late) return; throw new MineError(`That sale did not go through. ${keptMsg}`); }
     unlock();
     if (failed) throw new MineError(`That sale did not go through. ${keptMsg}`);
+  }
+  /**
+   * Withdraw items waiting in an auto-sell chest back to banked factory storage (where picking the chest up sends them).
+   * Only what fits under the per-item storage cap moves; the rest stays in the chest. Refused while an auto-sell or
+   * machine sale for this factory is committing, so the sale's snapshot/restore can never resurrect withdrawn items.
+   * The chest and storage change persist together (pack + factory_v2 row in one save). The daily house cap is untouched.
+   */
+  withdraw(account: string | null, b: Record<string, unknown>, now: number, plant?: string | null) {
+    const busy = () => { const k = this.plantKey(account!, plant); return this.autoSelling.has(k) || this.selling.has(k); };
+    if (account && busy()) throw new MineError('This chest is selling right now. Try again in a moment.');
+    const { s } = this.need(account, now, plant);
+    if (busy()) throw new MineError('This chest is selling right now. Try again in a moment.'); // catch-up above may have started a sale
+    const e = s.ents.find((x) => x.id === b.id);
+    if (!e || e.k !== 'chest_sell') throw new MineError('That auto-sell chest is not there any more.');
+    const only = b.item === undefined || b.item === null ? null : b.item;
+    if (only !== null && typeof only !== 'string') throw new MineError('Unknown item.');
+    const qIn = b.qty;
+    if (qIn !== undefined && qIn !== null && qIn !== 'all' && (typeof qIn !== 'number' || !Number.isInteger(qIn) || qIn < 1)) throw new MineError('Pick how many to take out.');
+    if (only === null && typeof qIn === 'number') throw new MineError('Pick which item to take out.');
+    const keys = Object.keys(e.ib ?? {}).filter((key) => (e.ib![key] ?? 0) > 0 && (only === null || key === only));
+    if (!keys.length) throw new MineError(only ? 'None of that item is waiting in this chest.' : 'This chest is empty.');
+    const st = this.storage(account!);
+    const moved: Array<[string, number]> = []; let full = false;
+    for (const key of keys) {
+      const have = Math.floor(e.ib![key] ?? 0);
+      const want = typeof qIn === 'number' ? Math.min(qIn, have) : have;
+      const room = Math.max(0, MAX_BANKED_STACK - st.get(key));
+      const n = Math.min(want, room);
+      if (n < want) full = true;
+      if (n < 1) continue;
+      e.ib![key] = have - n; if (e.ib![key] <= 0) delete e.ib![key];
+      st.add(key, n); moved.push([key, n]);
+    }
+    if (!moved.length) throw new MineError('Your factory storage is full for that item.');
+    this.markNow(account!, s, false, plant);
+    return { moved, full, left: Object.fromEntries(Object.entries(e.ib ?? {}).filter(([, q]) => q > 0)) };
   }
   remove(account: string | null, ids: unknown, now: number, plant?: string | null) {
     const { s } = this.need(account, now, plant);
@@ -513,6 +549,7 @@ export function registerFactory(_io: Server, socket: Socket): void {
   socket.on('fac_sellkit_quote', op((b) => { const q = world.kitSellQuote(account(), b.kind, b.n, Date.now(), plantOf(b)); return { kind: q.kind, n: q.n, name: q.def.name, pay: q.pay }; }));
   socket.on('fac_sellkit', aop((a, b) => world.sellKit(a, b, Date.now(), plantOf(b))));
   socket.on('fac_sell', aop((a, b) => world.sell(a, b, Date.now(), plantOf(b))));
+  socket.on('fac_chest_take', op((b) => world.withdraw(account(), b, Date.now(), plantOf(b))));
   socket.on('fac_remove', op((b) => world.remove(account(), b.ids, Date.now(), plantOf(b))));
   socket.on('fac_edit', op((b) => world.edit(account(), b, Date.now(), plantOf(b))));
   socket.on('fac_move', op((b) => world.moveMany(account(), b, Date.now(), plantOf(b))));

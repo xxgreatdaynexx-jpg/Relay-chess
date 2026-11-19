@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-19T14:30:00-06:00", "title": "Auto-sell chest items can be withdrawn", "bullets": [
+    "Select an auto-sell chest in your factory to take waiting items back out to factory storage: a set amount, all of one item, or everything. Only what fits in storage moves; the rest stays in the chest.",
+    "The daily house sell cap is unchanged. Items left in the chest still sell when the cap has room again.",
+  ]},
   {"commit": "", "at": "2026-11-18T18:40:00-06:00", "title": "Private construction sites can add materials", "bullets": [
     "Data centers, bitcoin farms, monuments, mansions, highrises and power plants now let you add each material for a stage (warehouse stock first, then the catalog price), or fill what is left, instead of only a 10,000-chip button.",
     "Builds that stopped at about 94% with \"That part of this stage is already full\" can now finish: once a stage's chips are in, adding chips buys its missing materials at the catalog price. Construction costs are unchanged.",
