@@ -223,21 +223,39 @@ export class Estate {
     const partS = String(part ?? '');
     const q = Number(qtyRaw);
     if (!Number.isInteger(q) || q < 1) throw new EstateError('Pick an amount.');
-    const g = partS === 'chips' ? null : need.goods.find((x) => partKey(x) === partS);
+    let g = partS === 'chips' ? null : need.goods.find((x) => partKey(x) === partS) ?? null;
     if (partS !== 'chips' && !g) throw new EstateError(`${need.name} does not need that.`);
     const row = site.done[i] ?? (site.done[i] = {});
-    const left = (g ? g.qty : need.chips) - (row[partS === 'chips' ? 'chips' : partS] ?? 0);
-    if (left <= 0) throw new EstateError('That part of this stage is already full.');
-    const qty = Math.min(q, left);
-    if (g) {
-      // Prefer warehouse goods. The chip fallback is the design shown on the panel ("Add 10,000 chips") so a missing
-      // stock of materials cannot soft-lock the build.
-      const took = this.takeStacks(name, [{ type: g.type, id: g.id, qty }]);
-      if (!took) {
-        const price = px(g.price * qty);
-        this.charge(name, price, `estate_mat:${site.id}:${i}:${partS}:${row[partS] ?? 0}:${qty}`, `${plan.icon} ${plan.name}: ${qty} ${g.name}`);
+    let qWant = q;
+    if (!g && (row.chips ?? 0) >= need.chips) {
+      // The chips part is full but materials are still missing (stages read ~94% with chips alone). A chip
+      // contribution buys the next missing material at the catalog price instead of stalling the stage,
+      // so the "Add chips" step can always finish a build.
+      const next = need.goods.find((x) => (row[partKey(x)] ?? 0) < x.qty);
+      if (next) {
+        g = next;
+        qWant = Math.max(1, Math.floor(q / Math.max(1, px(next.price))));
       }
-      row[partS] = (row[partS] ?? 0) + qty;
+    }
+    const key = g ? partKey(g) : 'chips';
+    const left = (g ? g.qty : need.chips) - (row[key] ?? 0);
+    if (left <= 0) throw new EstateError('That part of this stage is already full.');
+    const qty = Math.min(qWant, left);
+    if (g) {
+      // Warehouse goods first (as many as you have), catalog price in chips for the rest, so a missing
+      // stock of materials cannot soft-lock the build.
+      const stock = Math.min(qty, this.warehouseQty(name, g.type, g.id));
+      const took = stock > 0 && this.takeStacks(name, [{ type: g.type, id: g.id, qty: stock }]) ? stock : 0;
+      const buy = qty - took;
+      if (buy > 0) {
+        try {
+          this.charge(name, px(g.price * buy), `estate_mat:${site.id}:${i}:${key}:${row[key] ?? 0}:${qty}`, `${plan.icon} ${plan.name}: ${buy} ${g.name}`);
+        } catch (e) {
+          if (took > 0) this.giveStacks(name, [{ type: g.type, id: g.id, qty: took }]);
+          throw e;
+        }
+      }
+      row[key] = (row[key] ?? 0) + qty;
     } else {
       const price = px(qty);
       this.charge(name, price, `estate_chip:${site.id}:${i}:${row.chips ?? 0}:${qty}`, `${plan.icon} ${plan.name}: chips for ${need.name}`);
@@ -506,7 +524,14 @@ export class Estate {
 
   siteView(s: EstateSiteState) {
     const plan = s.build ? ESTATE_BUILDS[s.build] : null;
-    const stages = plan ? estateStages(plan).map((st, i) => ({ ...st, done: s.done[i] ?? {}, pct: stagePct(st, s.done[i] ?? {}) })) : [];
+    const stages = plan ? estateStages(plan).map((st, i) => {
+      const done = s.done[i] ?? {};
+      const parts = [
+        { part: 'chips', name: 'Chips', need: st.chips, done: Math.min(st.chips, done.chips ?? 0), price: 1 },
+        ...st.goods.map((x) => ({ part: partKey(x), name: x.name, need: x.qty, done: Math.min(x.qty, done[partKey(x)] ?? 0), price: px(x.price), have: this.warehouseQty(s.owner, x.type, x.id) })),
+      ];
+      return { ...st, done, parts, pct: stagePct(st, done) };
+    }) : [];
     const complete = !!plan && s.stage >= (plan.stages.length);
     const gear = (s.build === 'data_center' || s.build === 'bitcoin_farm') ? GEAR_FOR[s.build] : null;
     return {

@@ -12,7 +12,7 @@ type SiteView = {
   lotId: string; build: EstateBuildId | null; stage: number; complete: boolean; gear: number; kind: string;
   was?: { type: string; label: string };
   plan?: { name: string; icon: string; blurb: string; total: number };
-  stages?: Array<{ id: string; name: string; chips: number; goods: Array<{ id: string; name: string; qty: number }>; done: Record<string, number>; pct: number }>;
+  stages?: Array<{ id: string; name: string; chips: number; goods: Array<{ id: string; name: string; qty: number }>; done: Record<string, number>; pct: number; parts?: HyperPart[] }>;
   gearDef?: { name: string; icon: string; price: number; mw: number; chipsPerHour: number; max: number; install?: Array<{ id: string; qty: number; name: string }> };
 };
 
@@ -210,7 +210,19 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
                 <p>Catalog total 🪙 {chips(site.plan.total)}.</p>
                 <ul>{(site.stages ?? []).map((s, i) => (
                   <li key={s.id}><b>{s.name}</b> — {Math.round((s.pct ?? 0) * 100)}%
-                    {canBuild && i === site.stage && !site.complete && <button type="button" onClick={() => void call('estate_contribute', { lotId: site.lotId, part: 'chips', qty: 10_000 })}>Add 10,000 chips</button>}
+                    {canBuild && i === site.stage && !site.complete && !s.parts && <button type="button" onClick={() => void call('estate_contribute', { lotId: site.lotId, part: 'chips', qty: 10_000 })}>Add 10,000 chips</button>}
+                    {i === site.stage && !site.complete && (s.parts ?? []).map((p) => {
+                      const left = Math.max(0, p.need - p.done);
+                      const step = p.part === 'chips' ? Math.min(left, 10_000) : Math.min(left, Math.max(1, Math.ceil(p.need / 10)));
+                      const cost = (n: number) => p.part === 'chips' ? n : Math.max(0, n - (p.have ?? 0)) * p.price;
+                      return <div key={p.part} className="estate-hyper-part" data-testid={`estate-site-part-${p.part}`}>
+                        <small>{p.name}: {chips(p.done)} / {chips(p.need)}{p.part !== 'chips' ? ` · in warehouse ${chips(p.have ?? 0)} · 🪙 ${chips(p.price)} each otherwise` : ''}</small>
+                        {canBuild && left > 0 && <>
+                          <button type="button" data-testid={`estate-site-add-${p.part}`} onClick={() => void call('estate_contribute', { lotId: site.lotId, part: p.part, qty: step })}>Add {chips(step)}{cost(step) > 0 && p.part !== 'chips' ? ` · 🪙 ${chips(cost(step))}` : ''}</button>
+                          {left > step && <button type="button" data-testid={`estate-site-fill-${p.part}`} onClick={() => void call('estate_contribute', { lotId: site.lotId, part: p.part, qty: left })}>Fill {chips(left)}{cost(left) > 0 ? ` · 🪙 ${chips(cost(left))}` : ''}</button>}
+                        </>}
+                      </div>;
+                    })}
                   </li>
                 ))}</ul>
                 {site.complete && site.gearDef && (
