@@ -71,10 +71,14 @@ export type UnitKind = 'separator' | 'gas_plant' | 'refinery' | 'reformer' | 'co
 export interface UnitDef { id: UnitKind; name: string; icon: string; cost: number; mw: number; cap: number; input?: Product; alt?: Product; out: Array<[Product, number]>; desc: string; max: number }
 /** Sulfur yield per input unit is `sulfurK x sourness` (gas plant: sour gas; refinery: sour crude). */
 export const SULFUR_K: Partial<Record<UnitKind, number>> = { gas_plant: 0.4, refinery: 0.3 };
+/** Enough crude units to refine everything a full separator train can make: 6 separators x 240 wellstream/h on the
+ *  lowest-gas tracts (0.19 gas, 10% water) give ~1,022 crude/h, and 9 x 120 = 1,080/h. Price, power and yields per unit
+ *  are unchanged, so extra refineries only add value when there is crude for them (sales still use the daily tiers). */
+export const REFINERY_MAX = 9;
 export const UNITS: Record<UnitKind, UnitDef> = {
   separator: { id: 'separator', name: 'Separator', icon: '⚙️', cost: 60_000, mw: 1.5, cap: 240, input: 'wellstream', out: [], desc: 'Splits wellstream into crude and raw gas by each tract’s gas ratio; 10% produced water is discarded.', max: 6 },
   gas_plant: { id: 'gas_plant', name: 'Gas plant', icon: '🏭', cost: 180_000, mw: 3, cap: 150, input: 'rawgas', out: [['natgas', 0.65], ['ngl', 0.25]], desc: 'Raw gas -> 65% natural gas + 25% NGL, plus sulfur from sour gas.', max: 4 },
-  refinery:  { id: 'refinery',  name: 'Refinery',  icon: '🏗️', cost: 280_000, mw: 3.5, cap: 120, input: 'crude', out: [['naphtha', 0.3], ['diesel', 0.28], ['gasoline', 0.12], ['residue', 0.25]], desc: 'Crude -> naphtha, diesel, gasoline and heavy residue; the hydrotreater pulls sulfur from sour crude.', max: 4 },
+  refinery:  { id: 'refinery',  name: 'Refinery',  icon: '🏗️', cost: 280_000, mw: 3.5, cap: 120, input: 'crude', out: [['naphtha', 0.3], ['diesel', 0.28], ['gasoline', 0.12], ['residue', 0.25]], desc: 'Crude -> naphtha, diesel, gasoline and heavy residue; the hydrotreater pulls sulfur from sour crude.', max: REFINERY_MAX },
   reformer:  { id: 'reformer',  name: 'Catalytic reformer', icon: '⚗️', cost: 140_000, mw: 2, cap: 60, input: 'naphtha', out: [['gasoline', 0.85]], desc: 'Naphtha -> 85% gasoline.', max: 4 },
   coker:     { id: 'coker',     name: 'Delayed coker', icon: '🔥', cost: 160_000, mw: 2.5, cap: 50, input: 'residue', out: [['diesel', 0.45], ['petcoke', 0.45]], desc: 'Heavy residue -> 45% diesel + 45% petroleum coke (ships to your factory as coal).', max: 4 },
   cracker:   { id: 'cracker',   name: 'Steam cracker', icon: '🧪', cost: 450_000, mw: 6, cap: 50, input: 'ngl', alt: 'naphtha', out: [['ethylene', 0.75]], desc: 'NGL (or naphtha when NGL runs out) -> 75% ethylene.', max: 3 },

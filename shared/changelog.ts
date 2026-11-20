@@ -6,6 +6,14 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-20T09:30:00-06:00", "title": "Fort McChud allows up to 9 refineries", "bullets": [
+    "You can now build up to 9 refineries at Fort McChud, up from 4, so a full set of 6 separators no longer leaves crude piling up unrefined. Nine refineries handle about 1,080 crude an hour, enough for 6 separators on the richest low-gas tracts.",
+    "Refinery price, power draw, output and wear are unchanged, and Commodity Exchange sales still use the same daily revenue tiers.",
+  ]},
+  {"commit": "", "at": "2026-11-20T09:30:00-06:00", "title": "Demolished lots turn into the building you finished", "bullets": [
+    "When you demolish a farm, house or business and finish a private project on it, the lot now shows that building on the city map instead of the old farm or house. The deed card names the new building, and tapping the lot opens your construction site.",
+    "Sites that already reached 4 of 4 update on their own; there is nothing to redo. A demolished farm can no longer be planted, but anything still growing there can be harvested as usual.",
+  ]},
   {"commit": "", "at": "2026-11-19T14:30:00-06:00", "title": "Auto-sell chest items can be withdrawn", "bullets": [
     "Select an auto-sell chest in your factory to take waiting items back out to factory storage: a set amount, all of one item, or everything. Only what fits in storage moves; the rest stays in the chest.",
     "The daily house sell cap is unchanged. Items left in the chest still sell when the cap has room again.",

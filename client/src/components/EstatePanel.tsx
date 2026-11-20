@@ -7,6 +7,7 @@ import { PLASTICS_RECIPES } from '../../../shared/plasticsPlant';
 import { RIG_CHIP_STEP, RIG_CRUDE_PER_HOUR, RIG_HOLD_CAP, RIG_LAUNCH_FEE, RIG_MAX_PER_PLAYER, RIG_STAGES, rigPct, rigStagePct, type RigStatus } from '../../../shared/offshoreRig';
 import { HYPER_STAGES } from '../../../shared/hyperFarm';
 import { GOODS } from '../../../shared/mines';
+import { announceEstateChange } from '@/lib/estateSites';
 
 type SiteView = {
   lotId: string; build: EstateBuildId | null; stage: number; complete: boolean; gear: number; kind: string;
@@ -100,6 +101,7 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
       setMsg(null);
     }
     load();
+    announceEstateChange(); // map + deed card pick up a demolish, a chosen project or a finished stage right away
   };
   const sites = (view?.sites as SiteView[] | undefined) ?? [];
   const site = lotId ? sites.find((s) => s.lotId === lotId) : sites[0];
@@ -191,7 +193,9 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
         )}
         {(!kind || kind === 'estate') && (
           <div>
-            {site?.was && <p>This lot was {site.was.label}. It is now a private construction site.</p>}
+            {site?.was && (site.complete && site.plan
+              ? <p data-testid="estate-converted">This lot was {site.was.label}. The {site.plan.name.toLowerCase()} is finished and stands on the lot now.</p>
+              : <p>This lot was {site.was.label}. It is now a private construction site.</p>)}
             {!site?.build && (
               <div>
                 <p>Choose what to build. Each project has four stages, with a model at every step.</p>

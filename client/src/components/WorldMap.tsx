@@ -20,7 +20,9 @@ import { lazyWithReload } from '@/lib/lazyWithReload';
 import { importWithReload } from '@/lib/chunkReload';
 import { applyWorldOwned } from '@/lib/worldOwned';
 import { WORLD_SPOTS } from '@/lib/worldSpots';
-import { canDemolish } from '../../../shared/estateProjects';
+import { canDemolish, ESTATE_BUILDS } from '../../../shared/estateProjects';
+import { demolishedLine } from '../../../shared/estateSites';
+import { demolishedSiteOf, ESTATE_CHANGED, loadEstateSites } from '@/lib/estateSites';
 import { EstatePanel } from '@/components/EstatePanel';
 
 import { useWalletChips } from '@/lib/wallet';
@@ -101,6 +103,14 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
   const [wtax, setWtax] = useState<{ tax: number; recipients: number; line: string } | null>(null);
   const [zone, setZone] = useState<{ line: string; refusal: string | null } | null>(null);
   const forSale = !owned.get(id);
+  // A demolished lot keeps its deed id but now holds a private construction site (not a farm or the old building).
+  const [demo, setDemo] = useState(() => demolishedSiteOf(id));
+  useEffect(() => {
+    let dead = false; setDemo(demolishedSiteOf(id));
+    const upd = () => { void loadEstateSites().then(() => { if (!dead) setDemo(demolishedSiteOf(id)); }); };
+    upd(); window.addEventListener(ESTATE_CHANGED, upd);
+    return () => { dead = true; window.removeEventListener(ESTATE_CHANGED, upd); };
+  }, [id]);
   useEffect(() => { setWtax(null); setZone(null); if (!me || !forSale) return; socket.timeout(10_000).emit('re_quote', { id }, (err: Error | null, r?: Ack & { ownedValue?: number; surchargePer1k?: number; wealthTax?: { tax: number; recipients: number; line: string }; zoneLine?: string; zoneRefusal?: string | null }) => { if (!err && r?.ok) setZone({ line: typeof r.zoneLine === 'string' ? r.zoneLine : '', refusal: typeof r.zoneRefusal === 'string' ? r.zoneRefusal : null }); if (!err && r?.ok && r.wealthTax) setWtax(r.wealthTax); }); }, [id, me, forSale]);
   if (!p) return null;
   const mine = !!(o && me && o.owner.toLowerCase() === me.toLowerCase());
@@ -135,7 +145,8 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
   return (
     <MapSheet className="world-deed" data-testid="world-deed" data-drag-panel="deed" onPointerDown={dragDeed.onPointerDown} style={dragDeed.style()} ref={dragDeed.ref}>{dragDeed.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
-      <h3>{p.kind === 'landmark' ? '🏛' : p.kind === 'patch' ? '🌳' : p.kind === 'farm' ? '🌾' : '🏠'} {p.label}</h3>
+      <h3>{demo ? (demo.build ? ESTATE_BUILDS[demo.build].icon : '🏗️') : p.kind === 'landmark' ? '🏛' : p.kind === 'patch' ? '🌳' : p.kind === 'farm' ? '🌾' : '🏠'} {demo?.build && demo.complete ? `${ESTATE_BUILDS[demo.build].name} · ${p.label}` : p.label}</h3>
+      {demo && <small data-testid="deed-demolished">{demolishedLine(demo)}</small>}
       {p.kind === 'landmark' && !incomeEligible(p.id) && <small>{ROYALTY_VENUE[p.type] ? 'Monument: stays open to every player, and the owner earns a royalty on what others earn here.' : 'Trophy property: stays open to every player. Ownership is prestige only.'}</small>}
       <dl>
         {o ? <><dt>{mine ? 'You paid' : 'Paid'}</dt><dd data-testid="deed-price">🪙 {chips(cost)}</dd></> : <><dt>Price</dt><dd data-testid="deed-price">🪙 {chips(cost)}</dd><dt>Zoning</dt><dd data-testid="deed-zone">{zoneText}{zone?.refusal && <small className="block text-amber-300" data-testid="deed-zone-cap">{zone.refusal.replace(' Nothing was charged.', '')}</small>}</dd></>}
@@ -176,12 +187,12 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
       {bo > 0 && me && <button type="button" disabled={!!busy || protLeft > 0} aria-busy={busy === 're_buyout'} onClick={buyout} data-testid="deed-buyout" title={protLeft > 0 ? 'Protected after a purchase' : `Pays ${o?.owner} 2x what they paid`}>{busy === 're_buyout' ? <><span className="world-spin" aria-hidden /> Buying out…</> : protLeft > 0 ? <>🛡 Hostile buyout: 🪙 {chips(bo)} (protected {Math.ceil(protLeft / 3_600_000)}h)</> : <>⚔️ Hostile buyout: 🪙 {chips(bo)}</>}</button>}
       {mine && onKitchen && p.kind !== 'landmark' && p.type !== 'barn' && <button type="button" onClick={onKitchen} data-testid="deed-kitchen">🍳 Kitchen</button>}
       {o && isHomeProperty(p) && <button type="button" onClick={() => { enterHome(p.id); onClose(); }} data-testid="deed-enter">{mine ? '🛋️ Enter & decorate' : `🚪 Visit ${o.owner}'s home`}</button>}
-      {p.kind === 'farm' && o && onFarm && <button type="button" onClick={onFarm} data-testid="deed-farm">{mine ? '🌾 Open farm' : '👀 Visit farm'}</button>}
+      {p.kind === 'farm' && o && onFarm && (!demo || mine) && <button type="button" onClick={onFarm} data-testid="deed-farm">{demo ? '🌾 Harvest what was left on the field' : mine ? '🌾 Open farm' : '👀 Visit farm'}</button>}
       {isBarnProperty(id) && <small>This barn is sold separately from every farm. Owning this barn unlocks All my farms; it does not buy or transfer nearby farmland.</small>}
       {mine && isBarnProperty(id) && onAllFarms && <button type="button" onClick={onAllFarms} data-testid="deed-barn">🏡 Barn · All my farms</button>}
-      {mine && onWorks && canDemolish(p).ok && <button type="button" onClick={onWorks} data-testid="deed-works">🏗️ Demolish & start a private project…</button>}
-      {mine && onHyper && p.kind === 'farm' && <button type="button" onClick={onHyper} data-testid="deed-hyper">🌿 Dutch glasshouse (hyper farm)…</button>}
-      {p.kind === 'farm' && !o && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
+      {mine && onWorks && canDemolish(p).ok && <button type="button" onClick={onWorks} data-testid="deed-works">{demo ? '🏗️ Open private works…' : '🏗️ Demolish & start a private project…'}</button>}
+      {mine && onHyper && p.kind === 'farm' && !demo && <button type="button" onClick={onHyper} data-testid="deed-hyper">🌿 Dutch glasshouse (hyper farm)…</button>}
+      {p.kind === 'farm' && !o && !demo && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
       {msg && <small role="status" data-testid="deed-msg">{msg}</small>}
       <small className="opacity-60">You can sell any property back to the city at any time for 70% of what you paid, or trade it with another player at an agreed price (no 30% haircut, within their zoning caps). No purchase surcharge. Zoning caps on new purchases: {ZONE_DEED_CAP} residential, {ZONE_DEED_CAP} commercial (incl. barns, factory plants and monuments), {FARMLAND_TILE_CAP.toLocaleString('en-US')} farmland tiles; resort lots and parks/empty lots are exempt. Zoning caps do not force sales or confiscate existing property. Tax is on the list price, charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
@@ -386,6 +397,8 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
           onPick: (id) => { if (id) goRef.current(id); }, // '' = a profile "Show on map" glide, not a building
           onBarn: (id) => { const o = ownedRef.current.get(id); const m = meRef.current; if (o && m && o.owner.toLowerCase() === m.toLowerCase()) setPanel({ k: 'farms' }); else setDeed(id); },
           onProperty: (id) => { const o = ownedRef.current.get(id); const m = meRef.current;
+            // Demolished lot: its owner opens the construction site (not the old farm panel); everyone else sees the deed.
+            if (demolishedSiteOf(id)) { if (o && m && o.owner.toLowerCase() === m.toLowerCase()) setPanel({ k: 'estate', id, kind: 'estate' }); else setDeed(id); return; }
             if (id.startsWith('lot:estate:') || id.startsWith('b:mansion:')) {
               if (o && m && o.owner.toLowerCase() === m.toLowerCase()) setPanel({ k: 'estate', id, kind: 'estate' });
               else setDeed(id);

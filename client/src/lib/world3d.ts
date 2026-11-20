@@ -504,6 +504,11 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Lots under a civic plot (shared/city.ts) are retired: hidden (zero scale, so not pickable) unless someone owns one,
   // which setOwned() reveals again. Instances keep their slots so every other house / tree / id stays put.
   const retired: Array<{ id: string; slots: Array<[THREE.InstancedMesh, number, THREE.Matrix4]> }> = []; const HIDE = new THREE.Matrix4().makeScale(0, 0, 0);
+  // Every instanced slot drawn for a property (house body/roof, business, farm soil/furrows/fence), so a demolished lot
+  // can hide its old structure while a private construction site stands on it (setCleared).
+  const propSlots = new Map<string, Array<[THREE.InstancedMesh, number]>>();
+  const slotOf = (id: string, m: THREE.InstancedMesh, i: number) => { const a = propSlots.get(id); if (a) a.push([m, i]); else propSlots.set(id, [[m, i]]); };
+  const clearedSaved = new Map<string, Array<[THREE.InstancedMesh, number, THREE.Matrix4]>>();
   const retire = (id: string, slots: Array<[THREE.InstancedMesh, number]>) => { retired.push({ id, slots: slots.map(([m, i]) => { const k = new THREE.Matrix4(); m.getMatrixAt(i, k); m.setMatrixAt(i, HIDE); return [m, i, k]; }) }); };
   HOUSING_TYPES.forEach((ht, ti) => {
     const list = fillers.filter((f) => f.type === ht.id); if (!list.length) return;
@@ -519,6 +524,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     // Real estate: every building is a property (stable id from type + position, matches shared/realEstate).
     body.userData.props = list.map((f) => buildingId(ht.id, f)); pickables.push(body); if (roof) { roof.userData.props = body.userData.props; pickables.push(roof); }
     list.forEach((f, i) => propTop.set(body.userData.props[i], [f.x, f.h + (roof ? Math.min(1.6, f.d * 0.45) : 0), f.z]));
+    list.forEach((_f, i) => { slotOf(body.userData.props[i], body, i); if (roof) slotOf(body.userData.props[i], roof, i); });
     list.forEach((f, i) => { if (civicRetired(f)) retire(body.userData.props[i], roof ? [[body, i], [roof, i]] : [[body, i]]); });
     list.forEach((f) => { if (!civicRetired(f)) xmasRoofs.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: f.rot, top: f.h + (roof ? Math.min(1.6, f.d * 0.45) : 0), gable: !!roof }); });
   });
@@ -805,7 +811,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (barnHits) { barnHits.userData.barns = clickBarns.map((b) => farmBarns().find((f) => f.family === 'country' && f.x === b.x && f.z === b.z)!.id); pickables.push(barnHits); }
     inst(roofGeo, mat({ color: 0x3a3a40, roughness: 0.8, flatShading: true }), outb.length, (i) => { const b = outb[i]; d.position.set(b.x, b.h, b.z); d.rotation.y = b.rot; d.scale.set(b.w + 0.3, 1.8, b.d + 0.3); });
     const bizM = inst(unitBox, mat({ color: 0xffffff, roughness: 0.8 }), biz.length, (i) => { const b = biz[i]; d.position.set(b.x, b.h / 2, b.z); d.rotation.y = b.rot; d.scale.set(b.w, b.h, b.d); }, (i) => (biz[i].kind === 'gas' ? 0xd8d4cc : 0x5a6270));
-    if (bizM) { bizM.userData.props = biz.map((b) => buildingId(businessType(b), b)); pickables.push(bizM); biz.forEach((b, i) => propTop.set(bizM.userData.props[i], [b.x, b.h, b.z])); }
+    if (bizM) { bizM.userData.props = biz.map((b) => buildingId(businessType(b), b)); pickables.push(bizM); biz.forEach((b, i) => { propTop.set(bizM.userData.props[i], [b.x, b.h, b.z]); slotOf(bizM.userData.props[i], bizM, i); }); }
     const front = (b: { x: number; z: number; d: number; rot: number }, o: number): [number, number] => [b.x + Math.sin(b.rot) * (b.d / 2 + o), b.z + Math.cos(b.rot) * (b.d / 2 + o)];
     const lit = [...outb, ...biz];
     inst(unitBox, mat({ color: 0xffd08a, emissive: 0xffb050, emissiveIntensity: 0.7 * NEON }), lit.length, (i) => { const b = lit[i]; const [x, z] = front(b, 0.05); d.rotation.y = b.rot; d.position.set(x, b.h * 0.5, z); d.scale.set(Math.min(3, b.w * 0.4), Math.min(1, b.h * 0.25), 0.08); });
@@ -869,14 +875,15 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const soil = new THREE.InstancedMesh(unitBox, mat({ color: 0x5a3e28, roughness: 1, emissive: 0x1a1008, emissiveIntensity: 0.5 }), plots.length);
     plots.forEach((p, i) => { d.position.set(p.x, 0.07, p.z); d.scale.set(p.w - 0.8, 0.14, p.d - 0.8); d.rotation.set(0, 0, 0); d.updateMatrix(); soil.setMatrixAt(i, d.matrix); });
     soil.userData.props = plots.map((p) => p.id); pickables.push(soil); scene.add(soil);
-    plots.forEach((p) => propTop.set(p.id, [p.x, 0.6, p.z]));
+    plots.forEach((p, i) => { propTop.set(p.id, [p.x, 0.6, p.z]); slotOf(p.id, soil, i); });
     // furrows: a faint darker stripe per tile row
     const nf = plots.reduce((a, p) => a + p.rows, 0); const fur = new THREE.InstancedMesh(unitBox, mat({ color: 0x3e2a1a, roughness: 1 }), nf); let k = 0;
-    for (const p of plots) for (let r = 0; r < p.rows; r++) { d.position.set(p.x, 0.165, p.z - (p.rows * TILE) / 2 + TILE * (r + 0.5)); d.scale.set(p.cols * TILE - 0.3, 0.03, 0.7); d.updateMatrix(); fur.setMatrixAt(k++, d.matrix); }
+    for (const p of plots) for (let r = 0; r < p.rows; r++) { slotOf(p.id, fur, k); d.position.set(p.x, 0.165, p.z - (p.rows * TILE) / 2 + TILE * (r + 0.5)); d.scale.set(p.cols * TILE - 0.3, 0.03, 0.7); d.updateMatrix(); fur.setMatrixAt(k++, d.matrix); }
     scene.add(fur);
     // fences: two rails per side + corner posts
     const rails = new THREE.InstancedMesh(unitBox, mat({ color: 0x8a6a48, roughness: 0.9 }), plots.length * 8); const posts = new THREE.InstancedMesh(unitBox, mat({ color: 0x6a4e34 }), plots.length * 4); k = 0; let q = 0;
     for (const p of plots) { const hw = p.w / 2 - 0.2, hd = p.d / 2 - 0.2;
+      for (let j = 0; j < 8; j++) slotOf(p.id, rails, k + j); for (let j = 0; j < 4; j++) slotOf(p.id, posts, q + j);
       for (const y of [0.35, 0.75]) for (const [x, z, w, dd] of [[p.x, p.z - hd, p.w - 0.4, 0.08], [p.x, p.z + hd, p.w - 0.4, 0.08], [p.x - hw, p.z, 0.08, p.d - 0.4], [p.x + hw, p.z, 0.08, p.d - 0.4]] as const) { d.position.set(x, y, z); d.scale.set(w, 0.08, dd); d.updateMatrix(); rails.setMatrixAt(k++, d.matrix); }
       for (const [x, z] of [[-hw, -hd], [hw, -hd], [-hw, hd], [hw, hd]]) { d.position.set(p.x + x, 0.5, p.z + z); d.scale.set(0.2, 1, 0.2); d.updateMatrix(); posts.setMatrixAt(q++, d.matrix); } }
     scene.add(rails, posts);
@@ -925,11 +932,15 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     fruit.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(N * 5 * 3), 3);
     return { trunks, crowns, fruit, N };
   })();
-  const setFarm = (tiles: Array<[string, number, string, string] | [string, number, string, string, number?, number?]>) => {
+  type FarmTileRow = [string, number, string, string] | [string, number, string, string, number?, number?];
+  let lastFarmTiles: FarmTileRow[] | null = null;
+  const setFarm = (tiles: FarmTileRow[]) => {
+    lastFarmTiles = tiles;
     const d = new THREE.Object3D(); const c = new THREE.Color(); let n = 0; const plots = new Map(allFarmPlots().map((p) => [p.id, p]));
     let tn = 0, fn = 0;
     for (const row of tiles) {
       const [pid, t, crop, stage, progress, matured] = row;
+      if (clearedSaved.has(pid)) continue; // demolished plot: no crops drawn under the construction site
       const p = plots.get(pid); const cr = cropById(crop); if (!p || !cr || !Number.isInteger(t) || t < 0 || t >= p.cols * p.rows) continue; const [x, z] = tileXZ(p, t);
       if (isOrchardCrop(crop)) {
         if (tn >= orchardMesh.N) continue;
@@ -1133,7 +1144,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   marks.count = 0; marks.frustumCulled = false; scene.add(marks);
   const setOwned = (ids: string[]) => {
     const own = new Set(ids); const dirty = new Set<THREE.InstancedMesh>();
-    for (const r of retired) for (const [m, i, k] of r.slots) { m.setMatrixAt(i, own.has(r.id) ? k : HIDE); dirty.add(m); }
+    for (const r of retired) for (const [m, i, k] of r.slots) { m.setMatrixAt(i, own.has(r.id) && !clearedSaved.has(r.id) ? k : HIDE); dirty.add(m); }
     for (const m of dirty) { m.instanceMatrix.needsUpdate = true; m.computeBoundingSphere(); }
     const d = new THREE.Object3D(); let n = 0;
     for (const id of ids) {
@@ -1143,8 +1154,23 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     }
     marks.count = n; marks.instanceMatrix.needsUpdate = true;
   };
+  /** Demolished lots (private construction sites): hide the old house/business/farm instances; restore any no longer listed. */
+  const setCleared = (ids: string[]) => {
+    const next = new Set(ids); const dirty = new Set<THREE.InstancedMesh>();
+    for (const [id, saved] of [...clearedSaved]) {
+      if (next.has(id)) continue;
+      for (const [m, i, k] of saved) { m.setMatrixAt(i, k); dirty.add(m); }
+      clearedSaved.delete(id);
+    }
+    for (const id of next) {
+      if (clearedSaved.has(id)) continue; const slots = propSlots.get(id); if (!slots) continue;
+      clearedSaved.set(id, slots.map(([m, i]) => { const k = new THREE.Matrix4(); m.getMatrixAt(i, k); m.setMatrixAt(i, HIDE); dirty.add(m); return [m, i, k]; }));
+    }
+    for (const m of dirty) { m.instanceMatrix.needsUpdate = true; m.computeBoundingSphere(); }
+    if (dirty.size && lastFarmTiles) setFarm(lastFarmTiles);
+  };
   return {
-    flyTo, focusXZ, setOwned, setOwnerLabels, setFarm,
+    flyTo, focusXZ, setOwned, setOwnerLabels, setFarm, setCleared,
     addPickables(objs: THREE.Object3D[]) { pickables.push(...objs); },
     // Driving (worldDrive.ts) hooks: the tick runs every frame; returning true means it owns the camera.
     scene, camera, controls, solids, lmBoxes, setTick(f: ((dt: number) => boolean) | null) { tick = f; },

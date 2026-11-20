@@ -73,10 +73,14 @@ export class Estate {
   async init() {
     if (!this.pool) return;
     await this.pool.query(ESTATE_MIGRATION);
+    const healed: Array<EstateSiteState & { ownerName: string }> = [];
     for (const r of (await this.pool.query('SELECT * FROM estate_sites')).rows) {
       const d = r.data as EstateSiteState;
-      this.sites.set(String(r.id), { ...d, ownerName: String(r.owner_name) });
+      const site = { ...d, ownerName: String(r.owner_name) };
+      this.sites.set(String(r.id), site);
+      if (this.healStage(site)) healed.push(site);
     }
+    for (const site of healed) await this.saveSite(site);
     for (const r of (await this.pool.query('SELECT * FROM estate_players')).rows) {
       this.eco.set(String(r.player_key), { ...emptyEco(), ...(r.data as PlayerEco) });
     }
@@ -120,6 +124,21 @@ export class Estate {
     );
   }
 
+  /** Re-derive the finished-stage count from the saved contributions. A fully funded stage always counts as done, so a
+   *  site whose stage counter fell behind its parts (e.g. "4 of 4" funded but never marked finished) heals itself.
+   *  Returns true when the stored stage changed. */
+  private healStage(s: EstateSiteState): boolean {
+    if (!s.build || !(s.build in ESTATE_BUILDS) || s.kind === 'turnkey_plant') return false;
+    const stages = estateStages(ESTATE_BUILDS[s.build]);
+    const want = buildStageIndex(stages, Array.isArray(s.done) ? s.done : []);
+    if (want === s.stage) return false;
+    s.stage = want; return true;
+  }
+  /** The construction site a player opened by demolishing one of their own lots (farm, house, business), if any. */
+  demolishedSite(name: string, lotId: string) {
+    const s = this.siteByLot(lotId);
+    return s && s.kind === 'demolished' && playerKey(s.owner) === playerKey(name) ? s : null;
+  }
   siteByLot(lotId: string) { return [...this.sites.values()].find((s) => s.lotId === lotId); }
   sitesOf(name: string) { return [...this.sites.values()].filter((s) => playerKey(s.owner) === playerKey(name)); }
   hyperOf(name: string, plotId: string) { return this.ecoOf(name).hyper[plotId] ?? null; }
@@ -582,6 +601,7 @@ export class Estate {
   async view(name: string | null) {
     const builds = ESTATE_BUILD_ORDER.map((id) => { const p = ESTATE_BUILDS[id]; return { id, name: p.name, icon: p.icon, blurb: p.blurb, total: estateProjectValue(p), stages: estateStages(p).map((s) => ({ id: s.id, name: s.name, chips: s.chips, goods: s.goods })), w: p.w, d: p.d, h: p.h }; });
     if (!name) return { signedIn: false, builds, rules: DEMOLISH_RULES };
+    for (const s of this.sitesOf(name)) if (this.healStage(s)) await this.saveSite(s);
     return {
       signedIn: true, builds, rules: DEMOLISH_RULES,
       sites: this.sitesOf(name).map((s) => this.siteView(s)),
@@ -661,10 +681,11 @@ export class Estate {
     return { grapes: q, wine: q, rate: 1, at: mine[0]!.id, fromWarehouse, fromPantry };
   }
 
-    /** Public map snapshot (construction models + launched rigs). */
-  mapSummary() {
+  /** Public map snapshot (construction models + launched rigs). With `deedOwners` (lot id -> owner key), a demolished
+   *  lot is only reported while the player who demolished it still holds the deed, so a resold lot draws as itself. */
+  mapSummary(deedOwners?: Map<string, string>) {
     return {
-      sites: [...this.sites.values()].map((s) => ({ lotId: s.lotId, build: s.build, stage: s.stage, complete: !!s.build && s.stage >= ESTATE_BUILDS[s.build]!.stages.length, gear: s.gear, kind: s.kind })),
+      sites: [...this.sites.values()].filter((s) => !deedOwners || s.kind !== 'demolished' || deedOwners.get(s.lotId) === playerKey(s.owner)).map((s) => ({ lotId: s.lotId, build: s.build, stage: s.stage, complete: !!s.build && s.stage >= ESTATE_BUILDS[s.build]!.stages.length, gear: s.gear, kind: s.kind })),
       rigs: [...this.rigs.values()].filter((r) => r.status === 'launched').map((r) => ({ id: r.id, berth: r.berth, at: r.berth != null ? RIG_BERTHS[r.berth] : null })),
       hyper: [...this.eco.values()].flatMap((e) => Object.entries(e.hyper).filter(([, h]) => h.stage > 0).map(([plotId, h]) => ({ plotId, stage: h.stage, complete: h.stage >= HYPER_STAGES.length }))),
     };
@@ -673,6 +694,19 @@ export class Estate {
 
 let estate: Estate | null = null;
 export const getEstate = () => estate;
+/** /api/estate: the map summary, filtered by who currently holds each deed when the property service is up. */
+let deedOwners: { at: number; map: Map<string, string> } | null = null;
+export async function estateMapSummary() {
+  const e = estate; if (!e) return { sites: [], rigs: [], hyper: [] };
+  const re = getRealEstate();
+  let owners: Map<string, string> | undefined;
+  if (re) {
+    // Every open map polls this; reuse the deed list for a few seconds instead of reading it per request.
+    if (deedOwners && Date.now() - deedOwners.at < 5_000) owners = deedOwners.map;
+    else { try { owners = new Map((await re.owned()).map((o) => [o.id, playerKey(o.owner)])); deedOwners = { at: Date.now(), map: owners }; } catch { owners = deedOwners?.map; } }
+  }
+  return e.mapSummary(owners);
+}
 export function setEstate(e: Estate | null) { estate = e; }
 export async function initEstate(): Promise<void> {
   const url = databaseUrl();

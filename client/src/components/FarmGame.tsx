@@ -177,6 +177,7 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
     <MapSheet className="world-deed world-farm" data-testid="farm-game" data-drag-panel="farm" onPointerDown={dragFarm.onPointerDown} style={dragFarm.style()} ref={dragFarm.ref}>{dragFarm.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <h3>🌾 {label}</h3>
+      {view?.demolished && <small data-testid="farm-demolished">🏗️ This farm was demolished for a private project. Harvest anything left on the field; nothing new can be planted here.</small>}
       {onAllFarms && <button type="button" onClick={onAllFarms} data-testid="farm-all-farms">🏡 Barn · All my farms</button>}
       {!view ? <small>{msg ?? 'Loading the farm…'}</small> : <>
         <small>{view.mine ? (orchardPlot ? 'Your orchard. Plant a sapling once — trees take several days to mature, then fruit again and again with no replanting. Harvest sends fruit to the market or your pantry; auto-harvest will pick them when they are ready.' : 'Your farm. Pick a seed, then click empty tiles or drag a box to select a region (Shift-drag adds to the selection), and plant them. Save a crop layout as a named template and apply it later to plant the same pattern on empty tiles. Ripe crops wait at least 12 hours before they wither.') : `${view.owner ?? 'Nobody'}'s farm (visiting, read-only).`}</small>

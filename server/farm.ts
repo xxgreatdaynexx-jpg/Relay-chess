@@ -180,7 +180,7 @@ export class Farm {
     const tiles = o ? (await this.tiles(pid, o.key)).map((r) => this.toTile(r, now, this.withers(upgrades))).filter((t): t is FarmTile => !!t) : [];
     const mine = !!o && !!name && o.key === keyOf(name);
     const auto = mine ? await this.autoOf(pid, o!.key) : undefined;
-    return { id: pid, owner: o?.name ?? null, mine, cols: p.cols, rows: p.rows, tiles, now, today: mine ? await this.today(o!.key) : { gross: 0, paid: 0 }, index: priceIndex(), upgrades, auto, hyper: !!o && !!getEstate()?.hyperComplete(o.name, pid) };
+    return { id: pid, owner: o?.name ?? null, mine, cols: p.cols, rows: p.rows, tiles, now, today: mine ? await this.today(o!.key) : { gross: 0, paid: 0 }, index: priceIndex(), upgrades, auto, hyper: !!o && !!getEstate()?.hyperComplete(o.name, pid), ...(o && getEstate()?.demolishedSite(o.name, pid) ? { demolished: true } : {}) };
   }
 
   /** Per-plot auto plant/harvest toggles (owner only). Crop is the seed used when auto-plant is on. */
@@ -307,6 +307,7 @@ export class Farm {
   /** Plant `crop` on the given empty tiles; seeds are paid now (px-indexed). */
   async plant(name: string, id: unknown, cropId: unknown, tiles: unknown, opts?: { auto?: boolean; skipGuard?: boolean }) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const c = cropById(cropId); if (!c) throw new FarmError('Unknown seed.');
+    if (getEstate()?.demolishedSite(name, p.pid)) throw new FarmError('This farm was demolished for a private project. Harvest anything left on the field; nothing new can be planted here.');
     if (isHyperCrop(c.id) && !getEstate()?.hyperComplete(name, p.pid)) throw new FarmError('Flowers and other difficult crops need a finished hyper farm glasshouse.');
     if (isTropical(c.id) !== p.resort) throw new FarmError(p.resort ? 'Only tropical crops grow at the resort plantation.' : 'Tropical crops only grow at Chud Resort.');
     if (isOrchardCrop(c.id) !== !!orchardOf(p.pid)) throw new FarmError(orchardOf(p.pid) ? 'Only fruit trees grow on an orchard plot.' : 'Fruit trees only grow on Orchard Ridge.');
@@ -653,6 +654,7 @@ export class Farm {
       const c = cropById(String(b.crop))!;
       let need = 0;
       for (const id of ids) {
+        if (getEstate()?.demolishedSite(name, id)) continue;
         const view = await this.view(id, name);
         const occupied = new Set(view.tiles.map((t) => t.tile));
         let empty = view.cols * view.rows - occupied.size;

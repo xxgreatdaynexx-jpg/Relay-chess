@@ -31,7 +31,7 @@ import { adminRouter } from './admin.js';
 import { backTaxRefundRouter } from './backTaxRefund.js';
 import { trailerRouter } from './trailers.js';
 import { coopMapSummary } from './coop.js';
-import { getEstate } from './estateProjects.js';
+import { estateMapSummary } from './estateProjects.js';
 import { realEstateRouter } from './realEstate.js';
 import { playerProfileRouter } from './player-profile.js';
 import { houseRoomRouter } from './house-room.js';
@@ -92,7 +92,7 @@ export async function createApp(): Promise<AppContext> {
   app.use(backTaxRefundRouter());
   app.use(trailerRouter());
   app.get('/api/coop', (_req, res) => { res.json({ ok: true, projects: coopMapSummary() }); });
-  app.get('/api/estate', (_req, res) => { const e = getEstate(); res.json({ ok: true, ...(e ? e.mapSummary() : { sites: [], rigs: [], hyper: [] }) }); });
+  app.get('/api/estate', (_req, res) => { void estateMapSummary().then((sum) => res.json({ ok: true, ...sum })).catch(() => res.json({ ok: true, sites: [], rigs: [], hyper: [] })); });
   app.use(realEstateRouter());
   app.use(farmRouter());
   app.use(employmentRouter());

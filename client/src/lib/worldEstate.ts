@@ -9,6 +9,9 @@ import { PLASTICS_PLANT, RIG_DOCK, estateLots, expansionFarms, goldwoodHomes, wi
 import { orchardId, orchardPlots } from '../../../shared/orchard';
 import { buildEstateModel, buildGoldwoodMansion, buildHyperFarm, buildOrchardSite, buildPlasticsPlant, buildRig, buildRigDock, buildWinery } from './estateModels';
 import type { EstateBuildId } from '../../../shared/estateProjects';
+import { demolishedPlacement, isDemolishedSite } from '../../../shared/estateSites';
+import { propertyById } from '../../../shared/realEstate';
+import { ESTATE_CHANGED, setEstateSites } from './estateSites';
 
 type Summary = {
   sites?: Array<{ lotId: string; build: EstateBuildId | null; stage: number; complete: boolean; gear: number; kind: string }>;
@@ -91,15 +94,43 @@ export function createEstate(w: World) {
   }
 
   const dynamic = new THREE.Group(); root.add(dynamic);
+  // Demolished lots: the old farm/house is hidden and a cleared, gravelled pad marks the private site.
+  const padM = new THREE.MeshStandardMaterial({ color: 0x8a8378, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  const setCleared = (w as World & { setCleared?: (ids: string[]) => void }).setCleared;
+  // One invisible click volume per demolished lot, registered with the world raycaster once (the hidden farm soil or
+  // house no longer catches clicks). Kept for the session; it always resolves to the lot's own property id.
+  const hits = new Map<string, THREE.Mesh>();
+  const hitFor = (id: string, p: { x: number; z: number; w: number; d: number; rot?: number }) => {
+    if (hits.has(id)) return;
+    const vol = new THREE.Mesh(new THREE.BoxGeometry(Math.max(1, p.w), 8, Math.max(1, p.d)), pickMat);
+    vol.position.set(p.x, 4, p.z); vol.rotation.y = p.rot ?? 0; vol.userData.spot = id; root.add(vol); hits.set(id, vol);
+    (w as World & { addPickables?: (o: THREE.Object3D[]) => void }).addPickables?.([vol]);
+  };
+  let pads: THREE.BufferGeometry[] = [];
   const apply = (sum: Summary) => {
     dynamic.clear();
+    for (const g of pads) g.dispose(); pads = [];
+    setEstateSites(sum.sites);
+    const cleared: string[] = [];
+    for (const s of sum.sites ?? []) {
+      if (!isDemolishedSite(s)) continue;
+      const p = propertyById(s.lotId); if (!p || p.hidden || p.map) continue;
+      cleared.push(s.lotId);
+      const padG = new THREE.BoxGeometry(Math.max(1, p.w - 0.6), 0.06, Math.max(1, p.d - 0.6)); pads.push(padG);
+      const pad = new THREE.Mesh(padG, padM);
+      pad.position.set(p.x, 0.03, p.z); pad.rotation.y = p.rot ?? 0; dynamic.add(pad); hitFor(s.lotId, p);
+      if (!s.build) continue;
+      const at = demolishedPlacement(s.lotId, s.build); if (!at) continue;
+      const model = buildEstateModel(s.build, s.complete ? 4 : s.stage, 0);
+      model.position.set(at.x, 0.06, at.z); model.rotation.y = at.rot; model.scale.setScalar(at.scale); dynamic.add(model);
+    }
+    setCleared?.(cleared);
     const built = new Set((sum.sites ?? []).filter((s) => s.build).map((s) => s.lotId));
     root.traverse((o) => { if (o.name.startsWith('lot-empty:')) o.visible = !built.has(`lot:estate:${o.name.slice(10)}`); });
     for (const s of sum.sites ?? []) {
-      if (!s.build) continue;
+      if (!s.build || isDemolishedSite(s)) continue;
       const loc = estateLots().find((l) => `lot:estate:${l.n}` === s.lotId) ?? goldwoodHomes().find((h) => `b:mansion:${h.n}` === s.lotId);
       const x = loc ? loc.x : NaN, z = loc ? loc.z : NaN; const rot = loc?.rot ?? 0;
-      // demolished / other lots: still try to parse if the lot is a property with x/z later; skip if unknown
       if (!Number.isFinite(x)) continue;
       const model = buildEstateModel(s.build, s.complete ? 4 : s.stage, 0);
       model.position.set(x, 0, z); model.rotation.y = rot; dynamic.add(model); mark(model, s.lotId);
@@ -110,7 +141,7 @@ export function createEstate(w: World) {
     }
     for (const h of sum.hyper ?? []) {
       const f = expansionFarms().find((p) => `cf:${p.n}` === h.plotId);
-      if (!f) continue;
+      if (!f || cleared.includes(h.plotId)) continue;
       const model = buildHyperFarm(h.complete ? 4 : h.stage, 0, f.w, f.d);
       model.position.set(f.x, 0.1, f.z); dynamic.add(model); mark(model, h.plotId);
     }
@@ -118,10 +149,11 @@ export function createEstate(w: World) {
   const load = () => { void fetch('/api/estate').then((r) => r.json()).then((j: Summary) => apply(j)).catch(() => {}); };
   load();
   const poll = window.setInterval(load, 30_000);
+  window.addEventListener(ESTATE_CHANGED, load);
 
   // Expose pickables to the world raycaster if the host supports it.
   const extra = (w as World & { addPickables?: (o: THREE.Object3D[]) => void }).addPickables;
   extra?.(pick);
 
-  return { refresh: load, dispose() { window.clearInterval(poll); w.scene.remove(root); } };
+  return { refresh: load, dispose() { window.clearInterval(poll); window.removeEventListener(ESTATE_CHANGED, load); setCleared?.([]); w.scene.remove(root); } };
 }
