@@ -6,6 +6,8 @@ import { request } from '@/lib/net';
 import { boxCount, JOBS, jobById, dayValue, expectedDayHaul, formatExpectedDay, type EmployLogItem, type EmployView } from '../../../shared/employment';
 import { ORES, type OreId } from '../../../shared/mines';
 import { fishById } from '../../../shared/fishing';
+import { perHourText, productionRates, resourceLabel, workplaceGroups } from '../../../shared/employProduction';
+import { ProductionPanel } from './EmployProduction';
 
 const chips = (n: number) => Math.round(n).toLocaleString('en-US');
 export const OPEN_EMPLOY = 'open-employment';
@@ -46,6 +48,7 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
     setBusy(null); take(r); if (r.ok) setMsg(ok(r));
   };
   const jobs = v?.jobs ?? [];
+  const rates = productionRates(v?.workers ?? []);
   return (
     <HubWindow id="employ" testId="venue-employ" onClose={onClose} doing="jobs" className="employ-panel">
       <div className="employ-front"><span>🧑‍🏭 EMPLOYMENT OFFICE</span><small data-testid="employ-cap">Hire AI workers · Worker cap: {v?.max ?? 3} (base {v?.base ?? 3} + {v?.bonus ?? 0} from property)</small></div>
@@ -56,8 +59,16 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
           <div className="employ-roster" data-testid="employ-roster">
           <h4>Your workers</h4>
           {!v.workers.length && <small>No one on the payroll yet.</small>}
-          <ul className="employ-list">
-            {v.workers.map((w) => { const j = jobById(w.job); const left = w.paidUntil - v.now; return (
+          {v.workers.length > 0 && <ProductionPanel workers={v.workers} log={v.log ?? []} hourly={v.hourly ?? []} now={v.now} />}
+          {workplaceGroups(v.workers).map((g) => { const rate = rates.byJob.find((x) => x.job === g.job); return (
+            <section className="employ-group" key={g.job} data-testid="employ-group" data-job={g.job}>
+              <div className="employ-group-head">
+                <b>{g.emoji} {g.label}</b>
+                <span data-testid="employ-group-count">{g.workers.length} {g.workers.length === 1 ? 'worker' : 'workers'}{rate && rate.working < g.workers.length ? ` (${rate.working} working)` : ''}</span>
+                {rate && rate.perHour > 0 && <small data-testid="employ-group-rate">~{perHourText(rate.perHour)} items/h: {rate.items.slice(0, 4).map((x) => `${perHourText(x.perHour)} ${resourceLabel(x.key)}`).join(', ')}{rate.items.length > 4 ? ', …' : ''}</small>}
+              </div>
+              <ul className="employ-list">
+                {g.workers.map((w) => { const j = jobById(w.job); const left = w.paidUntil - v.now; return (
               <li key={w.id} data-testid="employ-worker">
                 <b>{j?.emoji} {j?.label}</b>
                 <small>{w.status === 'working' ? (w.nextAt && w.nextAt > v.now ? `Working · next item in ${dur(w.nextAt - v.now)} · paid for ${dur(left)}` : (left > 0 ? `Working · paid for ${dur(left)}` : 'Working')) : w.status === 'idle' ? 'Resuming…' : 'Unpaid. Re-hire to pay a new day when you have the chips.'}</small>
@@ -101,7 +112,8 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
                   <button type="button" className="employ-fire" disabled={!!busy} data-testid="employ-fire" onClick={() => { if (window.confirm(`Fire ${j?.label}? Fees and wages are not refunded. Anything they're still holding that doesn't fit your storage or cooler is lost.`)) void act(`f:${w.id}`, 'employ_fire', { id: w.id }, () => 'Worker let go.'); }}>Fire</button>
                 </div>
               </li>); })}
-          </ul>
+              </ul>
+            </section>); })}
           {v.workers.length > 0 && <HaulLog log={v.log ?? []} />}
           {!!v.notes?.length && <small className="text-amber-300" data-testid="employ-notes">{v.notes.join(' ')}</small>}
           </div>

@@ -3132,3 +3132,23 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .island-preview-box > footer span { flex: 1 1 220px; }
 .island-preview-box > footer button { min-height: 44px; padding: 6px 12px; border-radius: 10px; background: rgba(201,162,74,.16); border: 1px solid rgba(201,162,74,.4); font-weight: 700; }
 @media (max-width: 640px) { .island-preview { padding: 0; } .island-preview-box { width: 100%; height: 100dvh; border-radius: 0; } .island-preview-box .island-flat-spot { width: 104px; } .island-preview-box .island-flat-spot i { display: none; } }
+
+/* Employment Office: production summary, hourly graph and workplace groups */
+.employ-prod { display: flex; flex-direction: column; gap: 4px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 7px 9px; }
+.employ-prod > small { font-size: 11px; opacity: .75; }
+.employ-prod table { width: 100%; border-collapse: collapse; font-size: 12px; } .employ-prod th, .employ-prod td { text-align: left; padding: 2px 4px; border-bottom: 1px solid #ffffff1a; white-space: nowrap; }
+.employ-prod th:not(:first-child), .employ-prod td:not(:first-child) { text-align: right; } .employ-prod tfoot td { font-weight: 700; border-bottom: 0; }
+.employ-prod td:first-child { white-space: normal; }
+.employ-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; border: 1px solid #0006; }
+.employ-graph { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.employ-graph svg { width: 100%; max-height: 220px; aspect-ratio: 320 / 132; background: #0d1117; border: 1px solid #ffffff1f; border-radius: 8px; touch-action: pan-y; cursor: crosshair; }
+.employ-graph svg text { font-size: 8px; fill: #ffffffa6; }
+.employ-graph-grid { stroke: #ffffff1a; stroke-width: 1; } .employ-graph-cursor { stroke: #ffffffb3; stroke-width: 1; stroke-dasharray: 3 2; }
+.employ-graph-read { font-size: 11px; opacity: .85; min-height: 2.6em; }
+.employ-legend { display: flex; flex-wrap: wrap; gap: 4px; }
+.employ-legend button { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 3px 8px; border-radius: 7px; font-size: 11px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.15); }
+.employ-legend button i { width: 10px; height: 10px; border-radius: 2px; } .employ-legend button.off { opacity: .4; text-decoration: line-through; }
+.employ-group { display: flex; flex-direction: column; gap: 6px; }
+.employ-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 4px 2px 0; border-top: 1px solid #ffffff1f; }
+.employ-group-head b { font-size: 13px; } .employ-group-head span { font-size: 12px; font-weight: 700; color: #e0a23a; } .employ-group-head small { flex-basis: 100%; font-size: 11px; opacity: .8; }
+@media (pointer: coarse) { .employ-legend button { min-height: 40px; } }

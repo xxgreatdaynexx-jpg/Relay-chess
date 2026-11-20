@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-20T16:00:00-06:00", "title": "Employment Office groups workers by mine and graphs production", "bullets": [
+    "Your workers are now grouped by where they work (The Mine, Frostbite Caverns, Magma Depths, Stone Quarry, Lake Dock), biggest group first, with a worker count and that group's expected items per hour. Hire order stays the same inside each group.",
+    "A new Production section shows, for each resource, how much your paid workers bring in per hour right now (same math as Expected per day) next to what they actually brought in over the last 24 hours.",
+    "A graph shows items gathered each hour over the last 24 hours, one line per resource. Tap the graph to read an hour, or tap a resource in the legend to hide its line. It already includes your last day of pick-ups.",
+  ]},
   {"commit": "", "at": "2026-11-20T10:00:00-06:00", "title": "Private Island has a map", "bullets": [
     "On the Private Island, tap \"▦ 2D map\" for a flat map of the whole island: beaches, the ridge, all four estates with who owns them or their price, and the dock where you land. Tap an estate to see it, buy it or go inside; tap the dock to head home. \"🏝️ 3D island\" switches back, and the 2D map opens on its own if 3D can't load.",
     "The island panels now close, so the map stays visible on phones instead of being covered by the estate list.",

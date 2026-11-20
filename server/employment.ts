@@ -31,7 +31,7 @@ import { COOLER_MAX } from '../shared/fishing.js';
 import {
   JOBS, jobById, baseHire, baseWage, itemsPerDay, dayValue, rollOre, rollWorkerFish, boxCount,
   minerPriorityOptions, parseMinerPriority,
-  DAY, MAX_WORKERS, MIN_ACCOUNT_AGE_MS, type JobDef, type EmployLogItem, type Unit, type WorkerBox, type WorkerStatus, type WorkerView, type EmployView, type MinerPriority,
+  DAY, MAX_WORKERS, MIN_ACCOUNT_AGE_MS, type JobDef, type EmployLogItem, type Unit, type WorkerBox, type WorkerStatus, type WorkerView, type EmployView, type MinerPriority, type EmployHourItem,
 } from '../shared/employment.js';
 import { emitHaul } from './haulVisual.js';
 
@@ -160,14 +160,19 @@ export class Employment {
     catch (e) { console.error('[employ] log write failed:', (e as Error).message); }
   }
   /** What the workers picked up in the last 24 h, totalled per item (newest pick-up time per item). */
-  async log(key: string, now = this.clock()): Promise<EmployLogItem[]> {
+  async log(key: string, now = this.clock()): Promise<EmployLogItem[]> { return (await this.history(key, now)).log; }
+  /** Last 24 h of pick-ups: per-item totals and hourly buckets (one query; employ_log rows are already per hour). */
+  async history(key: string, now = this.clock()): Promise<{ log: EmployLogItem[]; hourly: EmployHourItem[] }> {
     const r = await this.pool.query('SELECT item_type, item_id, qty, at FROM employ_log WHERE owner_key = $1 AND at > $2', [key, now - DAY]);
-    const m = new Map<string, EmployLogItem>();
+    const m = new Map<string, EmployLogItem>(); const h = new Map<string, EmployHourItem>();
     for (const x of r.rows as Array<{ item_type: string; item_id: string; qty: number | string; at: number | string }>) {
       const k = `${x.item_type}:${x.item_id}`; const e = m.get(k) ?? { type: x.item_type as 'ore' | 'fish', id: x.item_id, qty: 0, lastAt: 0 };
-      e.qty += Number(x.qty); e.lastAt = Math.max(e.lastAt, Number(x.at)); m.set(k, e);
+      const qty = Number(x.qty), at = Number(x.at);
+      e.qty += qty; e.lastAt = Math.max(e.lastAt, at); m.set(k, e);
+      const t = Math.floor(at / HOUR_MS) * HOUR_MS; const hk = `${k}@${t}`; const b = h.get(hk) ?? { type: e.type, id: x.item_id, qty: 0, t };
+      b.qty += qty; h.set(hk, b);
     }
-    return [...m.values()].sort((a, b) => b.qty - a.qty || b.lastAt - a.lastAt);
+    return { log: [...m.values()].sort((a, b) => b.qty - a.qty || b.lastAt - a.lastAt), hourly: [...h.values()].sort((a, b) => a.t - b.t || a.id.localeCompare(b.id)) };
   }
   /** Bring one worker up to `now`: produce, then charge each new day's wage (or stop unpaid). Bounded catch-up. */
   private async settle(name: string, w: W, now: number) {
@@ -221,7 +226,8 @@ export class Employment {
       let notes: string[] = []; try { notes = (await this.deliver(name, key, ws, now)).notes; } catch (e) { notes = [e instanceof EmployError ? e.message : 'Storage is offline — your workers are holding their haul until it is back.']; }
       await this.flushLog(key);
       const cap = await this.capOf(key, name); const reason = await this.canHire(key, ws.length, cap.max);
-      return { workers: ws.map((w) => this.toView(w)), jobs, now, canHire: !reason, reason, max: cap.max, base: cap.base, bonus: cap.bonus, log: await this.log(key, now), notes };
+      const hist = await this.history(key, now);
+      return { workers: ws.map((w) => this.toView(w)), jobs, now, canHire: !reason, reason, max: cap.max, base: cap.base, bonus: cap.bonus, log: hist.log, hourly: hist.hourly, notes };
     });
   }
   async hire(name: string, jobId: unknown) {
