@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-20T10:00:00-06:00", "title": "Private Island has a map", "bullets": [
+    "On the Private Island, tap \"▦ 2D map\" for a flat map of the whole island: beaches, the ridge, all four estates with who owns them or their price, and the dock where you land. Tap an estate to see it, buy it or go inside; tap the dock to head home. \"🏝️ 3D island\" switches back, and the 2D map opens on its own if 3D can't load.",
+    "The island panels now close, so the map stays visible on phones instead of being covered by the estate list.",
+    "At the Billionaire Club, \"🗺️ View the island map\" shows the same map before you travel. Buying and visiting still happen on the island.",
+  ]},
   {"commit": "", "at": "2026-11-20T09:30:00-06:00", "title": "Fort McChud allows up to 9 refineries", "bullets": [
     "You can now build up to 9 refineries at Fort McChud, up from 4, so a full set of 6 separators no longer leaves crude piling up unrefined. Nine refineries handle about 1,080 crude an hour, enough for 6 separators on the richest low-gas tracts.",
     "Refinery price, power draw, output and wear are unchanged, and Commodity Exchange sales still use the same daily revenue tiers.",

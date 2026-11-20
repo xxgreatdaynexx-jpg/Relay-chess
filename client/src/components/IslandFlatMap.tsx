@@ -1,0 +1,55 @@
+import { useCallback, useEffect, useState } from 'react';
+import { ISLAND_BEACH_R, ISLAND_CENTER, ISLAND_DOCK, ISLAND_GRASS_R, ISLAND_LOTS, ISLAND_MAP, ISLAND_PLACES, islandMapPos, islandSpots } from '../../../shared/island';
+
+export type IslandOwners = Map<string, string>;
+
+/** Private Island 2D map: the real island geometry (beach, grass, dock, estate footprints) with every estate and the dock
+ *  as a tappable marker. No WebGL needed; the board keeps its shape and fits the space it is given (phone or desktop). */
+const short = (n: number) => (n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n));
+
+export function IslandFlatMap({ owners, me, selected, onPick }: { owners: IslandOwners; me: string | null; selected?: string | null; onPick: (id: string) => void }) {
+  const { x0, x1, z0, z1 } = ISLAND_MAP;
+  const mine = (id: string) => !!me && owners.get(id)?.toLowerCase() === me.toLowerCase();
+  return (
+    <div className="island-flat-map" data-testid="island-flat-map" aria-label="Private Island map">
+      <div className="island-flat-board">
+        <svg viewBox={`${x0} ${z0} ${x1 - x0} ${z1 - z0}`} aria-hidden="true">
+          <rect x={x0} y={z0} width={x1 - x0} height={z1 - z0} fill="#1a6a8a" />
+          <circle cx={ISLAND_CENTER.x} cy={ISLAND_CENTER.z} r={ISLAND_BEACH_R + 5} fill="#2a86a6" opacity="0.6" />
+          <circle cx={ISLAND_CENTER.x} cy={ISLAND_CENTER.z} r={ISLAND_BEACH_R} fill="#c9b48a" />
+          <circle cx={ISLAND_CENTER.x} cy={ISLAND_CENTER.z} r={ISLAND_GRASS_R} fill="#3f8a4a" />
+          <rect x={ISLAND_DOCK.x - ISLAND_DOCK.w / 2} y={ISLAND_DOCK.z - ISLAND_DOCK.d / 2} width={ISLAND_DOCK.w} height={ISLAND_DOCK.d} fill="#8a5a36" />
+          {ISLAND_LOTS.map((l) => (
+            <rect key={l.id} x={l.x - l.w / 2} y={l.z - l.d / 2} width={l.w} height={l.d} rx="1.5"
+              transform={`rotate(${(-l.rot * 180) / Math.PI} ${l.x} ${l.z})`}
+              fill={mine(l.id) ? '#8bdf87' : owners.has(l.id) ? '#e8dcc4' : '#f6efe2'} stroke="#6a4a2a" strokeWidth="0.6" opacity="0.9" />
+          ))}
+          {ISLAND_PLACES.map((p) => <text key={p.id} x={p.x} y={p.z} textAnchor="middle" fontSize="4" fill="#fff8e8" opacity="0.85">{p.label}</text>)}
+        </svg>
+        {islandSpots().map((s) => {
+          const pos = islandMapPos(s.x, s.z); const owner = owners.get(s.id);
+          const cls = `island-flat-spot island-flat-${s.kind}${mine(s.id) ? ' mine' : owner ? ' owned' : ''}${selected === s.id ? ' on' : ''}`;
+          return (
+            <button key={s.id} type="button" className={cls} style={{ left: `${pos.left}%`, top: `${pos.top}%` }} onClick={() => onPick(s.id)} data-testid={`island-flat-${s.id}`} aria-pressed={selected === s.id}>
+              <b><i aria-hidden="true">{s.icon} </i>{s.label}</b>
+              <small>{s.kind === 'dock' ? 'Landing spot' : mine(s.id) ? 'Yours' : owner ? owner : `For sale 🪙${short(s.price ?? 0)}`}</small>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Deed owners for the island estates, from the public real-estate list. */
+export function useIslandOwners(): [IslandOwners, () => void] {
+  const [owners, setOwners] = useState<IslandOwners>(new Map());
+  const load = useCallback(() => {
+    void fetch('/api/real-estate').then((r) => r.json()).then((d: { owned?: Array<{ id: string; owner: string }> }) => {
+      setOwners(new Map((d.owned ?? []).filter((o) => o.id.startsWith('isl:')).map((o) => [o.id, o.owner])));
+    }).catch(() => {});
+  }, []);
+  useEffect(() => { load(); const t = window.setInterval(load, 30_000); return () => window.clearInterval(t); }, [load]);
+  return [owners, load];
+}
+

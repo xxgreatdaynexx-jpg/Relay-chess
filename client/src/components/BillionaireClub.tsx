@@ -8,6 +8,7 @@ import { ART_PIECES } from '../../../shared/artAuction';
 import { PATRON_SLOTS } from '../../../shared/patronage';
 import { SKY_PENTHOUSES } from '../../../shared/skyPenthouses';
 import { flyTo, useTrip } from '@/lib/travel';
+import { IslandPreview } from './IslandPreview';
 
 export const OPEN_CLUB = 'open-billionaire-club';
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -29,6 +30,7 @@ export function BillionaireClub({ onClose, onDeed }: { onClose: () => void; onDe
   const [bid, setBid] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [islandMap, setIslandMap] = useState(false);
 
   const loadPatron = () => void request('patronage_view').then((a) => {
     const r = a as { ok: boolean; signedIn?: boolean; chips?: number | null; slots?: PatronView[] };
@@ -74,6 +76,8 @@ export function BillionaireClub({ onClose, onDeed }: { onClose: () => void; onDe
           <hr />
           <p>The Private Island is reached by Sovereign Megayacht, or by your own jet.</p>
           <button type="button" disabled={busy || !signedIn} onClick={() => void sail()} data-testid="club-sail-island">{trip.jet ? `🛩 Fly your ${trip.jet} to the Private Island` : '⚓ Sail to the Private Island'}</button>
+          <button type="button" onClick={() => setIslandMap(true)} data-testid="club-island-map">🗺️ View the island map</button>
+          {islandMap && <IslandPreview onClose={() => setIslandMap(false)} canTravel={!busy && signedIn} travelLabel={trip.jet ? `🛩 Fly your ${trip.jet} there` : '⚓ Sail there'} onTravel={() => { setIslandMap(false); void sail(); }} />}
         </div>
       )}
       {tab === 'auction' && (

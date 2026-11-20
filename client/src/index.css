@@ -3094,3 +3094,41 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .zoning-meters h4 { margin: 0 0 4px; }
 .zoning-row { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; font-size: 13px; }
 .zoning-row .coop-bar { grid-column: 1 / -1; height: 8px; margin: 2px 0 6px; }
+
+/* Private Island: 2D map (same geometry as the 3D island) and the controls bar. The board keeps the island's
+   proportions and fits the free space on any screen; markers stay at least 44px tall for touch. */
+.world.island { background: #1a6a8a; }
+.world.island .world-title { color: #fff8e8; text-shadow: 0 2px 8px #0b3a4a; } .world.island .world-title span { color: #f2d48a; }
+.island-flat-map { position: absolute; inset: 96px 0 12px; display: flex; overflow: auto; touch-action: pan-x pan-y; container-type: size; background: #1a6a8a; }
+.island-flat-board { position: relative; flex: none; margin: auto; aspect-ratio: 144 / 132; width: min(100cqw, 100cqh * 144 / 132); min-width: 300px; max-width: 900px; }
+.island-flat-board > svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.island-flat-spot { position: absolute; transform: translate(-50%, -50%); min-height: 44px; width: 124px; padding: 4px 6px; border: 1px solid #f2d48a; border-radius: 10px; background: rgba(16,24,30,.88); color: #fff8e8; font: 600 12px/1.2 system-ui, sans-serif; text-align: center; }
+.island-flat-spot b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.island-flat-spot small { display: block; font-size: 10px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.island-flat-spot.owned { border-color: #e8dcc4; }
+.island-flat-spot.mine { border: 2px solid #8bdf87; }
+.island-flat-spot.on { box-shadow: 0 0 0 3px #f2d48a; }
+.island-flat-dock { background: rgba(74,46,24,.92); }
+.island-map-notice { position: absolute; left: 18px; top: 84px; font-size: 12px; opacity: .85; pointer-events: none; }
+.island-map-msg { position: absolute; left: 12px; bottom: 12px; padding: 6px 10px; border-radius: 8px; background: rgba(12,14,24,.85); }
+@media (max-width: 700px), (max-height: 520px) {
+  .world.island .island-map-controls { top: auto; bottom: 8px; left: 8px; right: 8px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding-right: 0; }
+  .world.island .island-map-controls button { min-height: 44px; min-width: 0; padding: 5px 8px; font-size: 12px; white-space: normal; }
+  .island-flat-map { bottom: 108px; }
+  .island-map-notice { top: 70px; }
+  .island-flat-map { top: 88px; }
+  .island-flat-spot { width: 104px; font-size: 11px; }
+  .island-flat-spot i { display: none; }
+}
+@media (max-height: 520px) { .island-flat-board { min-width: 264px; } .island-flat-spot { width: 76px; font-size: 10px; } .island-flat-spot i, .island-flat-spot small { display: none; } }
+@media (max-height: 520px) and (min-width: 700px) { .world.island .island-map-controls { grid-template-columns: repeat(4, minmax(0, 1fr)); } .island-flat-map { top: 88px; bottom: 60px; } }
+.island-preview { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: rgba(4,8,14,.72); padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom)); }
+.island-preview-box { position: relative; display: flex; flex-direction: column; width: min(760px, 100%); height: min(680px, 100%); border-radius: 14px; overflow: hidden; background: #101418; border: 1px solid rgba(201,162,74,.55); }
+.island-preview-box > header { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; }
+.island-preview-box > header h3 { flex: 1; margin: 0; font: 800 18px 'Outfit Variable', sans-serif; color: #e2c47c; }
+.island-preview-box > header button { min-width: 44px; min-height: 44px; }
+.island-preview-box .island-flat-map { position: relative; inset: auto; flex: 1 1 auto; min-height: 0; }
+.island-preview-box > footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; font-size: 13px; }
+.island-preview-box > footer span { flex: 1 1 220px; }
+.island-preview-box > footer button { min-height: 44px; padding: 6px 12px; border-radius: 10px; background: rgba(201,162,74,.16); border: 1px solid rgba(201,162,74,.4); font-weight: 700; }
+@media (max-width: 640px) { .island-preview { padding: 0; } .island-preview-box { width: 100%; height: 100dvh; border-radius: 0; } .island-preview-box .island-flat-spot { width: 104px; } .island-preview-box .island-flat-spot i { display: none; } }

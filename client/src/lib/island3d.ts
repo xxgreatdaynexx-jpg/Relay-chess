@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ISLAND_DOCK, ISLAND_LOTS, ISLAND_SHORE_Z, ISLAND_X0, ISLAND_X1, ISLAND_Z0, ISLAND_Z1, clampIslandTarget } from '../../../shared/island';
+import { ISLAND_BEACH_R, ISLAND_CENTER, ISLAND_DOCK, ISLAND_GRASS_R, ISLAND_LAND_R, ISLAND_LOTS, ISLAND_SHORE_Z, ISLAND_X0, ISLAND_X1, ISLAND_Z0, ISLAND_Z1, clampIslandTarget } from '../../../shared/island';
 
 export interface IslandWorld { focusXZ(x: number, z: number): void; dispose(): void }
 
@@ -17,8 +17,8 @@ export function createIsland(canvas: HTMLCanvasElement, opts: { onHover: (id: st
   // water
   const water = add(new THREE.Mesh(new THREE.PlaneGeometry(400, 400), mat(0x1a6a8a, { roughness: 0.2, metalness: 0.2 }))); water.rotation.x = -Math.PI / 2; water.position.y = -0.4;
   // island
-  const land = add(new THREE.Mesh(new THREE.CircleGeometry(52, 40), mat(0x3f8a4a))); land.rotation.x = -Math.PI / 2; land.position.set(0, 0, -8);
-  const sand = add(new THREE.Mesh(new THREE.RingGeometry(40, 56, 40), mat(0xc9b48a))); sand.rotation.x = -Math.PI / 2; sand.position.set(0, 0.02, -8);
+  const land = add(new THREE.Mesh(new THREE.CircleGeometry(ISLAND_LAND_R, 40), mat(0x3f8a4a))); land.rotation.x = -Math.PI / 2; land.position.set(ISLAND_CENTER.x, 0, ISLAND_CENTER.z);
+  const sand = add(new THREE.Mesh(new THREE.RingGeometry(ISLAND_GRASS_R, ISLAND_BEACH_R, 40), mat(0xc9b48a))); sand.rotation.x = -Math.PI / 2; sand.position.set(ISLAND_CENTER.x, 0.02, ISLAND_CENTER.z);
 
   const clickable: { id: string; obj: THREE.Object3D }[] = [];
   for (const l of ISLAND_LOTS) {
