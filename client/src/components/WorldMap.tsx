@@ -395,7 +395,9 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         worldRef.current = createWorld(canvasRef.current, {
           onHover: (id, x, y) => setTip(id ? { id, x, y } : null),
           onPick: (id) => { if (id) goRef.current(id); }, // '' = a profile "Show on map" glide, not a building
-          onBarn: (id) => { const o = ownedRef.current.get(id); const m = meRef.current; if (o && m && o.owner.toLowerCase() === m.toLowerCase()) setPanel({ k: 'farms' }); else setDeed(id); },
+          onBarn: (id) => { const o = ownedRef.current.get(id); const m = meRef.current; const mineB = !!(o && m && o.owner.toLowerCase() === m.toLowerCase());
+            if (demolishedSiteOf(id)) { if (mineB) setPanel({ k: 'estate', id, kind: 'estate' }); else setDeed(id); return; }
+            if (mineB) setPanel({ k: 'farms' }); else setDeed(id); },
           onProperty: (id) => { const o = ownedRef.current.get(id); const m = meRef.current;
             // Demolished lot: its owner opens the construction site (not the old farm panel); everyone else sees the deed.
             if (demolishedSiteOf(id)) { if (o && m && o.owner.toLowerCase() === m.toLowerCase()) setPanel({ k: 'estate', id, kind: 'estate' }); else setDeed(id); return; }

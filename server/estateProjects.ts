@@ -19,6 +19,7 @@ import {
   type EstateBuildId, type EstateSiteKind, type EstateSiteState,
 } from '../shared/estateProjects.js';
 import { estateLotOf, RIG_BERTHS, wineryOf } from '../shared/mapExpansion.js';
+import { isDemolishedSite } from '../shared/estateSites.js';
 import { HYPER_STAGES, HYPER_FARM_TOTAL, hyperPct, hyperStagePct } from '../shared/hyperFarm.js';
 import { RIG_STAGES, RIG_LAUNCH_FEE, RIG_CRUDE_PER_HOUR, RIG_MAX_PER_PLAYER, RIG_HOLD_CAP, rigLabel, type RigState } from '../shared/offshoreRig.js';
 import { FORT_IMPORT, PLASTICS_RECIPES, plantRecipe, type FortFeed } from '../shared/plasticsPlant.js';
@@ -128,16 +129,23 @@ export class Estate {
    *  site whose stage counter fell behind its parts (e.g. "4 of 4" funded but never marked finished) heals itself.
    *  Returns true when the stored stage changed. */
   private healStage(s: EstateSiteState): boolean {
-    if (!s.build || !(s.build in ESTATE_BUILDS) || s.kind === 'turnkey_plant') return false;
+    let changed = false;
+    // A site opened by picking a project on an existing farm/house/business was stored as 'open' with no record of
+    // what stood there; it is a demolished lot like one opened with the Demolish button.
+    if (s.kind === 'open' && isDemolishedSite(s)) {
+      const p = propertyById(s.lotId);
+      s.kind = 'demolished'; if (!s.was && p) s.was = { type: p.type, label: p.label }; changed = true;
+    }
+    if (!s.build || !(s.build in ESTATE_BUILDS) || s.kind === 'turnkey_plant') return changed;
     const stages = estateStages(ESTATE_BUILDS[s.build]);
     const want = buildStageIndex(stages, Array.isArray(s.done) ? s.done : []);
-    if (want === s.stage) return false;
+    if (want === s.stage) return changed;
     s.stage = want; return true;
   }
   /** The construction site a player opened by demolishing one of their own lots (farm, house, business), if any. */
   demolishedSite(name: string, lotId: string) {
     const s = this.siteByLot(lotId);
-    return s && s.kind === 'demolished' && playerKey(s.owner) === playerKey(name) ? s : null;
+    return s && isDemolishedSite(s) && playerKey(s.owner) === playerKey(name) ? s : null;
   }
   siteByLot(lotId: string) { return [...this.sites.values()].find((s) => s.lotId === lotId); }
   sitesOf(name: string) { return [...this.sites.values()].filter((s) => playerKey(s.owner) === playerKey(name)); }
@@ -208,7 +216,12 @@ export class Estate {
     const lot = propertyById(lotId) ?? estateLotOf(lotId);
     if (!lot && !this.siteByLot(lotId)) throw new EstateError('Unknown lot.');
     let site = this.siteByLot(lotId);
-    if (!site) site = await this.openSite(name, lotId, propertyById(lotId)?.type === 'power_plant' ? 'turnkey_plant' : 'open');
+    if (!site) {
+      const p = propertyById(lotId);
+      site = p?.type === 'power_plant' ? await this.openSite(name, lotId, 'turnkey_plant')
+        : p && isDemolishedSite({ kind: 'open', lotId }) ? await this.openSite(name, lotId, 'demolished', { type: p.type, label: p.label })
+        : await this.openSite(name, lotId, 'open');
+    }
     if (playerKey(site.owner) !== playerKey(name)) throw new EstateError('You do not own that site.');
     if (site.build && site.stage > 0) throw new EstateError('This site already has a project underway.');
     if (site.kind === 'turnkey_plant' && build !== 'power_plant') throw new EstateError('A turnkey plant can only be started as a power plant.');
@@ -685,7 +698,7 @@ export class Estate {
    *  lot is only reported while the player who demolished it still holds the deed, so a resold lot draws as itself. */
   mapSummary(deedOwners?: Map<string, string>) {
     return {
-      sites: [...this.sites.values()].filter((s) => !deedOwners || s.kind !== 'demolished' || deedOwners.get(s.lotId) === playerKey(s.owner)).map((s) => ({ lotId: s.lotId, build: s.build, stage: s.stage, complete: !!s.build && s.stage >= ESTATE_BUILDS[s.build]!.stages.length, gear: s.gear, kind: s.kind })),
+      sites: [...this.sites.values()].filter((s) => !deedOwners || !isDemolishedSite(s) || deedOwners.get(s.lotId) === playerKey(s.owner)).map((s) => ({ lotId: s.lotId, build: s.build, stage: s.stage, complete: !!s.build && s.stage >= ESTATE_BUILDS[s.build]!.stages.length, gear: s.gear, kind: s.kind })),
       rigs: [...this.rigs.values()].filter((r) => r.status === 'launched').map((r) => ({ id: r.id, berth: r.berth, at: r.berth != null ? RIG_BERTHS[r.berth] : null })),
       hyper: [...this.eco.values()].flatMap((e) => Object.entries(e.hyper).filter(([, h]) => h.stage > 0).map(([plotId, h]) => ({ plotId, stage: h.stage, complete: h.stage >= HYPER_STAGES.length }))),
     };

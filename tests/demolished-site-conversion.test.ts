@@ -67,7 +67,9 @@ describe('demolished farm becomes the finished private building', () => {
     expect(demolishedPlacement('nope:1', 'mansion')).toBeNull();
     // East Estates lots and Goldwood homes keep their own map layer
     expect(isDemolishedSite({ kind: 'demolished', lotId: 'lot:estate:3' })).toBe(false);
-    expect(isDemolishedSite({ kind: 'open', lotId: 'f:2' })).toBe(false);
+    expect(isDemolishedSite({ kind: 'open', lotId: 'f:2' })).toBe(true); // project picked straight from the deed card
+    expect(isDemolishedSite({ kind: 'turnkey_plant', lotId: 'f:2' })).toBe(false);
+    expect(isDemolishedSite({ kind: 'open', lotId: 'nope:1' })).toBe(false);
   });
 
   it('a site stuck at a stale stage count heals on load and is saved, with no manual edits', async () => {
@@ -88,6 +90,41 @@ describe('demolished farm becomes the finished private building', () => {
     expect(e.mapSummary().sites[0]).toMatchObject({ complete: true });
     expect(saved).toHaveLength(1);
     expect((saved[0]![4] as { stage: number }).stage).toBe(4);
+  });
+
+  it('picking a project straight from a farm deed (no separate Demolish step) converts the farm when finished', async () => {
+    setRealEstateForTest(fakeRE({ 'f:5': 'Jay' }));
+    fund('Jay', 50_000_000);
+    const e = new Estate(null);
+    await e.choose('Jay', 'f:5', 'mansion');
+    expect(e.siteByLot('f:5')).toMatchObject({ kind: 'demolished', was: { type: 'farmland' } });
+    await finish(e, 'Jay', 'f:5');
+    const map = e.mapSummary(new Map([['f:5', 'jay']])).sites.find((s) => s.lotId === 'f:5')!;
+    expect(map).toMatchObject({ build: 'mansion', complete: true });
+    expect(isDemolishedSite(map)).toBe(true);
+    expect(e.demolishedSite('Jay', 'f:5')).toBeTruthy();
+  });
+
+  it('a finished mansion stored as an "open" site on a farm (the live 4 of 4 case) heals to a demolished lot on load', async () => {
+    const saved: Array<Record<string, unknown>> = [];
+    const rows = [
+      { id: 'a', lot_id: 'f:17', owner_key: 'jay', owner_name: 'Jay', data: { id: 'a', lotId: 'f:17', owner: 'jay', kind: 'open', build: 'mansion', stage: 4, done: fullDone('mansion'), gear: 0, settledAt: 0 } },
+      { id: 'b', lot_id: 'lot:estate:1', owner_key: 'ann', owner_name: 'Ann', data: { id: 'b', lotId: 'lot:estate:1', owner: 'ann', kind: 'open', build: 'data_center', stage: 4, done: fullDone('data_center'), gear: 3, settledAt: 0 } },
+    ];
+    const pool = {
+      query: async (sql: string, args?: unknown[]) => {
+        if (/SELECT \* FROM estate_sites/.test(sql)) return { rows };
+        if (/INSERT INTO estate_sites/.test(sql)) saved.push((args ?? [])[4] as Record<string, unknown>);
+        return { rows: [] };
+      },
+      connect: async () => { throw new Error('unused'); },
+    };
+    const e = new Estate(pool as never);
+    await e.init();
+    expect(e.siteByLot('f:17')).toMatchObject({ kind: 'demolished', stage: 4, was: { type: 'farmland' } });
+    expect(e.siteByLot('lot:estate:1')!.kind).toBe('open'); // East Estates lots are untouched
+    expect(saved.map((d) => d.lotId)).toEqual(['f:17']);
+    expect(isDemolishedSite(e.mapSummary(new Map([['f:17', 'jay']])).sites.find((s) => s.lotId === 'f:17'))).toBe(true);
   });
 
   it('heals on the next interaction too (opening the works panel)', async () => {

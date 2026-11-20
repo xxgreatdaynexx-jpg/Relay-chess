@@ -27,13 +27,14 @@ export function createEstate(w: World) {
   const mark = (o: THREE.Object3D, spot: string) => {
     o.traverse((c) => { if ((c as THREE.Mesh).isMesh) { c.userData.spot = spot; pick.push(c); } });
   };
+  const structures = new Map<string, THREE.Object3D>(); // wineries and orchards: hidden while a private site replaces them
   const plastics = buildPlasticsPlant(); plastics.position.set(PLASTICS_PLANT.x, 0, PLASTICS_PLANT.z); root.add(plastics); mark(plastics, 'plastics');
   const dock = buildRigDock(); dock.position.set(RIG_DOCK.x, 0, RIG_DOCK.z); root.add(dock); mark(dock, 'rigdock');
   for (const h of goldwoodHomes()) {
     const g = buildGoldwoodMansion(h.floors, h.n); g.position.set(h.x, 0, h.z); g.rotation.y = h.rot; root.add(g); mark(g, `b:mansion:${h.n}`);
   }
   for (const v of wineryPlots()) {
-    const g = buildWinery(); g.position.set(v.x, 0, v.z); g.rotation.y = v.rot; root.add(g); mark(g, `winery:${v.n}`);
+    const g = buildWinery(); g.position.set(v.x, 0, v.z); g.rotation.y = v.rot; root.add(g); mark(g, `winery:${v.n}`); structures.set(`winery:${v.n}`, g);
   }
   // empty lots: no painted green square — the snowy ground already is the lot. A nearly invisible pick volume,
   // low timber corner posts with a short rail, a couple of existing trees, and a small for-sale board facing the street.
@@ -90,7 +91,7 @@ export function createEstate(w: World) {
     pad.position.set(f.x, 0.04, f.z); pad.userData.spot = `cf:${f.n}`; root.add(pad); pick.push(pad);
   }
   for (const o of orchardPlots()) {
-    const g = buildOrchardSite(o.w, o.d); g.position.set(o.x, 0, o.z); root.add(g); mark(g, orchardId(o.n));
+    const g = buildOrchardSite(o.w, o.d); g.position.set(o.x, 0, o.z); root.add(g); mark(g, orchardId(o.n)); structures.set(orchardId(o.n), g);
   }
 
   const dynamic = new THREE.Group(); root.add(dynamic);
@@ -125,6 +126,7 @@ export function createEstate(w: World) {
       model.position.set(at.x, 0.06, at.z); model.rotation.y = at.rot; model.scale.setScalar(at.scale); dynamic.add(model);
     }
     setCleared?.(cleared);
+    for (const [id, g] of structures) g.visible = !cleared.includes(id);
     const built = new Set((sum.sites ?? []).filter((s) => s.build).map((s) => s.lotId));
     root.traverse((o) => { if (o.name.startsWith('lot-empty:')) o.visible = !built.has(`lot:estate:${o.name.slice(10)}`); });
     for (const s of sum.sites ?? []) {

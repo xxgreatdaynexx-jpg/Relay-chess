@@ -8,9 +8,14 @@ import { propertyById } from './realEstate.js';
 
 export interface EstateSiteSummary { lotId: string; build: EstateBuildId | null; stage: number; complete: boolean; gear: number; kind: string }
 
-/** Lots that were demolished into a construction site (East Estates lots and Goldwood homes are drawn by their own layer). */
+/** Lots built for private works: East Estates lots and Goldwood homes. They have their own map layer and never held
+ *  an older structure, so they are not "demolished". */
+export const isPrivateWorksLot = (lotId: string) => lotId.startsWith('lot:estate:') || lotId.startsWith('b:mansion:');
+/** A construction site standing on an existing property (farm, house, business, barn): the old structure is gone.
+ *  The "Demolish & start a private project" flow usually opens the site by picking a project, which stored kind
+ *  'open', so both kinds count (turnkey power plants and wineries keep their own structure). */
 export const isDemolishedSite = (s: Pick<EstateSiteSummary, 'kind' | 'lotId'> | null | undefined) =>
-  !!s && s.kind === 'demolished' && !s.lotId.startsWith('lot:estate:') && !s.lotId.startsWith('b:mansion:');
+  !!s && (s.kind === 'demolished' || s.kind === 'open') && !isPrivateWorksLot(s.lotId) && !!propertyById(s.lotId);
 
 /** Where and how large to draw a site's building on a demolished lot: centred on the old footprint, turned to fit it
  *  best, and shrunk (never grown) so it stays inside the lot. Null when the lot is not on the city map. */
