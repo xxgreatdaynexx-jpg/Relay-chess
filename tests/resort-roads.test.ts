@@ -5,10 +5,10 @@ import {
 
 describe('resort road clearance (t2118u / t2119u)', () => {
   it('defines the asphalt avenues and cross streets used by resort3d', () => {
-    expect(RESORT_ROADS.length).toBe(6);
+    expect(RESORT_ROADS.length).toBe(8);
     expect(RESORT_ROADS.some((r) => r.z === -32 && r.d === 5)).toBe(true);
     expect(RESORT_ROADS.some((r) => r.z === -64 && r.d === 6)).toBe(true);
-    expect(RESORT_ROADS.filter((r) => r.w === 5 && r.d === 82).map((r) => r.x).sort((a, b) => a - b)).toEqual([-136, -40, 40, 136]);
+    expect(RESORT_ROADS.filter((r) => r.w === 5 && r.d === 82).map((r) => r.x).sort((a, b) => a - b)).toEqual([-312, -136, -40, 40, 136, 312]);
   });
 
   it('keeps every lot, spot and plantation plot off asphalt (owned ids unchanged)', () => {

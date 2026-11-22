@@ -16,7 +16,7 @@ export const MAX_INVITES = 30;
 export const MAX_BUY_QTY = 20;
 
 /** Property types that are homes (have an interior). Commercial lots, farms and landmarks don't. */
-export const HOME_TYPES = new Set(['house', 'rowhouse', 'apartment', 'tower', 'beachhouse', 'condo', 'villa', 'hotel', 'penthouse', 'isleestate', 'mansion', 'highrise']);
+export const HOME_TYPES = new Set(['house', 'rowhouse', 'apartment', 'tower', 'beachhouse', 'condo', 'villa', 'hotel', 'penthouse', 'isleestate', 'mansion', 'highrise', 'beachvilla', 'overwater', 'grandhotel', 'royalestate']);
 export const isHomeProperty = (p: { kind: string; type: string } | undefined | null) => !!p && p.kind === 'building' && HOME_TYPES.has(p.type);
 
 export type FurnCat = 'seating' | 'tables' | 'beds' | 'storage' | 'lighting' | 'decor' | 'plants' | 'electronics' | 'kitchen' | 'luxury';

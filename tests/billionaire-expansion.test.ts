@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { isResortGrandId } from '../shared/resort';
 import { describe, expect, it } from 'vitest';
 import { CHANGELOG } from '../shared/changelog';
 import {
@@ -136,7 +137,7 @@ describe('map expansion and Goldwood', () => {
   });
 
   it('keeps the original catalog (568 after Bill Chud 3) plus the new prefixes only', () => {
-    const isNew = (id: string) => /^(lot:estate:|winery:|b:mansion:|orchard:)/.test(id) || /^cf:2\d{3}$/.test(id) || isWestDeed(id);
+    const isNew = (id: string) => /^(lot:estate:|winery:|b:mansion:|orchard:)/.test(id) || /^cf:2\d{3}$/.test(id) || isWestDeed(id) || isResortGrandId(id);
     expect(properties().filter((p) => !/^(sky|isl):/.test(p.id) && !isNew(p.id))).toHaveLength(568);
     expect(allFieldPlots().filter((p) => p.n >= 2000)).toHaveLength(10);
   });

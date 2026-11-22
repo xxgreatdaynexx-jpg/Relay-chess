@@ -34,7 +34,11 @@ export const DESTINATIONS: Record<Destination, { name: string; ticket: number; g
 };
 
 // ---- map
-export const RESORT_X0 = -200, RESORT_X1 = 200, RESORT_Z0 = -130, RESORT_Z1 = 70; // #10e: was ±130 / -100 (Banyan Bay west, Sapphire Heights east)
+// #10e: was ±130 / -100 (Banyan Bay west, Sapphire Heights east). Grand expansion: ±200 / -130 -> ±400 / -150 (Coral Cove west,
+// Azure Point east); every existing lot, plot and landmark keeps its id and position.
+export const RESORT_X0 = -400, RESORT_X1 = 400, RESORT_Z0 = -150, RESORT_Z1 = 70;
+/** Land area of the map before the grand expansion (400 x 168 of land north of the shore) vs now. */
+export const RESORT_LAND_BEFORE = 400 * (38 + 130);
 export const SHORE_Z = 38; // sand from ~22 to 38, ocean beyond
 export const BOARDWALK_Z = 20;
 export const clampResortTarget = (x: number, z: number): [number, number] => [Math.min(RESORT_X1 - 10, Math.max(RESORT_X0 + 10, x)), Math.min(RESORT_Z1 - 10, Math.max(RESORT_Z0 + 10, z))];
@@ -45,6 +49,8 @@ export const RESORT_ROADS: ResortRoad[] = [
   { x: 0, z: -32, w: RESORT_X1 - RESORT_X0 - 20, d: 5 },
   { x: 0, z: -64, w: RESORT_X1 - RESORT_X0 - 20, d: 6 },
   ...([-136, -40, 40, 136] as const).map((x) => ({ x, z: -24, w: 5, d: 82 })),
+  // Grand expansion: one cross street through each new district.
+  ...([-312, 312] as const).map((x) => ({ x, z: -24, w: 5, d: 82 })),
 ];
 export const resortAabbHit = (a: { x: number; z: number; w: number; d: number }, b: { x: number; z: number; w: number; d: number }, pad = 0) =>
   Math.abs(a.x - b.x) * 2 < a.w + b.w + pad * 2 && Math.abs(a.z - b.z) * 2 < a.d + b.d + pad * 2;
@@ -60,6 +66,11 @@ export const RESORT_SPOTS: ResortSpot[] = [
   { id: 'r-mine', label: 'Coral Grotto', icon: '🐚', blurb: 'A sea cave under the volcano: coral pillars, rich in gems and gold.', x: 100, z: -80, w: 22, d: 22, h: 14, color: 0xff8a7a },
   { id: 'r-farm', label: 'Paradise Plantation', icon: '🥥', blurb: 'Buy a plot and grow coconuts, pineapples, mangoes, bananas and cacao.', x: -74, z: -44, w: 12, d: 8, h: 6, color: 0x7ed08a },
   { id: 'r-pier', label: 'Reef Pier', icon: '🎣', blurb: 'Fish the reef at sunset: clownfish, parrotfish, mahi-mahi, yellowfin, sailfish, and the rare Blue Marlin or Sunset Manta. Sell your catch to the fishmonger at the tiki shack — same prices and daily caps as the city dock.', x: -60, z: 50, w: 8, d: 26, h: 4, color: 0x3ad8c8 },
+  // Grand expansion amenities (they open the same resort features: casino games, reef fishing, the boat store, the airfield).
+  { id: 'r-beachclub', label: 'Coral Cove Beach Club', icon: '🍹', blurb: 'Cabanas, an infinity pool and a cocktail bar on the sand. The resort tables and slots are open here too.', x: -340, z: 6, w: 26, d: 14, h: 9, color: 0xff9ac0 },
+  { id: 'r-cove-pier', label: 'Coral Cove Pier', icon: '🐠', blurb: 'A long reef pier on the quiet west bay. Same reef fish, fishmonger prices and daily caps as the Reef Pier.', x: -300, z: 50, w: 8, d: 26, h: 4, color: 0x3ad8c8 },
+  { id: 'r-harbour', label: 'Azure Point Yacht Harbour', icon: '⚓', blurb: 'Deep-water berths for superyachts and megayachts. Buy a boat or head out deep-sea fishing.', x: 322, z: 50, w: 34, d: 14, h: 2, color: 0x9ad0ff },
+  { id: 'r-helipad', label: 'Azure Point Helipad', icon: '🚁', blurb: 'Private helipad above the bay. Fly home to Chud Hub or open the private jet hangar.', x: 304, z: -128, w: 18, d: 18, h: 3, color: 0xd8b25a },
   { id: 'r-marina', label: 'Marina', icon: '🛥️', blurb: 'Buy a skiff, sportfisher, yacht, superyacht or megayacht. Boats unlock deep-sea fishing and count toward your net worth.', x: 92, z: 48, w: 30, d: 14, h: 2, color: 0xffffff },
 ];
 
@@ -73,7 +84,20 @@ export const RESORT_TYPES: Record<string, { label: string; price: number; floors
   oceanestate: { label: 'Oceanfront estate', price: 650_000, floors: [2, 3], floorH: 3.6, color: 0xfaf3e4 },
   clifftop: { label: 'Clifftop mansion', price: 1_100_000, floors: [2, 3], floorH: 4, color: 0xf4efe8 },
   skyrise: { label: 'Penthouse skyrise', price: 1_800_000, floors: [18, 24], floorH: 3, color: 0xdfe9f0 },
+  // Grand expansion: Coral Cove (west) and Azure Point (east).
+  beachvilla: { label: 'Beachfront villa', price: 320_000, floors: [2, 2], floorH: 3.6, color: 0xfffaf0 },
+  overwater: { label: 'Overwater bungalow', price: 480_000, floors: [1, 1], floorH: 3.8, color: 0xf2e6cc },
+  grandhotel: { label: 'Grand resort hotel', price: 1_400_000, floors: [14, 18], floorH: 3, color: 0xf6ead6 },
+  royalestate: { label: 'Royal palm estate', price: 2_600_000, floors: [2, 3], floorH: 4.4, color: 0xfdf7ec },
 };
+/** Lot numbers from here on belong to the grand expansion (r:<type>:33+). */
+export const RESORT_GRAND_FIRST_LOT = 33;
+/** Plantation numbers from here on belong to the grand expansion (rf:21+). */
+export const RESORT_GRAND_FIRST_PLOT = 21;
+/** True for a deed added by the grand expansion (r:<type>:33+ or rf:21+); older ids are frozen in catalog tests. */
+export const isResortGrandId = (id: string) => { const m = /^r:[a-z]+:(\d+)$/.exec(id); if (m) return Number(m[1]) >= RESORT_GRAND_FIRST_LOT; const f = /^rf:(\d+)$/.exec(id); return !!f && Number(f[1]) >= RESORT_GRAND_FIRST_PLOT; };
+/** Overwater bungalows stand on stilts over the lagoon (the only lots south of the shoreline). */
+export const isOverwater = (type: string) => type === 'overwater';
 export interface ResortLot extends OBB { id: string; type: string; label: string; price: number; h: number; n: number }
 const round500 = (n: number) => Math.max(500, Math.round(n / 500) * 500);
 const rnd = (i: number) => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
@@ -100,6 +124,18 @@ export function resortLots(): ResortLot[] {
   for (const x of [-176, -152, 152, 176]) add('oceanestate', x, 28, 14, 9);
   for (const x of [-176, -152, 152, 176]) add('clifftop', x, -46, 16, 14);
   for (const x of [150, 178]) add('skyrise', x, 2, 16, 14);
+  // Grand expansion (appended: r:<type>:33+). Mirrored districts either side of the old map, off the x=±312 cross streets.
+  for (const sx of [-1, 1] as const) {
+    for (const x of [228, 246, 264, 282]) add('beachvilla', sx * x, 29, 14, 9);
+    for (const x of [348, 362, 376]) add('beachhouse', sx * x, 29, 9, 8);
+    for (const x of [236, 266]) add('grandhotel', sx * x, 6, 22, 14);
+    for (const x of [232, 256, 284, 340, 366]) add('condo', sx * x, -14, 12, 10);
+    for (const x of [232, 254, 276, 298, 330, 352, 374]) add('villa', sx * x, -48, 13, 11);
+    for (const [x, z] of [[238, -98], [272, -98], [238, -128], [272, -128]] as const) add('royalestate', sx * x, z, 24, 18);
+  }
+  for (const x of [-372, -356, -340]) add('overwater', x, 56, 10, 9); // Coral Cove lagoon
+  for (const x of [342, 370]) add('skyrise', x, 2, 16, 14); // Azure Point waterfront towers
+  for (const x of [358, 384]) add('clifftop', x, -128, 16, 14);
   lotCache = out; return out;
 }
 
@@ -120,6 +156,9 @@ let plotCache: ResortPlot[] | null = null;
 const RF_FILL: [number, number, number, number][] = [
   [5, 4, 96, -52], [6, 5, 112, -52], [4, 4, 74, -20], [7, 5, 90, -20],
   [6, 6, 108, -18], [8, 5, 78, -4], [5, 5, 124, -20], [6, 4, 98, -2],
+  // Grand expansion (rf:21+): Coral Cove and Azure Point hill plantations.
+  [8, 6, -332, -92], [8, 6, -354, -92], [6, 5, -376, -92], [8, 6, -332, -118], [8, 6, -354, -118], [6, 5, -376, -118],
+  [8, 6, 336, -92], [8, 6, 358, -92], [6, 5, 380, -92],
 ];
 export function resortPlots(): ResortPlot[] {
   if (plotCache) return plotCache;

@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-22T09:10:00-06:00", "title": "Chud Resort is twice as big", "bullets": [
+    "The resort map now stretches twice as far along the coast, with two new districts: Coral Cove in the west and Azure Point in the east. Everything already there stays where it was, with the same owners.",
+    "66 new properties: beachfront villas, overwater bungalows on the Coral Cove lagoon, grand resort hotels, royal palm estates in the hills, more penthouse skyrises and clifftop mansions, plus extra beach houses, condos, villas and 9 more plantation plots. The Resort real estate list now shows every type.",
+    "New places to visit: the Coral Cove Beach Club (resort slots and tables), Coral Cove Pier (reef fishing with the fishmonger), the Azure Point Yacht Harbour (boats and deep-sea fishing) and the Azure Point Helipad (fly home or open the jet hangar).",
+    "More scenery: a golf course, a tennis club, a second lighthouse, palm groves, more traffic, lamps, beach umbrellas and yachts. The map is drawn with fewer draw calls than before, so it stays smooth on phones.",
+  ]},
   {"commit": "", "at": "2026-11-22T09:00:00-06:00", "title": "Private Island becomes a full 3D island with lagoon fishing and a daily estate retreat", "bullets": [
     "The Private Island is now a full 3D map you can pan, rotate and zoom like Chud Resort: white beaches, jungle, The Ridge with Ridge Falls, a plaza with paths and tiki torches, and four estates that each have their own look (Balinese Cove Estate, Mediterranean Palm Estate, modern Ridge Villa and the domed Crown Villa), each with a pool. Your own estate gets a gold marker.",
     "The Island Dock now has a long jetty with your megayacht alongside and a jet pad nearby. The 2D map still works and shows everything new.",

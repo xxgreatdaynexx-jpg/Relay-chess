@@ -8,6 +8,7 @@ import { RealEstate } from '../server/realEstate';
 import { Employment, EMPLOY_MIGRATION } from '../server/employment';
 import { HOMES_MIGRATION } from '../server/homes';
 import { setPriceIndexForTest, px } from '../server/price-index';
+import { isResortGrandId } from '../shared/resort';
 const hash=(x:unknown)=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const T=Date.parse('2026-11-07T21:32:00-06:00');
 function shim(db:PGlite){
@@ -16,6 +17,8 @@ function shim(db:PGlite){
  return{query,on:()=>{},connect:async()=>{let release!:()=>void;const before=chain;chain=new Promise<void>(r=>{release=r;});await before;return{query,release};}};
 }
 afterEach(()=>setPriceIndexForTest(1));
+/** Chud Resort grand expansion: appended lots r:<type>:33+ and plantations rf:21+ (pre-expansion ids are frozen below). */
+const isGrandResort=isResortGrandId;
 
 const CLUB_TOWER_RETIRED = new Set(['b:house:-691:-188','b:rowhouse:-590:-182','p:park:-667:-111','b:rowhouse:710:331','b:house:659:386','b:house:646:434','b:house:660:334','p:lot:592:349']);
 const withoutNewRetired = (p: {id: string; retired?: boolean; tiles?: number}) => {
@@ -25,7 +28,7 @@ const withoutNewRetired = (p: {id: string; retired?: boolean; tiles?: number}) =
 };
 describe('housing price per actual employee capacity',()=>{
  it('all city/countryside/resort homes retain exact pre-change slots; 1/2/3 slots cost10k/20k/30k; 4 slots untouched',()=>{
-  const luxury=(p:{id:string})=>/^(sky|isl):/.test(p.id)||isWestDeed(p.id); // West Chud deeds are additive
+  const luxury=(p:{id:string})=>/^(sky|isl):/.test(p.id)||isWestDeed(p.id)||isResortGrandId(p.id); // West Chud deeds are additive
   const hs=properties().filter(p=>isEmployeeHousing(p)&&!luxury(p));expect(hs).toHaveLength(401);
   for(const old of baseline.housing){const p=propertyById(old.id)!;expect(workerBonusOf(p.id),p.id).toBe(old.slots);expect(p.price,p.id).toBe(old.slots<=3?old.slots*10000:old.price);
 
@@ -42,7 +45,7 @@ describe('housing price per actual employee capacity',()=>{
  it('nonhousing catalog is byte-for-byte unchanged; same complete housing identity set',()=>{
   const added=new Set(['cf:1008','cf:1009','cf:1010','cf:1011','barn:big:1008','barn:big:1009','barn:big:1010','barn:big:1011','fac:2','fac:3','fac:4','fac:5','fac:6','fac:7','fac:8','fac:9','fac:10','fac:11','fac:12','fac:13']);
   const luxury=new Set(['sky:1','sky:2','sky:3','sky:4','sky:5','sky:6','isl:1','isl:2','isl:3','isl:4']);
-  const isExp=(id:string)=>/^(lot:estate:|winery:|b:mansion:|orchard:)/.test(id)||/^cf:2\d{3}$/.test(id)||isWestDeed(id);
+  const isExp=(id:string)=>/^(lot:estate:|winery:|b:mansion:|orchard:)/.test(id)||/^cf:2\d{3}$/.test(id)||isWestDeed(id) || isResortGrandId(id);
   expect(properties().some(p=>p.id==='lm:factory')).toBe(false); // Bill Chud 3: Factory monument deed retired (building stays)
   expect(hash(properties().filter(p=>!isEmployeeHousing(p)&&!added.has(p.id)&&!isExp(p.id)).map((p)=>withoutNewRetired(isEmptyLand(p)?{...p,price:Math.round(p.price/EMPTY_LAND_PRICE_MUL)}:p)))).toBe('b26e48988bca759586cebdd6587bdaef770f34d3f18cdae5ed02adc025f0c3f0'); // prior nonHousingHash minus lm:factory; plants additive, Bill Chud 1 tile counts only. Club/Sky Tower lots stay in the catalog as retired
   expect(properties().filter(p=>isEmployeeHousing(p)&&!luxury.has(p.id)&&!isExp(p.id)).map(p=>p.id)).toEqual(baseline.housing.map(p=>p.id));

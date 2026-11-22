@@ -4,9 +4,9 @@ import { useDoing } from '@/lib/doing';
 import { fullScreenGameOpen } from '@/lib/pauseWorld';
 import { backdropDismiss } from '@/lib/backdrop';
 import { useEffect, useRef, useState } from 'react';
-import { RESORT_SPOTS } from '../../../shared/resort';
+import { RESORT_SPOTS, RESORT_TYPES } from '../../../shared/resort';
 import { MINE_CAVE_EVENT } from '../../../shared/mines';
-import { propertyById as baseProperty, type OwnedProperty } from '../../../shared/realEstate';
+import { propertyById as baseProperty, properties, type OwnedProperty, type Property } from '../../../shared/realEstate';
 import { indexed } from '../../../shared/priceIndex';
 import type { Resort } from '@/lib/resort3d';
 import { useAccount } from '@/lib/auth';
@@ -25,6 +25,13 @@ const FishingPanel = lazyWithReload(() => import('./FishingPanel').then((m) => (
 import { usePanelDrag } from '@/lib/panelDrag';
 
 const chips = (n: number) => n.toLocaleString('en-US');
+/** Every resort deed grouped by type (cheapest group first), plantations last. Includes the Coral Cove / Azure Point expansion. */
+const RESORT_DEED_GROUPS: Array<[string, Property[]]> = (() => {
+  const by = new Map<string, Property[]>();
+  for (const p of properties()) if (p.map === 'resort' && !p.retired) { const k = p.kind === 'farm' ? 'Plantations' : `${RESORT_TYPES[p.type]?.label ?? p.type}s`; (by.get(k) ?? by.set(k, []).get(k)!).push(p); }
+  const base = (k: string) => (k === 'Plantations' ? Infinity : Math.min(...by.get(k)!.map((p) => p.price)));
+  return [...by.entries()].sort((a, b) => base(a[0]) - base(b[0]) || a[0].localeCompare(b[0]));
+})();
 let IDX = 1;
 const RESORT_GAMES = [
   { tab: 'slots-tab', label: '🌴 Resort slots · Tiki Lagoon · Yacht Club · Pearl Diver' },
@@ -94,7 +101,10 @@ export function ResortMap() {
       case 'r-mine': window.dispatchEvent(new CustomEvent(MINE_CAVE_EVENT, { detail: 'coral' })); break;
       case 'r-farm': setList(true); break;
       case 'r-pier': setPier(true); break;
-      case 'r-marina': setMarina(true); break;
+      case 'r-marina': case 'r-harbour': setMarina(true); break;
+      case 'r-beachclub': setCasino(true); break;
+      case 'r-cove-pier': setPier(true); break;
+      case 'r-helipad': setAir(true); break;
     }
   }
   useEffect(() => { if (!import.meta.env.DEV) return; (window as unknown as { __resortQA?: unknown }).__resortQA = { go, view: (x: number, z: number, dx?: number, dy?: number, dz?: number) => worldRef.current?.view(x, z, dx, dy, dz) }; }); // dev-only QA hook (like __minesQA)
@@ -127,9 +137,8 @@ export function ResortMap() {
           <small>Premium beachfront. Same rules as the city: 0.5%/day tax, sell back for 70%, repossessed after 3 unpaid days.</small>
           <h4>My resort properties</h4>
           {mine.length ? mine.map((o) => <button type="button" key={o.id} onClick={() => setDeed(o.id)}>{baseProperty(o.id)?.label ?? o.id}</button>) : <small>None yet.</small>}
-          {(['Beach house', 'Beachfront hotel', 'Oceanview condo', 'Hillside villa', 'Plantation'] as const).map((k) => <div key={k}><h4>{k}s</h4>
-            {[...Array(30).keys()].flatMap((i) => [baseProperty(`r:${k === 'Beach house' ? 'beachhouse' : k === 'Beachfront hotel' ? 'hotel' : k === 'Oceanview condo' ? 'condo' : 'villa'}:${i}`), k === 'Plantation' ? baseProperty(`rf:${i}`) : undefined])
-              .filter((p) => p && (k === 'Plantation' ? p.id.startsWith('rf:') : p.id.startsWith('r:'))).map((p) => <button type="button" key={p!.id} onClick={() => setDeed(p!.id)} data-testid={`deed-${p!.id}`}>{p!.label}<span>{owned.get(p!.id) ? owned.get(p!.id)!.owner : `🪙 ${chips(indexed(p!.price, IDX))}`}</span></button>)}
+          {RESORT_DEED_GROUPS.map(([k, ps]) => <div key={k}><h4>{k}</h4>
+            {ps.map((p) => <button type="button" key={p.id} onClick={() => setDeed(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(indexed(p.price, IDX))}`}</span></button>)}
           </div>)}
         </MapSheet>
       )}

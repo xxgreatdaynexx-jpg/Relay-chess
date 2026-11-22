@@ -72,7 +72,7 @@ describe('resort properties and plantation', () => {
   it('lots are unique, on land inside the map, not overlapping, and priced above the city equivalents', () => {
     const lots = resortLots(); expect(lots.length).toBeGreaterThanOrEqual(18);
     expect(new Set(lots.map((l) => l.id)).size).toBe(lots.length);
-    for (const l of lots) { expect(l.x - l.w / 2).toBeGreaterThan(RESORT_X0); expect(l.x + l.w / 2).toBeLessThan(RESORT_X1); expect(l.z - l.d / 2).toBeGreaterThan(RESORT_Z0); expect(l.z + l.d / 2).toBeLessThan(SHORE_Z); }
+    for (const l of lots) { expect(l.x - l.w / 2).toBeGreaterThan(RESORT_X0); expect(l.x + l.w / 2).toBeLessThan(RESORT_X1); expect(l.z - l.d / 2).toBeGreaterThan(RESORT_Z0); if (l.type === 'overwater') { expect(l.z - l.d / 2).toBeGreaterThan(SHORE_Z); expect(l.z + l.d / 2).toBeLessThan(RESORT_Z1); } else expect(l.z + l.d / 2).toBeLessThan(SHORE_Z); }
     const all = [...lots, ...resortPlots(), ...RESORT_SPOTS.filter((s) => s.id !== 'r-marina').map((s) => ({ ...s, rot: 0 }))];
     for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) expect(obbOverlap(all[i]!, all[j]!, 0.5), `${i}/${j}`).toBe(false);
     expect(RESORT_TYPES.beachhouse!.price).toBeGreaterThan(BASE_PRICE.house!); expect(RESORT_TYPES.condo!.price).toBeGreaterThan(BASE_PRICE.apartment!); expect(RESORT_TYPES.villa!.price).toBeGreaterThan(BASE_PRICE.tower! * 0.9); expect(RESORT_TYPES.hotel!.price).toBeGreaterThan(BASE_PRICE.tower!);

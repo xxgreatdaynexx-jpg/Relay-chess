@@ -140,6 +140,11 @@ const PLANS: Record<string, () => HomePlan> = {
   isleestate: () => LUXE('isleestate'),
   mansion: () => GRAND('mansion'),
   highrise: () => GRAND('highrise'),
+  // Chud Resort grand expansion
+  beachvilla: () => LUXE('beachvilla'),
+  overwater: () => LUXE('overwater'),
+  grandhotel: () => GRAND('grandhotel'),
+  royalestate: () => GRAND('royalestate'),
 };
 
 export const HOME_PLAN_TYPES = Object.keys(PLANS);
