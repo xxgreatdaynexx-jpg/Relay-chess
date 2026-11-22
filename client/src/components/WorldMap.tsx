@@ -21,6 +21,8 @@ import { importWithReload } from '@/lib/chunkReload';
 import { applyWorldOwned } from '@/lib/worldOwned';
 import { fetchRealEstateList } from '@/lib/realEstateApi';
 import { WORLD_SPOTS } from '@/lib/worldSpots';
+import { WEST_SPOTS, isWestSpotId } from '../../../shared/westActivities';
+import { OPEN_RANCH } from '@/lib/worldPanels';
 import { canDemolish, ESTATE_BUILDS } from '../../../shared/estateProjects';
 import { demolishedLine } from '../../../shared/estateSites';
 import { demolishedSiteOf, ESTATE_CHANGED, loadEstateSites } from '@/lib/estateSites';
@@ -188,12 +190,14 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
       {bo > 0 && me && <button type="button" disabled={!!busy || protLeft > 0} aria-busy={busy === 're_buyout'} onClick={buyout} data-testid="deed-buyout" title={protLeft > 0 ? 'Protected after a purchase' : `Pays ${o?.owner} 2x what they paid`}>{busy === 're_buyout' ? <><span className="world-spin" aria-hidden /> Buying out…</> : protLeft > 0 ? <>🛡 Hostile buyout: 🪙 {chips(bo)} (protected {Math.ceil(protLeft / 3_600_000)}h)</> : <>⚔️ Hostile buyout: 🪙 {chips(bo)}</>}</button>}
       {mine && onKitchen && p.kind !== 'landmark' && p.type !== 'barn' && <button type="button" onClick={onKitchen} data-testid="deed-kitchen">🍳 Kitchen</button>}
       {o && isHomeProperty(p) && <button type="button" onClick={() => { enterHome(p.id); onClose(); }} data-testid="deed-enter">{mine ? '🛋️ Enter & decorate' : `🚪 Visit ${o.owner}'s home`}</button>}
-      {p.kind === 'farm' && o && onFarm && (!demo || mine) && <button type="button" onClick={onFarm} data-testid="deed-farm">{demo ? '🌾 Harvest what was left on the field' : mine ? '🌾 Open farm' : '👀 Visit farm'}</button>}
+      {p.kind === 'farm' && p.type !== 'ranch' && o && onFarm && (!demo || mine) && <button type="button" onClick={onFarm} data-testid="deed-farm">{demo ? '🌾 Harvest what was left on the field' : mine ? '🌾 Open farm' : '👀 Visit farm'}</button>}
       {isBarnProperty(id) && <small>This barn is sold separately from every farm. Owning this barn unlocks All my farms; it does not buy or transfer nearby farmland.</small>}
       {mine && isBarnProperty(id) && onAllFarms && <button type="button" onClick={onAllFarms} data-testid="deed-barn">🏡 Barn · All my farms</button>}
       {mine && onWorks && canDemolish(p).ok && <button type="button" onClick={onWorks} data-testid="deed-works">{demo ? '🏗️ Open private works…' : '🏗️ Demolish & start a private project…'}</button>}
-      {mine && onHyper && p.kind === 'farm' && !demo && <button type="button" onClick={onHyper} data-testid="deed-hyper">🌿 Dutch glasshouse (hyper farm)…</button>}
-      {p.kind === 'farm' && !o && !demo && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
+      {mine && onHyper && p.kind === 'farm' && p.type !== 'ranch' && !demo && <button type="button" onClick={onHyper} data-testid="deed-hyper">🌿 Dutch glasshouse (hyper farm)…</button>}
+      {p.kind === 'farm' && p.type !== 'ranch' && !o && !demo && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
+      {p.type === 'ranch' && !o && <small>Ranch: buy it to raise cows, sheep, pigs and chickens. Milk, eggs and bacon go to your pantry; wool sells for chips.</small>}
+      {p.type === 'ranch' && mine && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent(OPEN_RANCH, { detail: id }))} data-testid="deed-ranch">🐄 Open ranch</button>}
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
       {msg && <small role="status" data-testid="deed-msg">{msg}</small>}
       <small className="opacity-60">You can sell any property back to the city at any time for 70% of what you paid, or trade it with another player at an agreed price (no 30% haircut, within their zoning caps). No purchase surcharge. Zoning caps on new purchases: {ZONE_DEED_CAP} residential, {ZONE_DEED_CAP} commercial (incl. barns, factory plants and monuments), {FARMLAND_TILE_CAP.toLocaleString('en-US')} farmland tiles; resort lots and parks/empty lots are exempt. Zoning caps do not force sales or confiscate existing property. Tax is on the list price, charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
@@ -236,6 +240,8 @@ const MechanicShop = lazyWithReload(() => import('./MechanicShop').then((m) => (
 import { WeeklyEventBar } from './WeeklyEventBar';
 const CoopPanel = lazyWithReload(() => import('./CoopPanel').then((m) => ({ default: m.CoopPanel })));
 const FreightYard = lazyWithReload(() => import('./FreightYard').then((m) => ({ default: m.FreightYard })));
+const RanchPanel = lazyWithReload(() => import('./RanchPanel').then((m) => ({ default: m.RanchPanel })));
+const WestChudPanel = lazyWithReload(() => import('./WestChudPanel').then((m) => ({ default: m.WestChudPanel })));
 const SpaceProgram = lazyWithReload(() => import('./SpaceProgram').then((m) => ({ default: m.SpaceProgram })));
 const ResortMap = lazyWithReload(() => import('./ResortMap').then((m) => ({ default: m.ResortMap })));
 const FortMcMap = lazyWithReload(() => import('./FortMcMap').then((m) => ({ default: m.FortMcMap })));
@@ -354,6 +360,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   useEffect(() => { localStorage.setItem(MODE_KEY, mode); }, [mode]);
 
   const go = (id: string) => {
+    if (isWestSpotId(id)) { setPanel({ k: 'west', id }); return; } // West Chud activity sites (shared/westActivities.ts)
     switch (id) {
       case 'casino': setCasino(true); return;
       case 'chess': onClose(); return;
@@ -384,6 +391,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   };
   const goRef = useRef(go); goRef.current = go;
   // Player profile "Show on map": land/farm coordinates from /api/player.
+  useEffect(() => { const on = (e: Event) => { const id = (e as CustomEvent<string>).detail; if (typeof id === 'string' && id.startsWith('ranch:')) setPanel({ k: 'ranch', id }); }; window.addEventListener(OPEN_RANCH, on); return () => window.removeEventListener(OPEN_RANCH, on); }, []);
   useEffect(() => { const on = (e: Event) => { const d = (e as CustomEvent<{ x: number; z: number; dist?: number; hgt?: number; ang?: number }>).detail; if (d && Number.isFinite(d.x) && Number.isFinite(d.z)) worldRef.current?.focusXZ(d.x, d.z, d.dist, d.hgt, d.ang); }; window.addEventListener('world-focus', on); return () => window.removeEventListener('world-focus', on); }, []);
   useEffect(() => { if (!dock || driving || loading) return; const t = setTimeout(() => worldRef.current?.flyTo('dock'), 600); return () => clearTimeout(t); }, [dock, loading, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -408,6 +416,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
               else setDeed(id);
               return;
             }
+            if (id.startsWith('ranch:')) { if (o && m && o.owner.toLowerCase() === m.toLowerCase()) setPanel({ k: 'ranch', id }); else setDeed(id); return; }
             if ((id.startsWith('f:') || id.startsWith('cf:') || id.startsWith('winery:') || id.startsWith('orchard:')) && o && m && o.owner.toLowerCase() === m.toLowerCase()) setFarm(id); else setDeed(id); },
           onTrailer: (n) => { const m = meRef.current; if (m && n.toLowerCase() === m.toLowerCase()) { setPanel({ k: 'home' }); return true; } return false; },
         });
@@ -444,7 +453,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   const pad = (k: keyof DriveInput, label: string) => <button type="button" className={`world-pad-${k}`} onPointerDown={(e) => { e.preventDefault(); driveRef.current?.touch(k, true); }} onPointerUp={() => driveRef.current?.touch(k, false)} onPointerLeave={() => driveRef.current?.touch(k, false)} onPointerCancel={() => driveRef.current?.touch(k, false)} data-testid={`world-pad-${k}`}>{label}</button>;
   const nearSpot = near && WORLD_SPOTS.find((s) => s.id === near);
 
-  const spot = tip && WORLD_SPOTS.find((s) => s.id === tip.id);
+  const spot = tip && (WORLD_SPOTS.find((s) => s.id === tip.id) ?? WEST_SPOTS.find((s) => s.id === tip.id));
   const trailer = tip?.id.startsWith('trailer:') ? tip.id.slice(8) : null;
   const tipProp = tip ? propertyById(spot ? `lm:${tip.id}` : tip.id) : undefined;
   const tipOwner = tipProp ? owned.get(tipProp.id)?.owner : undefined;
@@ -462,6 +471,11 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
           <button type="button" className="world-tile" style={{ ['--c' as string]: '#c9a24a' }} onClick={() => setDeeds(true)} data-testid="world-tile-bigfarms">
             <span className="world-tile-icon">🚜</span><b>Big Farms</b><small>8 big farms east of the east road (20×20 to 30×30)</small>
           </button>
+          {WEST_SPOTS.map((s) => (
+            <button key={s.id} type="button" className="world-tile world-tile-west" style={{ ['--c' as string]: '#' + s.color.toString(16).padStart(6, '0') }} onClick={() => go(s.id)} data-testid={`world-tile-${s.id}`}>
+              <span className="world-tile-icon">{s.icon}</span><b>{s.label}</b><small>West Chud · {s.blurb}</small>
+            </button>
+          ))}
           <OwnedHomes2D owned={owned} onPick={(id) => setDeed(id)} />
         </div>
       )}
@@ -526,6 +540,8 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       {dock && <TimedSuspense label="Opening the dock…" onClose={() => setDock(false)}><FishingPanel me={me} onClose={() => setDock(false)} /></TimedSuspense>}
       {mechanic && <TimedSuspense label="Opening the garage…" onClose={() => setMechanic(false)}><MechanicShop onClose={() => setMechanic(false)} onDrive={(carId, color) => { setMechanic(false); startDrive(carId, color, 'mechanic'); }} /></TimedSuspense>}
       {panel.k !== 'coop' && <WeeklyEventBar onOpen={() => setPanel((c) => togglePanel(c, { k: 'coop', tab: 'event' }))} />}
+      {panel.k === 'ranch' && <TimedSuspense label="Opening the ranch…" onClose={() => setPanel((c) => closePanel(c, 'ranch'))}><RanchPanel id={panel.id} onClose={() => setPanel((c) => closePanel(c, 'ranch'))} onDeed={() => setDeed(panel.id)} /></TimedSuspense>}
+      {panel.k === 'west' && <TimedSuspense label="Heading out to West Chud…" onClose={() => setPanel((c) => closePanel(c, 'west'))}><WestChudPanel id={panel.id} onClose={() => setPanel((c) => closePanel(c, 'west'))} /></TimedSuspense>}
       {panel.k === 'spacesim' && <TimedSuspense label="Opening the Space Center…" onClose={() => setPanel((c) => closePanel(c, 'spacesim'))}><SpaceProgram me={me} onClose={() => setPanel((c) => closePanel(c, 'spacesim'))} /></TimedSuspense>}
       {panel.k === 'coop' && <TimedSuspense label="Opening the co-op board…" onClose={() => setPanel((c) => closePanel(c, 'coop'))}><CoopPanel me={me} tab0={panel.tab} onClose={() => setPanel((c) => closePanel(c, 'coop'))} onChanged={() => { stadiumRef.current?.refresh(); bridgeRef.current?.refresh(); }} onViewSite={(id) => { setPanel((c) => closePanel(c, 'coop')); if (id === 'bridge') worldRef.current?.focusXZ(BRIDGE_SITE.x, 270, 200, 110, 0.5); else worldRef.current?.focusXZ(STADIUM_SITE.x, STADIUM_SITE.z, 46, 38); }} /></TimedSuspense>}
       {freight && <TimedSuspense label="Opening the freight yard…" onClose={() => setFreight(false)}><FreightYard me={me} onClose={() => setFreight(false)} /></TimedSuspense>}

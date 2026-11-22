@@ -28,6 +28,8 @@ import { BEACH_X0, BEACH_X1, expansionLandBoxes } from '../../../shared/expansio
 import { RIG_DOCK } from '../../../shared/mapExpansion';
 import { addExpansionLand } from './worldExpansionLand';
 import { addWestCity } from './worldWestCity';
+import { buildWestActs, buildWestRanches } from './worldWestActs';
+import { WEST_SPOTS } from '../../../shared/westActivities';
 import { westFill, westRoadClearance } from '../../../shared/westCity';
 import { buildStoneQuarry } from './worldQuarry';
 import { buildSpaceCenter } from './spaceCenterModel';
@@ -876,6 +878,24 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       groundTop: (w, dd, gx0, gz1) => (XM ? keep(xmasGround(w, dd, tier === 'low', gx0, gz1)) : grass), tree: { trunkGeo: trunk.geometry, trunkMat: trunk.material as THREE.Material, crownGeo: crown.geometry, crownMat: crown.material as THREE.Material },
       pole: { geo: pole.geometry, mat: pole.material as THREE.Material }, glowTex, label: (text, color) => cityLabel(text, color, undefined, labelRenderer), addSlush: (g) => xmas?.addRoads(g) });
   }
+  // West Chud activity sites (shared/westActivities.ts): models from worldWestActs.ts, signed and clickable like landmarks.
+  for (const s of buildWestActs({ mat, geo, low: tier === 'low' })) {
+    const spot = WEST_SPOTS.find((o) => o.id === s.id)!; const hex = '#' + spot.color.toString(16).padStart(6, '0');
+    s.root.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.userData.spot = s.id; pickables.push(o); } });
+    const st = cityLabel(`${spot.icon} ${spot.label}`, hex, undefined, labelRenderer); disposables.push(st);
+    const sm = labelMaterial(st); disposables.push(sm);
+    const sign = asLabel(new THREE.Sprite(sm)); fitLabel(sign, 7); sign.userData.base = 7; sign.position.set(0, s.height + 2.2, 0); sign.userData.spot = s.id; s.root.add(sign); pickables.push(sign);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: spot.color, transparent: true, opacity: 0.24, blending: THREE.AdditiveBlending, depthWrite: false })); halo.scale.set(14, 14, 1); halo.position.y = 0.6; s.root.add(halo); disposables.push(halo.material);
+    for (const m of s.emissive) m.userData.ei = m.emissiveIntensity;
+    scene.add(s.root);
+    lms.push({ id: s.id, root: s.root, hit: [], emissive: [], sign, pos: s.root.position.clone(), height: s.height });
+  }
+  // West Chud ranch deeds (shared/westRanch.ts): clicking a pasture opens its deed (or your ranch).
+  for (const r of buildWestRanches({ mat, geo, low: tier === 'low' })) {
+    pickables.push(...r.pick); scene.add(r.root);
+    const st = cityLabel(`🐄 ${r.label}`, '#d8b070', undefined, labelRenderer); disposables.push(st); const sm = labelMaterial(st); disposables.push(sm);
+    const sign = asLabel(new THREE.Sprite(sm)); fitLabel(sign, 6); sign.userData.base = 6; sign.position.set(0, r.signY, 0); sign.userData.spot = r.id; r.root.add(sign); pickables.push(sign);
+  }
   // Farm district (shared/farm.ts): a grass apron east of the plate, dirt lanes, fenced fields (farmland properties),
   // barns and silos. Crops on owned plots come from /api/farm (setFarm). Toned-down night palette, a little warm glow.
   const farmTiles = new Map<string, number>(); // plot id -> first index into the crop instanced mesh
@@ -1013,7 +1033,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
     if (id.startsWith('barn:')) { h.onHover(null, 0, 0); h.onBarn?.(id); return; }
     if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); if (h.onTrailer?.(id.slice(8))) return; window.dispatchEvent(new CustomEvent('open-player', { detail: id.slice(8) })); return; } // trailers: your own opens your home (kitchen), others the owner's profile
-    if (id.startsWith('lm:') || id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:') || id.startsWith('cf:') || id.startsWith('winery:') || id.startsWith('lot:') || id.startsWith('orchard:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
+    if (id.startsWith('lm:') || id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:') || id.startsWith('cf:') || id.startsWith('winery:') || id.startsWith('lot:') || id.startsWith('orchard:') || id.startsWith('ranch:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
     flyTo(id);
   };
   /** Glide the camera to a world point (player-profile "show on map" for land and farms). */

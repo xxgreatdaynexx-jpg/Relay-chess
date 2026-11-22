@@ -3148,6 +3148,27 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .island-retreat-list li { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,.05); border: 1px solid rgba(242,212,138,.18); }
 .island-retreat-list li.mine { border-color: #8bdf87; }
 .island-retreat-list li small { grid-column: 1 / -1; opacity: .8; }
+/* West Chud activity sites (WestChudPanel.tsx) */
+.world-west { position: absolute; inset: 0; display: grid; place-items: center; background: #0008; z-index: 2; }
+.world-west .west-sheet { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; border-radius: 16px; background: #1a1d24; border: 2px solid var(--c); box-shadow: 0 0 28px color-mix(in srgb, var(--c) 45%, transparent); width: min(460px, 94vw); max-height: 88vh; }
+.world-west h3 { font: 800 21px 'Outfit Variable', sans-serif; color: var(--c); margin: 0; }
+.world-west p { margin: 0; } .west-blurb { opacity: .85; } .west-small { font-size: 12.5px; opacity: .8; } .west-msg { padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,.07); }
+.world-west .world-casino-x { padding: 9px 12px; border-radius: 10px; background: rgba(255,255,255,.08); font-weight: 700; text-align: center; opacity: .75; }
+.west-act, .west-mill { display: grid; gap: 7px; }
+.west-go { padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, var(--c) 22%, transparent); border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); font-weight: 700; text-align: left; min-height: 44px; }
+.west-go:hover:not(:disabled) { background: color-mix(in srgb, var(--c) 38%, transparent); } .west-go:disabled { opacity: .55; }
+.west-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.west-list li { display: grid; grid-template-columns: 1fr auto auto; gap: 0 10px; align-items: center; padding: 6px 9px; border-radius: 8px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); }
+.west-list li.on { border-color: var(--c); cursor: pointer; } .west-list li small { opacity: .7; }
+.west-furnaces { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.west-furnace { display: grid; gap: 4px; padding: 8px 10px; border-radius: 10px; background: #23262f; border: 1px solid #3a3e4a; font-size: 13px; }
+.west-furnace.hot { border-color: #ff7a2a; box-shadow: inset 0 0 18px #ff6a1a33; } .west-furnace.done { border-color: #8bdf87; }
+.west-bar { height: 7px; border-radius: 4px; background: rgba(255,255,255,.1); overflow: hidden; } .west-bar i { display: block; height: 100%; background: linear-gradient(90deg, #ff5a1a, #ffc040); }
+.west-recipes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.west-recipes button { display: grid; gap: 2px; text-align: left; padding: 7px 9px; border-radius: 10px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); font-size: 12.5px; }
+.west-recipes button.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); } .west-recipes small { opacity: .75; }
+.west-row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; } .west-row input[type=range] { flex: 1; }
+@media (max-width: 520px) { .west-recipes, .west-furnaces { grid-template-columns: 1fr; } }
 .island-flat-reef { background: rgba(20,60,96,.92); border-color: #7fe8ff; }
 .island-flat-hunt { background: rgba(90,60,20,.92); border-color: #ffd27a; }
 .island-flat-heli { background: rgba(70,24,30,.92); border-color: #ff9a9a; }
@@ -3215,3 +3236,7 @@ body.he-full-open .he-table.he-full { visibility: visible; }
  .world.chudbai .fort-map-controls button { min-height: 44px; min-width: 0; padding: 5px 8px; font-size: 12px; white-space: normal; }
  .world.chudbai .fort-flat-map { bottom: 108px; }
 }
+.ranch-list li { grid-template-columns: 1fr auto; } .ranch-list li small { display: inline; }
+.ranch-buy { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; margin-top: 4px; } .ranch-buy input { width: 56px; padding: 3px 6px; border-radius: 6px; background: rgba(255,255,255,.08); }
+.ranch-buy button, .world-west .west-row button { padding: 4px 10px; border-radius: 8px; background: color-mix(in srgb, var(--c) 22%, transparent); border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); font-weight: 700; }
+.ranch-buy button:disabled, .world-west .west-row button:disabled { opacity: .5; }

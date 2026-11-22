@@ -7,6 +7,7 @@
 import { forestNoise, type ScenerySpot } from './expansionScenery.js';
 import { obbHit, type OBB } from './worldLayout.js';
 import { WEST, WEST_RESERVED, WEST_PORT, WEST_MARINA, WEST_WAREHOUSES, WIND_X, WEST_LIGHTHOUSE, westFill, westRoadClearance, westTown, onWest, WEST_FARMS, WEST_HILLS, WEST_LAKES, WEST_CREEK, WEST_CREEK_W, nearWater, lakeOutline, WEST_DECOR_SOLIDS } from './westCity.js';
+import { WEST_ACTIVITY_SOLIDS } from './westActivities.js';
 
 const hash2 = (i: number, j: number) => { let h = Math.imul(i, 374761393) + Math.imul(j, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 const vnoise = (x: number, z: number) => { const i = Math.floor(x), j = Math.floor(z), fx = x - i, fz = z - j; const u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
@@ -19,7 +20,7 @@ let cache: ScenerySpot[] | null = null;
 export function westScenery(): ScenerySpot[] {
   if (cache) return cache;
   const { houses, patches } = westFill(); const rnd = mulberry(0x5bd1e995);
-  const solids: OBB[] = [...houses, ...patches, ...WEST_WAREHOUSES, ...WEST_RESERVED, WEST_PORT, WEST_MARINA, ...WEST_FARMS, ...WEST_DECOR_SOLIDS]; // fields, yards, hamlets, lakeside, meadows and outcrops stay open
+  const solids: OBB[] = [...houses, ...patches, ...WEST_WAREHOUSES, ...WEST_RESERVED, WEST_PORT, WEST_MARINA, ...WEST_FARMS, ...WEST_DECOR_SOLIDS, ...WEST_ACTIVITY_SOLIDS]; // fields, yards, hamlets, lakeside, meadows and outcrops stay open
   const G = 24; const grid = new Map<string, OBB[]>();
   for (const o of solids) { const r = Math.hypot(o.w, o.d) / 2 + 3; for (let i = Math.floor((o.x - r) / G); i <= Math.floor((o.x + r) / G); i++) for (let j = Math.floor((o.z - r) / G); j <= Math.floor((o.z + r) / G); j++) { const k = `${i},${j}`; (grid.get(k) ?? grid.set(k, []).get(k)!).push(o); } }
   const clearOf = (x: number, z: number, rad: number, roadGap = 1.6) => {

@@ -2,9 +2,10 @@
  * Chud Hub map: ONE main panel at a time (QA r8). Opening any panel replaces the current one; closing a panel never
  * re-opens a list underneath (the old `deeds && !deed` rule made the Real estate list pop back over the farm's seed buttons).
  */
+import type { WestSpotId } from '../../../shared/westActivities';
 export type WorldPanel =
   | { k: 'none' } | { k: 'farms' } | { k: 'deeds' } | { k: 'deed'; id: string } | { k: 'farm'; id: string }
-  | { k: 'venue'; id: 'airport' | 'racetrack' } | { k: 'dealer' } | { k: 'freight' } | { k: 'coop'; tab?: 'project' | 'contracts' | 'supply' | 'fleet' | 'event' } | { k: 'mechanic' } | { k: 'dock' } | { k: 'casino' } | { k: 'home' } | { k: 'kitchen'; id: string } | { k: 'future' } | { k: 'estate'; id?: string; kind?: 'estate' | 'plastics' | 'rigdock' | 'hyper' } | { k: 'spacesim' };
+  | { k: 'venue'; id: 'airport' | 'racetrack' } | { k: 'dealer' } | { k: 'freight' } | { k: 'coop'; tab?: 'project' | 'contracts' | 'supply' | 'fleet' | 'event' } | { k: 'mechanic' } | { k: 'dock' } | { k: 'casino' } | { k: 'home' } | { k: 'kitchen'; id: string } | { k: 'future' } | { k: 'estate'; id?: string; kind?: 'estate' | 'plastics' | 'rigdock' | 'hyper' } | { k: 'spacesim' } | { k: 'west'; id: WestSpotId } | { k: 'ranch'; id: string };
 export const NONE: WorldPanel = { k: 'none' };
 export const openPanel = (_cur: WorldPanel, next: WorldPanel): WorldPanel => next;
 /** Close `k` only if it is the one showing (stale async callbacks can't close a newer panel). */
@@ -15,3 +16,6 @@ export const panelId = (cur: WorldPanel, k: 'deed' | 'farm' | 'venue' | 'kitchen
 export const CLOSE_WORLD_PANELS = 'world-close-panels';
 /** Map panels fire this so the Wallet (fixed, top-right) never sits over the map's corner buttons. */
 export const WALLET_CLOSE = 'wallet-close';
+
+/** Deed panel → open the ranch panel for a ranch deed you own. */
+export const OPEN_RANCH = 'world-open-ranch';

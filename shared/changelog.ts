@@ -6,6 +6,17 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-22T13:55:00-06:00", "title": "West Chud: a working Steel Mill, ranches and five new things to do", "bullets": [
+    "Ironworks Steel Mill: smelt ore from your Chud City Warehouse storage into Pig Iron (3 iron ore + 1 coal → 1 iron bar, 4s a pour), Bessemer Steel (5 iron ore + 3 coal → 1 steel, 8s), Steel Beams (2 steel + 1 coal → 1 steel beam, 10s) or Rebar (1 iron bar → 3 iron rods, 5s). Finished batches go back into your storage.",
+    "Each pour costs a small furnace fee (1, 3, 4 or 2 chips before the price index). Hiring the shift crew costs twice the fee again and halves the time. Two furnaces per player, 1–50 pours per batch and 200 pours per day (resets 00:00 UTC). Selling steel still goes through the warehouse house sale and its daily cap, or the market.",
+    "Cedar Lake Fishing Pier: 6 casts a day, 40 seconds apart. Catches pay 150 to 6,000 chips (Yellow Perch 40%, Bluegill 25%, Largemouth Bass 18%, Rainbow Trout 10%, Northern Pike 5%, Golden Carp 2%).",
+    "Cedar Lake Campground: rest by the campfire for 45 seconds. Your first rest each day pays 1,200 chips.",
+    "Cedar Crossing Farmers' Market: sell field and orchard crops from your storage at 110% of their listed price. Up to 5 sales a day, 10 units each.",
+    "Millbrook U-Pick: 3 baskets a day, a minute apart, paying 300 to 4,000 chips. Stadium Rodeo: 3 bull rides a day, 90 seconds apart, paying 100 to 5,000 chips by seconds on the bull.",
+    "Six of the larger West Chud pastures are now buyable ranch deeds (Cedar Creek, Ridgeview, Sunset, Hollow Oak, Maple Run and Prairie Rose Ranch), priced like West Chud farms of the same size: 60,000 to 99,000 chips. Each pasture tile holds one unit of livestock.",
+    "Stock your ranch with chickens (60 chips, 1 unit, 3 eggs every 2 hours), sheep (120, 2 units, 12 chips of wool every 4 hours), pigs (180, 3 units, 9 bacon every 2 hours) and cows (240, 4 units, 3 milk every 30 minutes). Eggs, milk and bacon go to your pantry for recipes or the market. The barn holds 12 hours of output; a hired ranch hand (a quarter of a day's herd output per day, up to 7 days) stretches that to 48 hours. Animals sell back at half price.",
+    "Every site has a 3D model and sign on the city map, a 2D map tile and its own panel. You must be in Chud City to use them, and they are unavailable while you are jailed. Amounts are base chips before the price index.",
+  ] },
   {"commit": "", "at": "2026-11-22T13:10:00-06:00", "title": "Casino max bet is 10 million, and you can type any amount", "bullets": [
     "You can now bet up to 10,000,000 chips on the slots (city and resort), whale blackjack, high-limit roulette and high-stakes Jacks or Better. Hold'em has a new 10 million buy-in table. House odds and payout rates are unchanged.",
     "Next to the usual bet chips, you can type a custom amount. Commas are fine. The bet is kept between that game's minimum, the 10 million maximum, and your chip balance, with a clear message if it has to be adjusted.",

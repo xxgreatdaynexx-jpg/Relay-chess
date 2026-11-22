@@ -30,6 +30,7 @@ import { islandProperties } from './island.js';
 import { chudbaiProperties } from './chudbaiCity.js';
 import { skyProperties } from './skyPenthouses.js';
 import { estateLotId, estateLots, goldwoodHomes, goldwoodId, wineryId, wineryPlots } from './mapExpansion.js';
+import { westRanches } from './westRanch.js';
 import { orchardId, orchardPlots } from './orchard.js';
 import { westFill } from './westCity.js';
 import { countryHomes, countryBusinesses, businessType, COMMERCIAL_PRICE, COMMERCIAL_LABEL } from './outskirts.js';
@@ -188,7 +189,10 @@ export function properties(): Property[] {
       const ref = ((t.w[0] + t.w[1]) / 2) * ((t.d[0] + t.d[1]) / 2), midH = ((t.floors[0] + t.floors[1]) / 2) * t.floorH;
       out.push({ x: h.x, z: h.z, w: h.w, d: h.d, rot: h.rot, h: h.h, id: `b:${t.id}:${pos(h)}`, kind: 'building', type: t.id, label: t.label, price: round500((BASE_PRICE[t.id] ?? 15_000) * clamp((h.w * h.d) / ref) * clamp(h.h / midH)) }); ids.add(`b:${t.id}:${pos(h)}`);
     }
-    for (const p of w.patches) out.push({ x: p.x, z: p.z, w: p.w, d: p.d, rot: p.rot, id: `p:${p.kind}:${pos(p)}`, kind: 'patch', type: p.kind, label: PATCH_LABEL[p.kind] ?? p.kind, price: round500(BASE_PRICE[p.kind]! * clamp((p.w * p.d) / PATCH_REF[p.kind]!)) }); for (const p of w.patches) ids.add(`p:${p.kind}:${pos(p)}`); for (const f of westFarmPlots()) ids.add(fieldPlotId(f.n)); westIds = ids; }
+    for (const p of w.patches) out.push({ x: p.x, z: p.z, w: p.w, d: p.d, rot: p.rot, id: `p:${p.kind}:${pos(p)}`, kind: 'patch', type: p.kind, label: PATCH_LABEL[p.kind] ?? p.kind, price: round500(BASE_PRICE[p.kind]! * clamp((p.w * p.d) / PATCH_REF[p.kind]!)) }); for (const p of w.patches) ids.add(`p:${p.kind}:${pos(p)}`); for (const f of westFarmPlots()) ids.add(fieldPlotId(f.n));
+    // West Chud ranches (shared/westRanch.ts): six pastures, priced like West Chud farms of the same tile count.
+    for (const r of westRanches()) { out.push({ x: r.x, z: r.z, w: r.w, d: r.d, rot: r.rot, id: r.id, kind: 'farm', type: 'ranch', label: `${r.label} (${r.cols}×${r.rows})`, price: r.price, tiles: r.tiles }); ids.add(r.id); }
+    westIds = ids; }
   // Reprice only housing. Capture the actual old employment bonus BEFORE lowering its base price: otherwise
   // a two-slot home priced at 20k would silently lose a slot, and a three-slot home at 30k would become two-slot.
   // No owned rows, paid prices, IDs, geometry or equipment are changed. Slots outside 1–3 keep their old price.
