@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { routePoint, LANE, PLATE, type OBB } from './worldLayout';
 import {
   WEST_GROUND, WEST_ROADS, WEST_JUNCTIONS, WEST_CUL_ENDS, WEST_CUL_R, WEST_CAR_ROUTES, WEST_CAR_COUNT, WEST_LABELS, WEST_WAREHOUSES,
-  WESTGATE_PARK, WESTGATE_SQUARE, WEST_STADIUM, WEST_PORT, WEST_MARINA, WEST_LIGHTHOUSE, WIND_TURBINES, WIND_X, WEST_COLS, WEST_ROWS, WEST_INDUSTRIAL_X, WEST, westTown, westFill, westRoadClearance, westDistrict, toLocal, onWest,
+  WESTGATE_PARK, WESTGATE_SQUARE, WEST_STADIUM, WEST_PORT, WEST_MARINA, WEST_LIGHTHOUSE, WIND_TURBINES, WIND_X, WEST_TOWN, WEST_POCKET, WEST_LAKES, WEST_CREEK, WEST_CREEK_W, WEST_HILLS, WEST_FARMS, lakeOutline, creekClearance, lakeClearance, nearWater, WEST, westTown, westFill, westRoadClearance, westDistrict, toLocal, onWest,
 } from '../../../shared/westCity';
 import { OCEAN, coastZ } from '../../../shared/ocean';
 import { inBridgeSite } from '../../../shared/coop';
@@ -114,13 +114,12 @@ export function addWestCity(c: WestCityCtx) {
   const trees: Array<[number, number, number]> = []; // x, z, scale (< 0 = palm)
   const tree = (x: number, z: number, s: number) => trees.push([x, z, s]);
   for (const b of patches) if (b.kind === 'park') for (let i = 0; i < 9; i++) { const [x, z] = at(b, (rand() - 0.5) * (b.w - 2), (rand() - 0.5) * (b.d - 2)); tree(x, z, 0.8 + rand() * 0.7); }
-  const town = { x0: WEST_COLS[0] - 24, x1: WEST_INDUSTRIAL_X, z0: WEST_ROWS[0] - 30, z1: WEST.z1 };
   const inTown = westTown;
   const nearWorks = (x: number, z: number, m: number) => [WEST_PORT, WEST_MARINA].some((o) => hitObb(o, x, z, m)) || Math.abs(x - WIND_X) < 8;
-  { const OLD = (PLATE * 2 * 0.96) ** 2; const tries = Math.round(700 * ((town.x1 - town.x0) * (town.z1 - town.z0)) / OLD); // 700 tries over the old plate
+  for (const town of [WEST_TOWN, WEST_POCKET]) { const OLD = (PLATE * 2 * 0.96) ** 2; const tries = Math.round(700 * ((town.x1 - town.x0) * (town.z1 - town.z0)) / OLD); // 700 tries over the old plate
     for (let i = 0; i < tries; i++) { const x = town.x0 + rand() * (town.x1 - town.x0), z = town.z0 + rand() * (town.z1 - town.z0);
       if (!inTown(x, z) || !onWest(x, z, 1) || westRoadClearance(x, z) < 1.4 || blocked(x, z, 1) || nearWorks(x, z, 2)) continue; tree(x, z, 0.7 + rand() * 0.6); } }
-  for (let x = WEST.x0 + 3; x < WEST.x1 - 2; x += 4.4) { const z = WEST.z1 - 1.4; if (westRoadClearance(x, z) > 1.4 && !blocked(x, z, 0.8) && !nearWorks(x, z, 3)) tree(x, z, -1); }
+  for (let x = WEST.x0 + 3; x < WEST.x1 - 2; x += 4.4) { const z = WEST.z1 - 1.4; if (westRoadClearance(x, z) > 1.4 && !blocked(x, z, 0.8) && !nearWorks(x, z, 3) && !nearWater(x, z, 2)) tree(x, z, -1); }
   // (the countryside strips and wooded blocks are planted by shared/westScenery.ts, drawn with the old open land's trees)
   { const tr = new THREE.InstancedMesh(c.tree.trunkGeo, c.tree.trunkMat, trees.length); const cr = new THREE.InstancedMesh(c.tree.crownGeo, c.tree.crownMat, trees.length);
     trees.forEach(([x, z, s], i) => { const palm = s < 0; const sc = palm ? 1 : s; const th = palm ? 3.6 : 1.4 * sc; // world3d.ts city trees
@@ -153,12 +152,40 @@ export function addWestCity(c: WestCityCtx) {
   /* ---- Westgate Park: lawn, pond, paths, gazebo, benches, trees ---- */
   { const Pk = WESTGATE_PARK; block(M.concrete, Pk.x, 0, Pk.z, Pk.w, 0.06, Pk.d, Pk.rot, xm ? 0xe6edf8 : 0x2e7a36);
     for (const [w, d] of [[Pk.w - 4, 2.2], [2.2, Pk.d - 4]] as const) block(M.concrete, Pk.x, 0.03, Pk.z, w, 0.06, d, Pk.rot, 0xc9b48a);
-    const outline: P[] = []; const pc = at(Pk, -26, 6); for (let i = 0; i < 40; i++) { const a = (i / 40) * Math.PI * 2; const r = 1 + 0.12 * Math.sin(a * 3 + 1); const [x, z] = at({ x: pc[0], z: pc[1], rot: Pk.rot }, Math.cos(a) * 18 * r, Math.sin(a) * 10 * r); outline.push([x, z]); }
+    const outline: P[] = []; const pc = at(Pk, -12, 5); for (let i = 0; i < 40; i++) { const a = (i / 40) * Math.PI * 2; const r = 1 + 0.12 * Math.sin(a * 3 + 1); const [x, z] = at({ x: pc[0], z: pc[1], rot: Pk.rot }, Math.cos(a) * 8 * r, Math.sin(a) * 5 * r); outline.push([x, z]); }
     const sh = new THREE.Shape(); outline.forEach(([x, z], i) => (i ? sh.lineTo(x, z) : sh.moveTo(x, z))); sh.closePath(); const wg = new THREE.ShapeGeometry(sh, 2); wg.rotateX(Math.PI / 2);
     const water = new THREE.Mesh(geo(wg), c.makeWater(outline)); water.position.y = 0.1; water.renderOrder = 1; scene.add(water);
-    { const [x, z] = at(Pk, 30, -8); piece('cyl6', M.paint, x, 0.25, z, 8, 0.5, 8, 0, 0xe8e0d0); for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; piece('cyl', M.paint, x + Math.cos(a) * 3.4, 1.9, z + Math.sin(a) * 3.4, 0.3, 2.8, 0.3, 0, 0xf2f2f2); } piece('cone', M.paint, x, 4.1, z, 9, 1.8, 9, 0, 0x6a2e2a); }
-    for (let k = 0; k < 14; k++) { const lx = -40 + k * 6.2, lz = k % 2 ? 2.2 : -2.2; const [x, z] = at(Pk, lx, lz); if (Math.abs(lx) < 3) continue; block(M.paint, x, 0.3, z, 1.6, 0.12, 0.5, Pk.rot, 0x6b4a2b); block(M.paint, x, 0.1, z, 0.2, 0.25, 0.5, Pk.rot, 0x30343c); }
-    for (let k = 0; k < (low ? 60 : 130); k++) { const lx = (rand() - 0.5) * (Pk.w - 6), lz = (rand() - 0.5) * (Pk.d - 6); if (Math.abs(lx) < 3 || Math.abs(lz) < 3) continue; if (Math.hypot((lx + 26) / 21, (lz - 6) / 13) < 1) continue; if (Math.hypot(lx - 30, lz + 8) < 7) continue; const [x, z] = at(Pk, lx, lz); tree(x, z, 0.7 + rand() * 0.8); } }
+    { const [x, z] = at(Pk, 14, -6); piece('cyl6', M.paint, x, 0.25, z, 8, 0.5, 8, 0, 0xe8e0d0); for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; piece('cyl', M.paint, x + Math.cos(a) * 3.4, 1.9, z + Math.sin(a) * 3.4, 0.3, 2.8, 0.3, 0, 0xf2f2f2); } piece('cone', M.paint, x, 4.1, z, 9, 1.8, 9, 0, 0x6a2e2a); }
+    for (let k = 0; k < 7; k++) { const lx = -20 + k * 6.2, lz = k % 2 ? 2.2 : -2.2; const [x, z] = at(Pk, lx, lz); if (Math.abs(lx) < 3) continue; block(M.paint, x, 0.3, z, 1.6, 0.12, 0.5, Pk.rot, 0x6b4a2b); block(M.paint, x, 0.1, z, 0.2, 0.25, 0.5, Pk.rot, 0x30343c); }
+    for (let k = 0; k < (low ? 20 : 40); k++) { const lx = (rand() - 0.5) * (Pk.w - 6), lz = (rand() - 0.5) * (Pk.d - 6); if (Math.abs(lx) < 3 || Math.abs(lz) < 3) continue; if (Math.hypot((lx + 12) / 10, (lz - 5) / 7) < 1) continue; if (Math.hypot(lx - 14, lz + 6) < 6) continue; const [x, z] = at(Pk, lx, lz); tree(x, z, 0.7 + rand() * 0.8); } }
+
+  /* ---- countryside: Cedar Lake and Mill Pond, Willow Creek with road bridges, hills, farm silos ---- */
+  const shapeMesh = (outline: P[], m: THREE.Material, y: number) => { const sh = new THREE.Shape(); outline.forEach(([x, z], i) => (i ? sh.lineTo(x, z) : sh.moveTo(x, z))); sh.closePath();
+    const g = new THREE.ShapeGeometry(sh, 2); g.rotateX(Math.PI / 2); const me = new THREE.Mesh(geo(g), m); me.position.y = y; me.renderOrder = 1; me.userData.noShadow = true; scene.add(me); return me; };
+  const bankMat = mat({ color: xm ? 0xe8eef6 : 0xb9a57c, roughness: 1, side: THREE.DoubleSide }); disposables.push(bankMat);
+  for (const l of WEST_LAKES) { const o = lakeOutline(l); const bank = o.map(([x, z]) => { const dx = x - l.x, dz = z - l.z, m = Math.hypot(dx, dz) || 1; return [x + (dx / m) * 2.2, z + (dz / m) * 2.2] as P; });
+    shapeMesh(bank, bankMat, 0.06); shapeMesh(o, c.makeWater(o), 0.1); }
+  { // the creek as one closed ribbon outline (left bank down, right bank back up), drawn under the road bridges
+    // split where it runs through Cedar Lake so the creek never paints over the lake
+    const runs: P[][] = []; let cur: P[] = []; for (const p of WEST_CREEK) { if (lakeClearance(p[0], p[1]) > -3) cur.push(p); else if (cur.length) { runs.push(cur); cur = []; } } if (cur.length) runs.push(cur);
+    for (const run of runs) { if (run.length < 2) continue;
+      const side = (sd: number, w: number): P[] => run.map((p, i) => { const a0 = run[Math.max(0, i - 1)], a1 = run[Math.min(run.length - 1, i + 1)]; const a = Math.atan2(a1[1] - a0[1], a1[0] - a0[0]); return [p[0] - Math.sin(a) * w / 2 * sd, p[1] + Math.cos(a) * w / 2 * sd] as P; });
+      const ring = (w: number): P[] => [...side(1, w), ...side(-1, w).reverse()];
+      const o = ring(WEST_CREEK_W); shapeMesh(ring(WEST_CREEK_W + 3), bankMat, 0.06); shapeMesh(o, c.makeWater(o), 0.1); }
+    // bridges: where a road crosses, a deck over the water and low parapets along both road edges
+    for (const r of WEST_ROADS) { const p = r.pts; let inside = false; let i0 = 0;
+      for (let i = 0; i < p.length; i++) { const wet = creekClearance(p[i][0], p[i][1]) < 2.5; if (wet && !inside) { inside = true; i0 = i; } if ((!wet || i === p.length - 1) && inside) { inside = false;
+        const a = p[Math.max(0, i0 - 1)], b = p[Math.min(p.length - 1, i)]; const ang = Math.atan2(b[1] - a[1], b[0] - a[0]); const len = Math.hypot(b[0] - a[0], b[1] - a[1]) + 1; const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2;
+        block(M.concrete, mx, roadY - 0.02, mz, len, 0.2, r.width + 1.2, -ang, 0x8f8b84);
+        for (const sd of [1, -1]) block(M.concrete, mx - Math.sin(ang) * (r.width / 2 + 0.5) * sd, roadY, mz + Math.cos(ang) * (r.width / 2 + 0.5) * sd, len, 0.9, 0.4, -ang, 0xcfc9bd); } } } }
+  // hills: the old outskirts' grassy mounds (same shape and colours)
+  { const hm = mat({ color: xm ? 0xeef3fa : 0x3f9a45, roughness: 1, flatShading: true, emissive: xm ? 0x2a3550 : 0x0f3a14, emissiveIntensity: 0.25 }); const hg = geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2));
+    const im = new THREE.InstancedMesh(hg, hm, WEST_HILLS.length); WEST_HILLS.forEach(([x, z, r, h], i) => { dummy.position.set(x, 0, z); dummy.rotation.set(0, i, 0); dummy.scale.set(r, h, r); dummy.updateMatrix(); im.setMatrixAt(i, dummy.matrix); }); im.userData.noShadow = low; scene.add(im); }
+  // a silo and a hay barn beside each farm's farmhouse (decor; the field and the farmhouse are the deeds)
+  for (const f of WEST_FARMS) { const [hx, hz] = [f.home.x, f.home.z]; const dx = Math.sign(f.x - hx) || 1, dz = Math.sign(f.z - hz) || 1;
+    const sx = hx + (Math.abs(f.x - hx) > Math.abs(f.z - hz) ? 0 : dx * 9), sz = hz + (Math.abs(f.x - hx) > Math.abs(f.z - hz) ? dz * 9 : 0);
+    if (!placeable(sx, sz, 2.2, 1) || nearWater(sx, sz, 2) || WEST_FARMS.some((o) => hitObb(o, sx, sz, 1.5))) continue;
+    piece('cyl', M.paint, sx, 4.5, sz, 3.2, 9, 3.2, 0, 0xd8d4c8); piece('sphere', M.metal, sx, 9, sz, 3.2, 2.4, 3.2, 0, 0x9aa2aa); }
 
   /* ---- West Chud Stadium ---- */
   { const S = WEST_STADIUM; const rx = S.w / 2, rz = S.d / 2;
@@ -206,7 +233,7 @@ export function addWestCity(c: WestCityCtx) {
 
   /* ---- water towers (one per suburb) and bus shelters ---- */
   const findSpot = (x: number, z: number, m: number): P | null => { for (let rad = 0; rad < 60; rad += 4) for (let k = 0; k < Math.max(1, rad); k++) { const a = (k / Math.max(1, rad)) * Math.PI * 2; const px = x + Math.cos(a) * rad, pz = z + Math.sin(a) * rad; if (placeable(px, pz, m, 2)) return [px, pz]; } return null; };
-  for (const [tx, tz, label] of [[-960, -430, 'MAPLE'], [-1215, -150, 'CEDAR'], [-700, 140, 'BAY']] as const) { const s = findSpot(tx, tz, 5); if (!s) continue; const [x, z] = s; void label;
+  for (const [tx, tz, label] of [[-760, -330, 'MAPLE'], [-1130, -60, 'CEDAR'], [-700, 100, 'BAY']] as const) { const s = findSpot(tx, tz, 5); if (!s) continue; const [x, z] = s; void label;
     for (const [lx, lz] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) piece('cyl', M.metal, x + lx, 6, z + lz, 0.35, 12, 0.35, 0, 0x8a8e96);
     piece('cyl', M.paint, x, 14, z, 7.4, 4.4, 7.4, 0, 0xe2e6ea); piece('cone', M.paint, x, 17.2, z, 7.8, 2, 7.8, 0, 0x5a7aa0); }
   for (const r of WEST_ROADS) { if (r.kind !== 'boulevard' && r.kind !== 'ring' && r.kind !== 'avenue') continue; if (r.id === 'w-expy') continue; const p = r.pts;

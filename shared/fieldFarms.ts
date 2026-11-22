@@ -3,11 +3,13 @@
  * Every decorative crop field from the outskirts fill (shared/outskirts.ts) is a farm plot `cf:<n>` on the same farm system as
  * the Farm district (deed, plant, grow, harvest, tax, 70% sell-back), priced by tile count with farmPrice (TILE = 2 units).
  * The Big Farms east of the ring road (shared/bigFarms.ts) are cf:<1000+k> on the same system, priced with bigFarmPrice.
+ * East Estates farms are cf:<2000+k> and West Chud farms (shared/westCity.ts WEST_FARMS) cf:<3000+k>, both priced with expansionFarmPrice.
  */
 import { outskirts } from './outskirts.js';
 import { TILE, farmPrice, type FarmPlot } from './farm.js';
 import { bigFarms, bigFarmPrice, isBigFarmN } from './bigFarms.js';
 import { EXP_FARM_N0, expansionFarmPrice, expansionFarms } from './mapExpansion.js';
+import { WEST_FARMS, WEST_FARM_N0 } from './westCity.js';
 
 export const fieldPlotId = (n: number) => `cf:${n}`;
 let cache: FarmPlot[] | null = null;
@@ -23,21 +25,28 @@ let expCache: FarmPlot[] | null = null;
 export function expansionFarmPlots(): FarmPlot[] {
   return expCache ??= expansionFarms().map((f) => ({ n: f.n, x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, cols: f.cols, rows: f.rows }));
 }
-/** Every cf:<n> plot: outskirts fields + Big Farms + East Estates expansion farms. */
-export const allFieldPlots = (): FarmPlot[] => [...fieldPlots(), ...bigFarmPlots(), ...expansionFarmPlots()];
-export const isExpansionFarmN = (n: number) => n >= EXP_FARM_N0;
+let westCache: FarmPlot[] | null = null;
+/** West Chud farms (cf:3000+). */
+export function westFarmPlots(): FarmPlot[] {
+  return westCache ??= WEST_FARMS.map((f) => ({ n: f.n, x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, cols: f.cols, rows: f.rows }));
+}
+/** Every cf:<n> plot: outskirts fields + Big Farms + East Estates expansion farms + West Chud farms. */
+export const allFieldPlots = (): FarmPlot[] => [...fieldPlots(), ...bigFarmPlots(), ...expansionFarmPlots(), ...westFarmPlots()];
+export const isWestFarmN = (n: number) => n >= WEST_FARM_N0;
+export const isExpansionFarmN = (n: number) => n >= EXP_FARM_N0 && n < WEST_FARM_N0;
 export const fieldPlotOf = (id: unknown) => {
   if (typeof id !== 'string' || !/^cf:\d+$/.test(id)) return undefined;
   const n = Number(id.slice(3));
-  const list = isExpansionFarmN(n) ? expansionFarmPlots() : n >= 1000 ? bigFarmPlots() : fieldPlots();
+  const list = isWestFarmN(n) ? westFarmPlots() : isExpansionFarmN(n) ? expansionFarmPlots() : n >= 1000 ? bigFarmPlots() : fieldPlots();
   return list.find((p) => p.n === n);
 };
 /** List price (base chips) of a countryside / big farm / expansion farm plot. */
 export const fieldPlotPrice = (p: Pick<FarmPlot, 'n' | 'cols' | 'rows'>) => (
-  isExpansionFarmN(p.n) ? expansionFarmPrice(p) : isBigFarmN(p.n) ? bigFarmPrice(p.cols * p.rows) : farmPrice(p.cols * p.rows)
+  isExpansionFarmN(p.n) || isWestFarmN(p.n) ? expansionFarmPrice(p) : isBigFarmN(p.n) ? bigFarmPrice(p.cols * p.rows) : farmPrice(p.cols * p.rows)
 );
 export const fieldPlotLabel = (p: Pick<FarmPlot, 'n' | 'cols' | 'rows'>) => (
-  isExpansionFarmN(p.n) ? `East Estates farm #${p.n - EXP_FARM_N0 + 1} (${p.cols}×${p.rows})`
+  isWestFarmN(p.n) ? `West Chud farm #${p.n - WEST_FARM_N0 + 1} (${p.cols}×${p.rows})`
+  : isExpansionFarmN(p.n) ? `East Estates farm #${p.n - EXP_FARM_N0 + 1} (${p.cols}×${p.rows})`
   : isBigFarmN(p.n) ? `Big Farm #${p.n - 999} (${p.cols}×${p.rows})`
   : `Countryside field #${p.n + 1} (${p.cols}×${p.rows})`
 );

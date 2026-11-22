@@ -12,7 +12,8 @@ type GeoFn = (g: THREE.BufferGeometry) => THREE.BufferGeometry;
 
 export function addExpansionScenery(scene: THREE.Scene, mat: MatFn, geo: GeoFn, low: boolean) {
   const XM = xmasOn();
-  const all = [...expansionScenery(), ...westScenery()]; // West Chud's countryside and woods use the same planting
+  // West Chud's countryside and woods use the same planting; phones keep every other West Chud tree under 1.15 (the big ones read as the stand)
+  const all = [...expansionScenery(), ...(low ? westScenery().filter((s, i) => (s.kind !== 'pine' && s.kind !== 'deciduous') || i % 2 === 0 || s.s > 1.15) : westScenery())];
   // Phones / low-tier: keep trees, lamps, hedges and ponds; thin bushes, rocks and fence posts.
   // Phones / low-tier: thin the deep forest by a third (street and river trees are kept), drop rocks/fence posts/reeds.
   const spots = low ? all.filter((s, i) => s.kind !== 'rock' && s.kind !== 'fence' && s.kind !== 'reed' && (s.kind !== 'bush' || i % 2 === 0) && ((s.kind !== 'pine' && s.kind !== 'deciduous') || i % 3 !== 0 || s.s > 1.15)) : all;

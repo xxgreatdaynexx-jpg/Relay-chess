@@ -163,7 +163,7 @@ describe('countryside crop fields are buyable farms (pt1250u)', () => {
   it('every outskirts field is a cf: farm property, priced by tiles like farmland, overlapping no other property', async () => {
     const { outskirts } = await import('../shared/outskirts'); const { farmPrice } = await import('../shared/farm');
     const isBig = (id: string) => /^cf:1\d{3}$/.test(id); // Big Farms (shared/bigFarms.ts) have their own premium price
-    const isExp = (id: string) => /^cf:2\d{3}$/.test(id); // East Estates expansion farms
+    const isExp = (id: string) => /^cf:[23]\d{3}$/.test(id); // East Estates (2000+) and West Chud (3000+) farms
     const cf = properties().filter((p) => p.id.startsWith('cf:') && !isBig(p.id) && !isExp(p.id)); const big = properties().filter((p) => isBig(p.id));
     expect(cf).toHaveLength(outskirts().fields.length); expect(big).toHaveLength(12);
     for (const b of big) { for (const o of properties().filter((p) => p !== b && p.map !== 'resort' && p.map !== 'island' && p.map !== 'chudbai')) expect(obbOverlap(b, o), `${b.id} vs ${o.id}`).toBe(false); } expect(cf.length).toBeGreaterThan(20);

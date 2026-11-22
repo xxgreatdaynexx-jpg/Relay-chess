@@ -24,7 +24,7 @@ import { BUILDING_IDS, civicPad } from './city.js';
 import { HOUSING_TYPES } from './housing.js';
 import { farmPlots, farmPrice, plotId } from './farm.js';
 import { propertyPaid } from './netWorth.js';
-import { allFieldPlots, fieldPlotId, fieldPlotPrice, fieldPlotLabel } from './fieldFarms.js';
+import { allFieldPlots, fieldPlotId, fieldPlotPrice, fieldPlotLabel, westFarmPlots } from './fieldFarms.js';
 import { RESORT_TYPES, resortLots, resortPlots, resortPlotId, resortPlotPrice } from './resort.js';
 import { islandProperties } from './island.js';
 import { chudbaiProperties } from './chudbaiCity.js';
@@ -181,14 +181,14 @@ export function properties(): Property[] {
   for (const o of orchardPlots()) out.push({ x: o.x, z: o.z, w: o.w, d: o.d, rot: 0, id: orchardId(o.n), kind: 'farm', type: 'orchard', label: `${o.label} (${o.cols}×${o.rows})`, price: o.price, tiles: o.cols * o.rows });
   // Additional factory plants (Bill Chud 3): commercial, off-map, scarce like farm plots.
   for (const f of factoryPlants()) out.push({ ...f });
-  // West Chud (shared/westCity.ts): its homes, towers, parks, plazas and empty lots are ordinary city deeds (same ids, prices and tax rules).
+  // West Chud (shared/westCity.ts): its homes, towers, parks, plazas and empty lots are ordinary city deeds (same ids, prices and tax rules); its farms are cf: plots above.
   { const w = westFill(); const ids = new Set<string>();
     for (const h of w.houses) {
       const t = HOUSING_TYPES.find((x) => x.id === h.type); if (!t) continue;
       const ref = ((t.w[0] + t.w[1]) / 2) * ((t.d[0] + t.d[1]) / 2), midH = ((t.floors[0] + t.floors[1]) / 2) * t.floorH;
       out.push({ x: h.x, z: h.z, w: h.w, d: h.d, rot: h.rot, h: h.h, id: `b:${t.id}:${pos(h)}`, kind: 'building', type: t.id, label: t.label, price: round500((BASE_PRICE[t.id] ?? 15_000) * clamp((h.w * h.d) / ref) * clamp(h.h / midH)) }); ids.add(`b:${t.id}:${pos(h)}`);
     }
-    for (const p of w.patches) out.push({ x: p.x, z: p.z, w: p.w, d: p.d, rot: p.rot, id: `p:${p.kind}:${pos(p)}`, kind: 'patch', type: p.kind, label: PATCH_LABEL[p.kind] ?? p.kind, price: round500(BASE_PRICE[p.kind]! * clamp((p.w * p.d) / PATCH_REF[p.kind]!)) }); for (const p of w.patches) ids.add(`p:${p.kind}:${pos(p)}`); westIds = ids; }
+    for (const p of w.patches) out.push({ x: p.x, z: p.z, w: p.w, d: p.d, rot: p.rot, id: `p:${p.kind}:${pos(p)}`, kind: 'patch', type: p.kind, label: PATCH_LABEL[p.kind] ?? p.kind, price: round500(BASE_PRICE[p.kind]! * clamp((p.w * p.d) / PATCH_REF[p.kind]!)) }); for (const p of w.patches) ids.add(`p:${p.kind}:${pos(p)}`); for (const f of westFarmPlots()) ids.add(fieldPlotId(f.n)); westIds = ids; }
   // Reprice only housing. Capture the actual old employment bonus BEFORE lowering its base price: otherwise
   // a two-slot home priced at 20k would silently lose a slot, and a three-slot home at 30k would become two-slot.
   // No owned rows, paid prices, IDs, geometry or equipment are changed. Slots outside 1–3 keep their old price.

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   WEST, WEST_GROUND, WEST_ROADS, WEST_JUNCTIONS, WEST_CUL_ENDS, WEST_RESERVED, WEST_WAREHOUSES, WEST_PORT, WEST_MARINA,
-  GW_TIE, RURAL_SW, WEST_DC, WEST_COLS, WEST_ROWS, westFill, westRoadClearance, westDistrict, onWest,
+  GW_TIE, RURAL_SW, WEST_DC, WEST_TOWN, WEST_POCKET, WEST_FARMS, WEST_FARM_N0, WEST_HILLS, WEST_LAKES, WEST_CREEK, WEST_INDUSTRIAL_X,
+  westFill, westRoadClearance, westDistrict, onWest, lakeClearance, creekClearance, nearWater,
 } from '../shared/westCity';
 import { ROAD_WIDTH, district, cityFill, landmarks, obbOverlap, obbCorners, roadClearance, type OBB } from '../shared/worldLayout';
 import { properties } from '../shared/realEstate';
@@ -16,6 +17,9 @@ import { OCEAN } from '../shared/ocean';
 import { westScenery } from '../shared/westScenery';
 import { westTown } from '../shared/westCity';
 import { RURAL_ROADS } from '../shared/outskirts';
+import { isWestDeed } from '../shared/realEstate';
+import { allFieldPlots, fieldPlotOf, fieldPlotLabel, isExpansionFarmN } from '../shared/fieldFarms';
+import { inBridgeSite } from '../shared/coop';
 
 const westIds = () => { const w = westFill(); return new Set([...w.houses.map((h) => `b:${h.type}:${Math.round(h.x * 10)}:${Math.round(h.z * 10)}`), ...w.patches.map((p) => `p:${p.kind}:${Math.round(p.x * 10)}:${Math.round(p.z * 10)}`)]); };
 
@@ -32,14 +36,17 @@ describe('West Chud (western half of the map)', () => {
   });
 
   it('has a connected road network tied into the old roads', () => {
-    expect(WEST_ROADS.length).toBeGreaterThan(50);
+    expect(WEST_ROADS.length).toBeGreaterThan(20);
     for (const r of WEST_ROADS) if (!r.closed) expect(r.ends, r.id).toBeDefined();
     const gw = EXP_ROADS.find((r) => r.id === 'gw-west')!;
     expect(Math.min(...gw.pts.map((p) => Math.hypot(p[0] - GW_TIE[0], p[1] - GW_TIE[1])))).toBeLessThan(0.05);
     expect(RURAL_ROADS.some(([a, b]) => [a, b].some((p) => p[0] === RURAL_SW[0] && p[1] === RURAL_SW[1]))).toBe(true);
     const expy = WEST_ROADS.find((r) => r.id === 'w-expy')!, coast = WEST_ROADS.find((r) => r.id === 'w-coast')!;
     expect(expy.pts[0]).toEqual(GW_TIE); expect(coast.pts[0]).toEqual(RURAL_SW);
-    expect(WEST_JUNCTIONS.length).toBeGreaterThan(100); expect(WEST_CUL_ENDS.length).toBeGreaterThan(10);
+    // a compact town grid, the Maple Heights pocket and a handful of country roads, not a suburban grid
+    expect(WEST_ROADS.length).toBeLessThan(40); expect(WEST_JUNCTIONS.length).toBeGreaterThan(15); expect(WEST_CUL_ENDS.length).toBeGreaterThanOrEqual(4);
+    const len = (ids: (id: string) => boolean) => WEST_ROADS.filter((r) => ids(r.id)).reduce((n, r) => n + r.pts.length, 0);
+    expect(len((id) => ['w-maple', 'w-cedar', 'w-ridge', 'w-ridgew'].includes(id))).toBeGreaterThan(1500);
     // every non-link road stays on the west land
     for (const r of WEST_ROADS) if (r.id !== 'w-expy' && r.id !== 'w-coast') for (const [x, z] of r.pts) expect(onWest(x, z, 0), `${r.id} ${x},${z}`).toBe(true);
   });
@@ -64,17 +71,19 @@ describe('West Chud (western half of the map)', () => {
     for (const [x, z] of coast.pts) if (x > AIRPORT.x0 && x < AIRPORT.x1) expect(z).toBeGreaterThan(AIRPORT.z1 + 4);
   });
 
-  it('fills the new land with homes, towers, parks and lots that never overlap or sit on a road', () => {
+  it('fills the new land with a town, a suburb pocket and countryside: homes, towers, parks and lots that never overlap or sit on a road or water', () => {
     const { houses, patches } = westFill();
     const old = cityFill(7).houses.length;
-    expect(houses.length).toBeGreaterThan(old * 2);
+    expect(houses.length).toBeGreaterThan(old); expect(houses.length).toBeLessThan(old * 2.2); // about one more old city's worth, mostly in Westgate
     expect(houses.filter((h) => h.type === 'tower').length).toBeGreaterThan(5);
-    expect(patches.length).toBeGreaterThan(30);
+    // outside town the only homes are the farmhouses
+    const country = houses.filter((h) => !westTown(h.x, h.z)); expect(country.length).toBeLessThanOrEqual(WEST_FARMS.length); expect(country.every((h) => h.type === 'house')).toBe(true);
+    const lots = patches.filter((p) => p.kind === 'lot' && !westTown(p.x, p.z)); expect(lots.length).toBeGreaterThan(30); // empty buildable land along the country roads
     const all: OBB[] = [...houses, ...patches];
     for (const b of all) {
-      for (const [x, z] of obbCorners(b)) { expect(onWest(x, z, 1), `${b.x},${b.z}`).toBe(true); expect(z).toBeLessThan(OCEAN.beachZ); }
+      for (const [x, z] of obbCorners(b)) { expect(onWest(x, z, 1), `${b.x},${b.z}`).toBe(true); expect(z).toBeLessThan(OCEAN.beachZ); expect(nearWater(x, z, 0), `${b.x},${b.z} in water`).toBe(false); }
       expect(westRoadClearance(b.x, b.z)).toBeGreaterThan(0);
-      for (const r of [...WEST_RESERVED, ...WEST_WAREHOUSES]) expect(obbOverlap(b, r, 0)).toBe(false);
+      for (const r of [...WEST_RESERVED, ...WEST_WAREHOUSES, ...WEST_FARMS]) expect(obbOverlap(b, r, 0)).toBe(false);
     }
     const G = 30; const grid = new Map<string, OBB[]>();
     for (const b of all) { const k = `${Math.floor(b.x / G)},${Math.floor(b.z / G)}`; (grid.get(k) ?? grid.set(k, []).get(k)!).push(b); }
@@ -93,7 +102,8 @@ describe('West Chud (western half of the map)', () => {
       else if (r.id === 'w-coast') expect(r.width).toBe(5); // the countryside collector it leaves from
       else expect(r.width, r.id).toBe(ROAD_WIDTH[r.kind]);
     }
-    for (const v of [...WEST_DC, ...WEST_COLS, ...WEST_ROWS]) expect(Math.abs(v % 26)).toBe(0);
+    for (const v of WEST_DC) expect(Math.abs(v % 26)).toBe(0);
+    expect([WEST_TOWN.x1 - WEST_TOWN.x0, WEST_TOWN.z1 - WEST_TOWN.z0]).toEqual([232, 232]); // the old plate's size
     // downtown grid streets and boulevards run straight north-south or east-west, like the old ones
     // (ends may snap onto the ring with a short link, as in the old city, so only the middle of each is checked)
     for (const r of WEST_ROADS.filter((o) => o.id.startsWith('w-grid') || o.kind === 'boulevard' && o.id !== 'w-expy')) {
@@ -118,9 +128,9 @@ describe('West Chud (western half of the map)', () => {
     }
     // the type mix follows the old district rule: towers only downtown/midtown, detached homes only in the suburbs (plus edge mixing)
     for (const h of houses.filter((b) => b.type === 'tower')) expect(westDistrict(h.x, h.z)).not.toBe('suburb');
-    // suburban density inside the old suburbs' range (8-14 buildings per 1000 square units)
-    const box = { x0: -1080, x1: -900, z0: -400, z1: -170 }; const n = houses.filter((h) => h.x > box.x0 && h.x < box.x1 && h.z > box.z0 && h.z < box.z1).length;
-    const per = n / ((box.x1 - box.x0) * (box.z1 - box.z0)) * 1000; expect(per).toBeGreaterThan(8); expect(per).toBeLessThan(15);
+    // Westgate is no denser than the old plate (306 buildings on the same 232 x 232 square, plus its civic blocks)
+    const inT = houses.filter((h) => h.x > WEST_TOWN.x0 && h.x < WEST_TOWN.x1 && h.z > WEST_TOWN.z0 && h.z < WEST_TOWN.z1).length;
+    expect(inT).toBeGreaterThan(old.length * 0.8); expect(inT).toBeLessThan(old.length * 1.5);
   });
 
   it('lists every West Chud building and patch as an ordinary, unique deed and keeps old deeds', () => {
@@ -148,5 +158,31 @@ describe('West Chud (western half of the map)', () => {
     for (const p of s) { expect(westTown(p.x, p.z)).toBe(false); expect(westRoadClearance(p.x, p.z)).toBeGreaterThan(1); expect(onWest(p.x, p.z, 1)).toBe(true); }
     const G = 24; const grid = new Map<string, OBB[]>(); for (const h of houses) { const k = `${Math.floor(h.x / G)},${Math.floor(h.z / G)}`; (grid.get(k) ?? grid.set(k, []).get(k)!).push(h); }
     for (const p of trees) for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const h of grid.get(`${Math.floor(p.x / G) + i},${Math.floor(p.z / G) + j}`) ?? []) expect(obbOverlap(h, { x: p.x, z: p.z, w: 1, d: 1, rot: 0 }, 0)).toBe(false);
+  });
+
+  it('has farms on the ordinary farm system, square to the compass, off roads, water and town', () => {
+    expect(WEST_FARMS.length).toBeGreaterThanOrEqual(10);
+    WEST_FARMS.forEach((f, i) => { expect(f.n).toBe(WEST_FARM_N0 + i); expect(f.rot).toBe(0); expect([f.w, f.d]).toEqual([f.cols * 2 + 2, f.rows * 2 + 2]);
+      expect(isExpansionFarmN(f.n)).toBe(false); expect(fieldPlotOf(`cf:${f.n}`)).toMatchObject({ n: f.n, x: f.x, z: f.z }); expect(fieldPlotLabel(f)).toContain('West Chud farm');
+      for (const [x, z] of obbCorners(f)) { expect(onWest(x, z, 1)).toBe(true); expect(westTown(x, z)).toBe(false); expect(nearWater(x, z, 0)).toBe(false); expect(x).toBeLessThan(WEST_INDUSTRIAL_X); }
+      expect(westRoadClearance(f.x, f.z)).toBeGreaterThan(Math.min(f.w, f.d) / 2);
+      for (const o of WEST_FARMS) if (o !== f) expect(obbOverlap(o, f, 0)).toBe(false);
+      for (const r of WEST_RESERVED) expect(obbOverlap(r, f, 0)).toBe(false); });
+    const ps = new Map(properties().map((p) => [p.id, p]));
+    for (const f of WEST_FARMS) { const p = ps.get(`cf:${f.n}`)!; expect(p.kind).toBe('farm'); expect(p.price).toBeGreaterThan(0); expect(isWestDeed(p.id)).toBe(true); }
+    expect(allFieldPlots().filter((p) => p.n >= WEST_FARM_N0)).toHaveLength(WEST_FARMS.length);
+  });
+
+  it('has lakes, a creek and hills that roads only cross on bridges, and leaves the Fort McChud Bridge approach alone', () => {
+    expect(WEST_LAKES.length).toBeGreaterThanOrEqual(2); expect(WEST_HILLS.length).toBeGreaterThan(10);
+    for (const r of WEST_ROADS) for (const [x, z] of r.pts) expect(lakeClearance(x, z), `${r.id} in a lake`).toBeGreaterThan(r.width / 2);
+    // the creek runs from the north edge to the beach and only a few roads cross it (each crossing gets a bridge)
+    expect(WEST_CREEK[0][1]).toBeLessThan(WEST.z0 + 5); expect(WEST_CREEK[WEST_CREEK.length - 1][1]).toBeGreaterThan(OCEAN.beachZ - 5);
+    const crossing = WEST_ROADS.filter((r) => r.pts.some(([x, z]) => creekClearance(x, z) < 0)); expect(crossing.length).toBeGreaterThan(0); expect(crossing.length).toBeLessThanOrEqual(5);
+    for (const [x, z, rad] of WEST_HILLS) { expect(westRoadClearance(x, z)).toBeGreaterThan(rad); expect(nearWater(x, z, rad)).toBe(false); expect(westTown(x, z)).toBe(false); }
+    // the bridge junction: Sunset Coast Road's south edge sits at 172.5 by x -190 and nothing else enters the approach
+    const coast = WEST_ROADS.find((r) => r.id === 'w-coast')!; const near = coast.pts.reduce((b, p) => (Math.abs(p[0] + 190) < Math.abs(b[0] + 190) ? p : b));
+    expect(Math.abs(near[1] + coast.width / 2 - 172.5)).toBeLessThan(0.5);
+    for (const r of WEST_ROADS) if (r.id !== 'w-coast') for (const [x, z] of r.pts) expect(inBridgeSite(x, z, 2), r.id).toBe(false);
   });
 });
