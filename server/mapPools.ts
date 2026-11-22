@@ -45,7 +45,7 @@ export function hubOfLocId(loc: string, resortHomes: ReadonlySet<string>, cityHo
   const i = loc.indexOf(':'); if (i < 1) return null; const kind = loc.slice(0, i), ref = loc.slice(i + 1);
   if (kind === 'mine') return 'city';
   if (kind === 'farm') return ref.startsWith('rf:') ? 'resort' : 'city';
-  if (kind === 'fishing') return ref === 'lake' ? 'city' : (ref === 'reef' || ref === 'deep') ? 'resort' : null;
+  if (kind === 'fishing') return ref === 'lake' ? 'city' : (ref === 'reef' || ref === 'deep' || ref === 'lagoon') ? 'resort' : null;
   if (kind === 'kitchen') return resortHomes.has(ref) ? 'resort' : cityHomes.has(ref) ? 'city' : null; // unverified home: fail closed (untouched, reported)
   return null;
 }

@@ -22,7 +22,9 @@ import { getRoyalties } from './royalty.js';
 import { sendPopup } from './popups.js';
 import { BUYOUT_MUL, BUYOUT_PROTECT_MS, buyoutPrice } from '../shared/royalty.js';
 import { px, priceIndex } from './price-index.js';
-import { requireResort, requireIsland } from './travel.js';
+import { requireResort, requireIsland, isAtIsland } from './travel.js';
+import { claimRetreat, retreatState, RetreatError, type RetreatDeps } from './islandRetreat.js';
+import { isJailed } from './jail.js';
 import { assessedTaxBasis, taxBasisOf, propertyValue, GRACE_DAYS, propertyById as baseProperty, cityRefundOf, taxOf, landMultiplier, type OwnedProperty } from '../shared/realEstate.js';
 import { skillLevelAsync } from './skills.js';
 import { propertyWorth, propertyPaid, propertyPaidPlusUpgrades, upgradeSpendFromLevels } from '../shared/netWorth.js';
@@ -475,6 +477,11 @@ export function registerRealEstate(io: Server, socket: Socket): void {
   on('re_trade_cancel', (b, e) => e.trades.cancel(need(), b.id));
   on('re_trade_decline', (b, e) => e.trades.decline(need(), b.id));
   on('re_trade_accept', (b, e) => e.trades.accept(need(), b.id));
+  // Private Island estate retreat (server/islandRetreat.ts).
+  const retreatDeps = (e: RealEstate): RetreatDeps => ({ bank: getBank, ownerOf: (id) => e.ownerOf(id), atIsland: (n) => isAtIsland(n), jailed: (n) => isJailed(n), px });
+  const retreat = async <T,>(fn: () => Promise<T>) => { try { return await fn(); } catch (err) { if (err instanceof RetreatError) throw new PropertyError(err.message); throw err; } };
+  on('isl_retreat_state', (_b, e) => retreat(() => retreatState(nameOf(), retreatDeps(e))));
+  on('isl_retreat_claim', async (_b, e) => { const r = await retreat(() => claimRetreat(need(), retreatDeps(e))); return r; });
 }
 
 export async function propertySpend(pool: { query: (sql: string, args?: unknown[]) => Promise<{ rows: any[] }> }, ownerKey: string | null): Promise<Map<string, { upgrades: number; crops: number }>> {

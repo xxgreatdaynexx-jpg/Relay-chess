@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-22T09:00:00-06:00", "title": "Private Island becomes a full 3D island with lagoon fishing and a daily estate retreat", "bullets": [
+    "The Private Island is now a full 3D map you can pan, rotate and zoom like Chud Resort: white beaches, jungle, The Ridge with Ridge Falls, a plaza with paths and tiki torches, and four estates that each have their own look (Balinese Cove Estate, Mediterranean Palm Estate, modern Ridge Villa and the domed Crown Villa), each with a pool. Your own estate gets a gold marker.",
+    "The Island Dock now has a long jetty with your megayacht alongside and a jet pad nearby. The 2D map still works and shows everything new.",
+    "New, island only: Pearl Lagoon. Fish its pier for 15 species you can't catch anywhere else, from Queen Angelfish to the legendary Pearl Stingray and Golden Sunfish. They are worth about 1.5× reef fish, and the lagoon has its own daily fishmonger cap of 345,000 (it scales with the house-sell cap index like the other spots). Catches go to your Resort Warehouse.",
+    "New, island only: the Sunset Lounge. Once a day, while you are on the island, island estate owners collect a retreat worth 0.25% of each estate's list price: Cove 6,250 · Palm 8,000 · Ridge 11,250 · Crown 15,000 (before the price index). It doesn't build up, so a day you skip is lost.",
+  ]},
   {"commit": "", "at": "2026-11-22T08:40:00-06:00", "title": "Fort McChud Bridge is a real co-op build", "bullets": [
     "The Fort McChud Bridge now stands on the city map: a cable-stayed sea bridge that leaves Sunset Coast Road south of the airport, ramps over the beach and runs out to sea past two tall towers. Tap 🏟️ Co-op, then \"📍 View the Bridge on the map\" to fly there.",
     "It goes up with the co-op project like the Hockey Stadium did, in 4 stages: Piers & abutment, Towers, Deck & road, then Cables & lights. Each stage shows on the map as it fills, and a label above the shore shows the overall %.",

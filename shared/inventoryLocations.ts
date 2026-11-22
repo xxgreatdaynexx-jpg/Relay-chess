@@ -42,7 +42,7 @@ export function parseLoc(v: unknown): Loc {
   const i = v.indexOf(':'); const kind = v.slice(0, i); const ref = v.slice(i + 1);
   if (i < 1 || !REF.test(ref)) throw new Error('Unknown location.');
   if (kind === 'mine' && (CITY_CAVES as readonly string[]).includes(ref)) return { kind, ref, id: v };
-  if (kind === 'fishing' && (ref === 'lake' || ref === 'reef' || ref === 'deep')) return { kind, ref, id: v };
+  if (kind === 'fishing' && (ref === 'lake' || ref === 'reef' || ref === 'deep' || ref === 'lagoon')) return { kind, ref, id: v };
   if (kind === 'farm') return { kind, ref, id: v };
   if (kind === 'kitchen') return { kind, ref, id: v };
   throw new Error('Unknown location.');
@@ -70,7 +70,7 @@ export function locLabel(loc: string): string {
       case 'resort': return 'Resort Warehouse';
       case 'mine': return l.ref === 'frost' ? 'Frostbite Caverns' : l.ref === 'magma' ? 'Magma Depths' : l.ref === 'quarry' ? 'Stone Quarry' : 'The Mine';
       case 'farm': return l.ref.startsWith('rf:') ? `Plantation plot ${l.ref.slice(3)}` : `Farm plot ${l.ref}`;
-      case 'fishing': return l.ref === 'lake' ? 'Lake dock' : l.ref === 'reef' ? 'Reef Pier' : 'Resort Marina (deep sea)';
+      case 'fishing': return l.ref === 'lake' ? 'Lake dock' : l.ref === 'reef' ? 'Reef Pier' : l.ref === 'lagoon' ? 'Pearl Lagoon (Private Island)' : 'Resort Marina (deep sea)';
       case 'kitchen': return `Kitchen · ${l.ref}`;
       case 'coral': return 'Coral Grotto';
     }

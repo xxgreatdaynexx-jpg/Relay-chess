@@ -13,8 +13,11 @@
  */
 export type Rarity = 'junk' | 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 /** Where a species lives: 'lake' = the city dock (default), 'reef' = the Chud Resort pier (pt1304u). */
-export type FishSpot = 'lake' | 'reef' | 'deep';
-export const isFishSpot = (v: unknown): v is FishSpot => v === 'lake' || v === 'reef' || v === 'deep';
+export type FishSpot = 'lake' | 'reef' | 'deep' | 'lagoon';
+export const isFishSpot = (v: unknown): v is FishSpot => v === 'lake' || v === 'reef' || v === 'deep' || v === 'lagoon';
+/** Every fishing spot, in display order. 'lagoon' = the Pearl Lagoon pier on the Private Island. */
+export const FISH_SPOTS: readonly FishSpot[] = ['lake', 'reef', 'deep', 'lagoon'];
+export const FISH_SPOT_LABEL: Record<FishSpot, string> = { lake: 'Lake', reef: 'Reef', deep: 'Deep sea', lagoon: 'Pearl Lagoon' };
 export interface Fish { id: string; label: string; emoji: string; rarity: Rarity; min: number; max: number; base: number; spot?: FishSpot; /** Deep sea only: 1 Outer Banks, 2 Blue Water, 3 The Abyss (boat range, shared/fleet.ts). */ zone?: 1 | 2 | 3; /** mu-coop3: only bites on a crewed fishing-fleet trip (server/fishFleet.ts). */ crew?: true }
 /** Weights in kg; base = sale value (base chips) of an average-sized one. */
 export const FISH: Fish[] = [
@@ -50,6 +53,22 @@ export const FISH: Fish[] = [
   { id: 'sailfish', label: 'Sailfish', emoji: '🗡️', rarity: 'epic', min: 15, max: 60, base: 270, spot: 'reef' },
   { id: 'marlin', label: 'Blue Marlin', emoji: '🐋', rarity: 'legendary', min: 60, max: 240, base: 960, spot: 'reef' },
   { id: 'manta', label: 'Sunset Manta', emoji: '🌅', rarity: 'legendary', min: 40, max: 200, base: 920, spot: 'reef' },
+  // ---- Pearl Lagoon on the Private Island: island-only species, same rarity odds; values about 1.5x the reef bands (3x the lake).
+  { id: 'oystershell', label: 'Empty Pearl Oyster', emoji: '🦪', rarity: 'junk', min: 0.1, max: 0.6, base: 4, spot: 'lagoon' },
+  { id: 'msgbottle', label: 'Message in a Bottle', emoji: '🍾', rarity: 'junk', min: 0.4, max: 1.4, base: 6, spot: 'lagoon' },
+  { id: 'wrasse', label: 'Lagoon Wrasse', emoji: '🐠', rarity: 'common', min: 0.1, max: 0.5, base: 20, spot: 'lagoon' },
+  { id: 'angelfish', label: 'Queen Angelfish', emoji: '🐠', rarity: 'common', min: 0.2, max: 1.4, base: 24, spot: 'lagoon' },
+  { id: 'butterflyfish', label: 'Butterflyfish', emoji: '🐟', rarity: 'common', min: 0.05, max: 0.3, base: 18, spot: 'lagoon' },
+  { id: 'bonefish', label: 'Bonefish', emoji: '🐟', rarity: 'uncommon', min: 1, max: 6, base: 60, spot: 'lagoon' },
+  { id: 'lionfish', label: 'Lionfish', emoji: '🐡', rarity: 'uncommon', min: 0.3, max: 1.2, base: 66, spot: 'lagoon' },
+  { id: 'pompano', label: 'Golden Pompano', emoji: '🐟', rarity: 'uncommon', min: 0.6, max: 3.5, base: 56, spot: 'lagoon' },
+  { id: 'napoleon', label: 'Napoleon Wrasse', emoji: '🐟', rarity: 'rare', min: 6, max: 60, base: 145, spot: 'lagoon' },
+  { id: 'permit', label: 'Permit', emoji: '🐟', rarity: 'rare', min: 3, max: 18, base: 135, spot: 'lagoon' },
+  { id: 'trevally', label: 'Giant Trevally', emoji: '🐟', rarity: 'rare', min: 5, max: 45, base: 150, spot: 'lagoon' },
+  { id: 'dogtooth', label: 'Dogtooth Tuna', emoji: '🐟', rarity: 'epic', min: 15, max: 100, base: 400, spot: 'lagoon' },
+  { id: 'roosterfish', label: 'Roosterfish', emoji: '🐓', rarity: 'epic', min: 8, max: 45, base: 395, spot: 'lagoon' },
+  { id: 'goldensunfish', label: 'Golden Sunfish', emoji: '🌞', rarity: 'legendary', min: 80, max: 400, base: 1420, spot: 'lagoon' },
+  { id: 'pearlray', label: 'Pearl Stingray', emoji: '✨', rarity: 'legendary', min: 30, max: 160, base: 1400, spot: 'lagoon' },
   // Deep sea (Millionaire Update #10c): only from a boat out of the Resort Marina. Zone = how far out the boat can go.
   // mu-fishing: values ≈ 3.1x the original so the skiff (zone 1) earns ≈ 5x the pond per minute; bigger boats a bit more.
   { id: 'ghostnet', label: 'Ghost Net', emoji: '🕸️', rarity: 'junk', min: 0.5, max: 4, base: 6, spot: 'deep', zone: 1 },
@@ -108,7 +127,7 @@ export const fishSellValue = (value: number) => (value * 115) / 100; // = value 
 export const FISH_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 115_000, rate: 1 }, { upTo: Infinity, rate: 0 }];
 export const FISH_DAILY_MAX = FISH_TIERS.reduce((a, t, i) => a + (Number.isFinite(t.upTo) ? (t.upTo - (i ? FISH_TIERS[i - 1]!.upTo : 0)) * t.rate : 0), 0);
 /** Floor per-spot daily caps (base chips, before the house-sell cap index). Each spot is tracked on its own (fish_daily row per spot). */
-export const FISH_SPOT_CAP: Record<FishSpot, number> = { lake: 115_000, reef: 230_000, deep: 575_000 };
+export const FISH_SPOT_CAP: Record<FishSpot, number> = { lake: 115_000, reef: 230_000, deep: 575_000, lagoon: 345_000 };
 /** Daily cap for a spot: the floor, or the floor times the house-sell cap index, whichever is higher. */
 export function fishSpotCap(spot: FishSpot = 'lake', capIndex = 1): number {
   const base = FISH_SPOT_CAP[spot];
@@ -116,7 +135,7 @@ export function fishSpotCap(spot: FishSpot = 'lake', capIndex = 1): number {
   return Math.max(base, Math.round(base * idx));
 }
 export const fishTiers = (spot: FishSpot = 'lake', capIndex = 1): Array<{ upTo: number; rate: number }> => [{ upTo: fishSpotCap(spot, capIndex), rate: 1 }, { upTo: Infinity, rate: 0 }];
-/** fish_daily.player_key for a spot: the plain player key for the lake (back-compatible), `key#reef` / `key#deep` otherwise. */
+/** fish_daily.player_key for a spot: the plain player key for the lake (back-compatible), `key#reef` / `key#deep` / `key#lagoon` otherwise. */
 export const fishDailyKey = (key: string, spot: FishSpot = 'lake') => (spot === 'lake' ? key : `${key}#${spot}`);
 export function fishPayout(gross: number, already: number, spot: FishSpot = 'lake', capIndex = 1): number {
   let left = gross, at = already, pay = 0, lo = 0;

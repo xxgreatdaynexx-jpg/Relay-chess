@@ -20,6 +20,12 @@ export const STAND = new THREE.Vector3(DOCK.x, 1.15, DOCK.pierZ0 + 1.6);
 const RARE: Rarity[] = ['rare', 'epic', 'legendary'];
 
 const FISH_LOOK: Record<string, { color: number; belly: number; len: number; fat: number; spots?: number; glow?: number }> = {
+  // Pearl Lagoon (Private Island)
+  wrasse: { color: 0xbf52b8, belly: 0xee99cc, len: 0.9, fat: 0.4, spots: 0x44dbbf }, angelfish: { color: 0x3365db, belly: 0xf9ce35, len: 0.9, fat: 0.75 }, butterflyfish: { color: 0xf5d137, belly: 0xeeeece, len: 0.7, fat: 0.7, spots: 0x303040 },
+  bonefish: { color: 0xacced4, belly: 0xe6eff3, len: 1.2, fat: 0.3 }, lionfish: { color: 0xac5037, belly: 0xf8e5c6, len: 0.9, fat: 0.45, spots: 0xf8e5c6 }, pompano: { color: 0xe5bd42, belly: 0xfff1ad, len: 1, fat: 0.55 },
+  napoleon: { color: 0x259c87, belly: 0x9ee5b8, len: 1.9, fat: 0.55 }, permit: { color: 0xa6bec9, belly: 0xedf2e5, len: 1.3, fat: 0.6 }, trevally: { color: 0x4a6673, belly: 0xa9c7c6, len: 1.6, fat: 0.45 },
+  dogtooth: { color: 0x215473, belly: 0xdfebe3, len: 2, fat: 0.4 }, roosterfish: { color: 0x648795, belly: 0xd4e4db, len: 1.6, fat: 0.35, spots: 0x20404a },
+  goldensunfish: { color: 0xe6b342, belly: 0xfff0b5, len: 2.2, fat: 0.9, glow: 0x553300 }, pearlray: { color: 0x7686b0, belly: 0xfff9db, len: 2, fat: 0.25, glow: 0x223355 },
   bluegill: { color: 0x3f6f9a, belly: 0xf2c14e, len: 0.9, fat: 0.55 }, perch: { color: 0x8a9a2c, belly: 0xf4e3a1, len: 1, fat: 0.4, spots: 0x2d3a10 },
   sunfish: { color: 0x2f8f78, belly: 0xff9a3c, len: 0.8, fat: 0.6 }, bass: { color: 0x4b6b2a, belly: 0xdfe8c0, len: 1.2, fat: 0.42 },
   trout: { color: 0x7c8f9c, belly: 0xff8fb0, len: 1.15, fat: 0.33, spots: 0x223 }, catfish: { color: 0x575049, belly: 0xc9c0b0, len: 1.4, fat: 0.36 },
@@ -114,7 +120,7 @@ export class Fishing3D {
     m.emissive.set(colors?.[0] ?? '#000000'); m.emissiveIntensity = colors ? 0.25 : 0; m.needsUpdate = true;
   }
   constructor(private canvas: HTMLCanvasElement, opts: { spot?: FishSpot } = {}) {
-    this.reef = opts.spot === 'reef' || opts.spot === 'deep'; this.deep = opts.spot === 'deep';
+    this.reef = opts.spot != null && opts.spot !== 'lake'; this.deep = opts.spot === 'deep';
     this.tier = detectWorldTier(); const tier = this.tier; canvas.dataset.tier = tier;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: tier !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, TIER_PIXEL_RATIO[tier] + (tier === 'high' ? 0.25 : 0)));

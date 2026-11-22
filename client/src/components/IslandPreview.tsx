@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAccount } from '@/lib/auth';
 import { usePanelDrag } from '@/lib/panelDrag';
-import { ISLAND_DOCK, ISLAND_LOTS } from '../../../shared/island';
+import { ISLAND_DOCK, ISLAND_LAGOON, ISLAND_LOTS, ISLAND_LOUNGE } from '../../../shared/island';
 import { IslandFlatMap, useIslandOwners } from './IslandFlatMap';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -23,7 +23,9 @@ export function IslandPreview({ onClose, onTravel, travelLabel, canTravel }: { o
         <footer data-testid="island-preview-info">
           {lot ? <span><b>{lot.label}</b> · {owner ? (mine ? 'yours' : `owned by ${owner}`) : `for sale · 🪙 ${fmt(lot.price)}`}. Travel to the island to {owner ? 'visit' : 'buy'} it.</span>
             : sel === ISLAND_DOCK.id ? <span><b>{ISLAND_DOCK.icon} {ISLAND_DOCK.label}</b> · where you land. The island is reached by Sovereign Megayacht or your own jet.</span>
-            : <span>Tap an estate or the dock.</span>}
+            : sel === ISLAND_LAGOON.id ? <span><b>{ISLAND_LAGOON.icon} {ISLAND_LAGOON.label}</b> · {ISLAND_LAGOON.blurb}</span>
+            : sel === ISLAND_LOUNGE.id ? <span><b>{ISLAND_LOUNGE.icon} {ISLAND_LOUNGE.label}</b> · {ISLAND_LOUNGE.blurb}</span>
+            : <span>Tap an estate, the dock, the lagoon or the lounge.</span>}
           <button type="button" disabled={!canTravel} onClick={onTravel} data-testid="island-preview-travel">{travelLabel}</button>
         </footer>
       </div>

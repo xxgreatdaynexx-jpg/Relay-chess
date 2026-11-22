@@ -3132,10 +3132,19 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .island-flat-spot.mine { border: 2px solid #8bdf87; }
 .island-flat-spot.on { box-shadow: 0 0 0 3px #f2d48a; }
 .island-flat-dock { background: rgba(74,46,24,.92); }
+.island-flat-lagoon { background: rgba(10,74,78,.92); border-color: #5af0d8; }
+.island-flat-lounge { background: rgba(90,40,20,.92); border-color: #ffb070; }
+.island-act { display: grid; gap: 6px; } .island-act p { margin: 0; }
+.island-act > button { padding: 8px 10px; border-radius: 10px; background: rgba(201,162,74,.16); border: 1px solid rgba(201,162,74,.4); font-weight: 700; text-align: left; min-height: 44px; }
+.island-act > button:hover:not(:disabled) { background: rgba(201,162,74,.3); } .island-act > button:disabled { opacity: .55; }
+.island-retreat-list { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 4px; }
+.island-retreat-list li { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,.05); border: 1px solid rgba(242,212,138,.18); }
+.island-retreat-list li.mine { border-color: #8bdf87; }
+.island-retreat-list li small { grid-column: 1 / -1; opacity: .8; }
 .island-map-notice { position: absolute; left: 18px; top: 84px; font-size: 12px; opacity: .85; pointer-events: none; }
 .island-map-msg { position: absolute; left: 12px; bottom: 12px; padding: 6px 10px; border-radius: 8px; background: rgba(12,14,24,.85); }
 @media (max-width: 700px), (max-height: 520px) {
-  .world.island .island-map-controls { top: auto; bottom: 8px; left: 8px; right: 8px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding-right: 0; }
+  .world.island .island-map-controls { top: auto; bottom: 8px; left: 8px; right: 8px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding-right: 0; }
   .world.island .island-map-controls button { min-height: 44px; min-width: 0; padding: 5px 8px; font-size: 12px; white-space: normal; }
   .island-flat-map { bottom: 108px; }
   .island-map-notice { top: 70px; }
@@ -3144,7 +3153,7 @@ body.he-full-open .he-table.he-full { visibility: visible; }
   .island-flat-spot i { display: none; }
 }
 @media (max-height: 520px) { .island-flat-board { min-width: 264px; } .island-flat-spot { width: 76px; font-size: 10px; } .island-flat-spot i, .island-flat-spot small { display: none; } }
-@media (max-height: 520px) and (min-width: 700px) { .world.island .island-map-controls { grid-template-columns: repeat(4, minmax(0, 1fr)); } .island-flat-map { top: 88px; bottom: 60px; } }
+@media (max-height: 520px) and (min-width: 700px) { .world.island .island-map-controls { grid-template-columns: repeat(6, minmax(0, 1fr)); } .island-flat-map { top: 88px; bottom: 60px; } }
 .island-preview { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: rgba(4,8,14,.72); padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom)); }
 .island-preview-box { position: relative; display: flex; flex-direction: column; width: min(760px, 100%); height: min(680px, 100%); border-radius: 14px; overflow: hidden; background: #101418; border: 1px solid rgba(201,162,74,.55); }
 .island-preview-box > header { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; }

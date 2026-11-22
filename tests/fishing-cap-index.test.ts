@@ -4,7 +4,7 @@ import { changelogEntry } from './helpers/changelog';
 
 describe('fishing caps scale with the house-sell cap index', () => {
   it('keeps today\'s flat values as the floor when the index is 1 or below', () => {
-    expect(FISH_SPOT_CAP).toEqual({ lake: 115_000, reef: 230_000, deep: 575_000 });
+    expect(FISH_SPOT_CAP).toEqual({ lake: 115_000, reef: 230_000, deep: 575_000, lagoon: 345_000 });
     expect(FISH_DAILY_MAX).toBe(115_000);
     expect(fishSpotCap('lake')).toBe(115_000);
     expect(fishSpotCap('reef', 1)).toBe(230_000);

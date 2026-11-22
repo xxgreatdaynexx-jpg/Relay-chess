@@ -20,6 +20,16 @@ export const ISLAND_LOTS: IslandLot[] = [
 
 export const ISLAND_DOCK = { id: 'i-dock', label: 'Island Dock', icon: '⚓', blurb: 'Sail home to Chud Hub on your megayacht, or fly your jet.', x: 0, z: 28, w: 14, d: 8, h: 3 };
 
+/** Island-only activities. The Pearl Lagoon pier is a fishing spot ('lagoon' in shared/fishing.ts); the Sunset Lounge pays the estate retreat. */
+export const ISLAND_LAGOON = { id: 'i-lagoon', label: 'Pearl Lagoon', icon: '🎣', blurb: 'Island-only fishing: 15 rare lagoon species. Catches go to your Resort Warehouse.', x: -40, z: 34, w: 4, d: 16 };
+export const ISLAND_LOUNGE = { id: 'i-lounge', label: 'Sunset Lounge', icon: '🍹', blurb: 'Estate owners collect a daily retreat here. Miss a day and it is gone.', x: 40, z: 30, w: 12, d: 8 };
+
+/** Estate retreat: once per UTC day, while on the island, the owner of an island estate collects 0.25% of its list price
+ *  (before the price index). It never accrues: a day you are not on the island is a day you do not collect. */
+export const ISLAND_RETREAT_RATE = 0.0025;
+export const islandRetreatBase = (id: string): number => { const l = ISLAND_LOTS.find((x) => x.id === id); return l ? Math.round(l.price * ISLAND_RETREAT_RATE) : 0; };
+export const islandRetreatKey = (id: string, day: string) => `isle_retreat:${id}:${day}`;
+
 export function islandProperties(): Array<Pick<Property, 'id' | 'kind' | 'type' | 'label' | 'price' | 'x' | 'z' | 'w' | 'd' | 'rot' | 'h' | 'map'>> {
   return ISLAND_LOTS.map((l) => ({ id: l.id, kind: 'building' as const, type: 'isleestate', label: l.label, price: l.price, x: l.x, z: l.z, w: l.w, d: l.d, rot: l.rot, h: l.h, map: 'island' as const }));
 }
@@ -39,15 +49,19 @@ export const ISLAND_PLACES: Array<{ id: string; label: string; x: number; z: num
   { id: 'cove', label: 'Cove Beach', x: -50, z: 18 },
   { id: 'palm', label: 'Palm Beach', x: 50, z: 18 },
   { id: 'lagoon', label: 'Open sea · Chud Hub this way', x: 0, z: 56 },
+  { id: 'jungle', label: 'Jungle', x: 0, z: -18 },
+  { id: 'falls', label: 'Ridge Falls', x: 26, z: -50 },
 ];
 
-export type IslandSpotKind = 'estate' | 'dock';
+export type IslandSpotKind = 'estate' | 'dock' | 'lagoon' | 'lounge';
 export interface IslandSpot { id: string; kind: IslandSpotKind; label: string; icon: string; x: number; z: number; price?: number }
-/** Everything the island map can open: the four estates and the dock (landing for megayachts and jets). */
+/** Everything the island map can open: the four estates, the dock (landing for megayachts and jets), the lagoon pier and the lounge. */
 export function islandSpots(): IslandSpot[] {
   return [
     ...ISLAND_LOTS.map((l) => ({ id: l.id, kind: 'estate' as const, label: l.label, icon: '🏝️', x: l.x, z: l.z, price: l.price })),
     { id: ISLAND_DOCK.id, kind: 'dock' as const, label: ISLAND_DOCK.label, icon: ISLAND_DOCK.icon, x: ISLAND_DOCK.x, z: ISLAND_DOCK.z },
+    { id: ISLAND_LAGOON.id, kind: 'lagoon' as const, label: ISLAND_LAGOON.label, icon: ISLAND_LAGOON.icon, x: ISLAND_LAGOON.x, z: ISLAND_LAGOON.z },
+    { id: ISLAND_LOUNGE.id, kind: 'lounge' as const, label: ISLAND_LOUNGE.label, icon: ISLAND_LOUNGE.icon, x: ISLAND_LOUNGE.x, z: ISLAND_LOUNGE.z },
   ];
 }
 /** Map position as percentages of the 2D frame. */

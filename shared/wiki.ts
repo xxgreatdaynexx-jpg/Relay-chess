@@ -70,7 +70,7 @@ export function buildWiki(): WikiSection[] {
     return { cells: [`${j.emoji} ${j.label}`, `${itemsPerDay(j)}/day`, chips(baseWage(j)), chips(baseHire(j)), chips(Math.round(dayValue(j))), formatExpectedDay(haul)] };
   });
 
-  const fishRows = (['lake', 'reef', 'deep'] as FishSpot[]).map((spot) => ({
+  const fishRows = (['lake', 'reef', 'deep', 'lagoon'] as FishSpot[]).map((spot) => ({
     cells: [spot, chips(FISH_SPOT_CAP[spot]), String(FISH.filter((f) => (f.spot ?? 'lake') === spot).length)],
   }));
 

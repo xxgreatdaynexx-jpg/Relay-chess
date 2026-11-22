@@ -259,6 +259,22 @@ const fishSide = (o: FishOpt) => {
 const band = (x: number, hh: number, w = 1.6, c = '#fff') => `<path d="M${x} ${12 - hh}Q${x - 1} 12 ${x} ${12 + hh}" fill="none" stroke="${OL}" stroke-width="${w + 1}"/><path d="M${x} ${12 - hh}Q${x - 1} 12 ${x} ${12 + hh}" fill="none" stroke="${c}" stroke-width="${w}"/>`;
 const bill = (c: string) => P('20,11.6 23.6,11.2 20.4,12.6', c, ' stroke-width="0.7"');
 const FISH_ICONS: Record<string, () => string> = {
+  oystershell: () => E(12, 14, 9, 6, '#e8d8c0') + E(12, 13, 6, 3, '#ca9ca4') + C(12, 13, 1.2, '#fff8e4', 0.5),
+  msgbottle: () => bottle('#2aa878', '#926b36', '#f4ddb0'),
+  wrasse: () => fishSide({ body: '#bf52b8', belly: '#ee99cc', fin: '#6a37a6', over: band(12, 4, 1, '#44dbbf') }),
+  angelfish: () => fishSide({ body: '#3365db', fin: '#f9ce35', hh: 8, tail: 'round', over: band(10, 6, 1, '#f9ce35') + band(16, 6, 1, '#f9ce35') }),
+  butterflyfish: () => fishSide({ body: '#f5d137', fin: '#eeeece', hh: 7, tail: 'round', over: band(18, 5, 2, '#303040') }),
+  bonefish: () => fishSide({ body: '#acced4', belly: '#e6eff3', fin: '#6c9ba8', hh: 3, tail: 'fork', over: Ln('M7 11L18 11', '#718eab', 1) }),
+  lionfish: () => fishSide({ body: '#ac5037', fin: '#ea9e76', hh: 5, dorsal: P('7,8 8,1 10,7 12,1 14,7 17,2 18,9', '#b05a42'), over: band(10, 4, 1, '#f8e5c6') + band(15, 4, 1, '#f8e5c6') }),
+  pompano: () => fishSide({ body: '#e5bd42', belly: '#fff1ad', fin: '#9e8c35', hh: 6, tail: 'lunate' }),
+  napoleon: () => fishSide({ body: '#259c87', belly: '#9ee5b8', fin: '#22786c', hh: 7, tail: 'round', over: C(16, 8, 2.2, '#54c5b4', 0) }),
+  permit: () => fishSide({ body: '#a6bec9', belly: '#edf2e5', fin: '#ccb34a', hh: 7, tail: 'lunate', over: C(15, 11, 2, '#364448', 0) }),
+  trevally: () => fishSide({ body: '#4a6673', belly: '#a9c7c6', fin: '#344952', hh: 5, tail: 'lunate', over: Ln('M7 10Q15 8 20 11', '#c4d2bb', 1) }),
+  dogtooth: () => fishSide({ body: '#215473', belly: '#dfebe3', fin: '#3b6472', hh: 5, tail: 'lunate', over: Ln('M19 13L21 12L20 14', '#fcf6e6', 1) }),
+  roosterfish: () => fishSide({ body: '#648795', belly: '#d4e4db', fin: '#20404a', hh: 4, tail: 'fork', dorsal: P('7,9 8,1 10,7 12,0 13,7 16,2 16,9', '#20404a'), over: band(13, 3, 1, '#354c56') }),
+  goldensunfish: () => fishSide({ body: '#e6b342', belly: '#fff0b5', fin: '#ce8631', hh: 9, x0: 7, tail: 'round', dorsal: P('10,5 11,0 15,4', '#ce8631'), over: C(12, 12, 3, '#f7d966', 0) }),
+  pearlray: () => Pa('M12 4Q17 7 22 12Q16 16 12 17Q8 16 2 12Q7 7 12 4Z', '#7686b0') + Ln('M12 17Q17 23 18 20', '#9ea3bb', 1.4) + [8,12,16].map((x) => C(x, 12, .8, '#fff9db', 0)).join(''),
+
   clownfish: () => fishSide({ body: '#ff7a1a', fin: '#ff8a2a', hh: 5.2, tail: 'round', dorsal: Pa('M10 7.5Q13 4 16 7.5Z', '#ff8a2a', 0.9), over: band(17, 4.2) + band(12.5, 4.8) + band(8, 2.8, 1.2) }),
   bluetang: () => fishSide({ body: '#2a5ad8', fin: '#f6d020', hh: 6.2, x0: 5, tail: 'lunate', dorsal: Pa('M8 7Q14 3.5 19 8Z', '#1f44b0', 0.9), over: Pa('M9 10C12 7 16 8 18 10C15 9.5 13 11 11 13C14 14 15 15 16 16C12 16 9 14 9 10Z', '#0d1a40', 0.5) }),
   damsel: () => fishSide({ body: '#e8ecf0', belly: '#f8f8fa', fin: '#e6c84a', hh: 5.6, over: '<path d="M8 8.5C11 6 17 6 20 10L20 9Z" fill="#f2d84a" opacity=".85"/>' + [9, 11.5, 14, 16.5, 19].map((x) => Ln(`M${x} ${x > 18 ? 9.5 : 7.4}L${x} ${x > 18 ? 14.5 : 16.6}`, '#1b1510', 1.1)).join('') }),
