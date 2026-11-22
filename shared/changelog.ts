@@ -12,6 +12,13 @@ export const CHANGELOG: ChangelogEntry[] = [
     "Everything costs several times Fort McChud's prices and the output is worth more to match, so a starter well pays for itself in about 12 to 18 days, like Fort McChud.",
     "Sell in person at the Chudbai Mercantile Exchange (3% export levy). Sales use the same daily revenue tiers as Fort McChud, counted separately for Chudbai. Your Chudbai site counts toward net worth.",
   ]},
+  {"commit": "", "at": "2026-11-22T08:30:00-06:00", "title": "Fort McChud map doubled with a West Field and visual fixes", "bullets": [
+    "Fort McChud is twice the size: a new West Field to the west adds tracts 11 to 20 with the same survey, lease, drilling and pipeline rules. Their pipelines run to the same Upgrader & Refinery.",
+    "Other operators now build in fenced yards of their own in the west half. Their plants no longer pile up on the airport or off the edge of the map.",
+    "New scenery: a crew work camp, a power line out to the West Field, lakes, and forested hills that roll out past the map edge.",
+    "Fixes: every refinery you build now shows on the map (up to 9, it used to stop at 4), the Deep Ore Mine pit is a real terraced pit, snow and ponds no longer flicker against the ground, pipe supports reach the ground, trees no longer grow through pipelines, and shadows work across the whole map.",
+    "Existing leases, wells, pipes and plant units keep their places and owners. The 2D map shows the West Field, the yards and the camp."
+  ]},
   {"commit": "", "at": "2026-11-22T08:20:00-06:00", "title": "Chud City doubles in size with West Chud", "bullets": [
     "The city map is now twice as wide. West Chud opens up west of the airport, reached by the Westgate Expressway (off the Airport Expressway) and Sunset Coast Road (along the beach past the airport).",
     "Five new districts: Westgate downtown with a skyline of towers half again as tall as the old downtown's, Westgate Square with the Westgate Spire observation tower, and Westgate Park with a pond and gazebo; Sunset Bay on the waterfront; Maple Heights and Cedar Hills suburbs; and the Ironworks industrial district.",

@@ -46,7 +46,8 @@ export const PRODUCT_ORDER = Object.keys(PRODUCTS) as Product[];
 export const isProduct = (v: unknown): v is Product => typeof v === 'string' && v in PRODUCTS;
 
 // ---- land
-export const TRACTS = 10;
+/** Tracts 1-10 are the original east field; 11-20 are the West Field added with the map expansion (same lease rules). */
+export const TRACTS = 20;
 export const SURVEY_COST = 2_500;
 export const LEASE_BASE = 30_000;
 export const WELLS_PER_TRACT = 4;
@@ -57,12 +58,15 @@ export const WELL_MW = 0.3, PUMPJACK_MW = 0.5;
 export const PIPES = [{ cap: 0, cost: 0 }, { cap: 120, cost: 15_000 }, { cap: 360, cost: 40_000 }] as const; // tier 1, tier 2 upgrade
 export const WATER_CUT = 0.10;
 export interface TractInfo { n: number; name: string; richness: number; gas: number; sour: number; lease: number; x: number; z: number }
+/** West Field (tracts 11-20): same 5 x 2 grid as the original field, 290 m further west. */
+export const WEST_FIELD_X = -380;
 const rnd = (i: number) => { const x = Math.sin(i * 91.7 + 17.3) * 43758.5453; return x - Math.floor(x); };
-const TRACT_NAMES = ['Athabasca Flats', 'Muskeg Ridge', 'Clearwater Bend', 'Firebag North', 'Christina Lake', 'Steepbank', 'Horizon Sands', 'Kearl Muskeg', 'Birch Mountain', 'Peace Point'];
+const TRACT_NAMES = ['Athabasca Flats', 'Muskeg Ridge', 'Clearwater Bend', 'Firebag North', 'Christina Lake', 'Steepbank', 'Horizon Sands', 'Kearl Muskeg', 'Birch Mountain', 'Peace Point',
+  'Cold Lake West', 'Wabasca Muskeg', 'Red Earth', 'Sunrise Hills', 'Jackfish Creek', 'Kirby Flats', 'Hangingstone', 'Leismer', 'Surmont Ridge', 'Gregoire Lake'];
 export function tractInfo(n: number): TractInfo {
   const richness = Math.round((0.6 + rnd(n) * 0.8) * 100) / 100, gas = Math.round((0.15 + rnd(n + 20) * 0.3) * 100) / 100, sour = Math.round(rnd(n + 40) * 0.3 * 100) / 100;
-  const col = (n - 1) % 5, row = Math.floor((n - 1) / 5);
-  return { n, name: TRACT_NAMES[n - 1] ?? `Tract ${n}`, richness, gas, sour, lease: Math.round((LEASE_BASE * richness) / 500) * 500, x: -110 + col * 44, z: -80 + row * 40 };
+  const west = n > 10, k = west ? n - 11 : n - 1, col = k % 5, row = Math.floor(k / 5) % 2;
+  return { n, name: TRACT_NAMES[n - 1] ?? `Tract ${n}`, richness, gas, sour, lease: Math.round((LEASE_BASE * richness) / 500) * 500, x: (west ? WEST_FIELD_X : -110) + col * 44, z: -80 + row * 40 };
 }
 export const isTract = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= TRACTS;
 
@@ -288,7 +292,9 @@ export function unloadHaul(s: FortState, haul: Map<string, number>): Array<[stri
 }
 
 // ---- map spots (landmarks on the Fort McChud 3D map; x east, z south)
-export const FORT_X0 = -140, FORT_X1 = 140, FORT_Z0 = -110, FORT_Z1 = 100;
+/** The map doubled westward (was x -140..140): the original east half keeps every coordinate; the west half holds the
+ *  West Field tracts, the operator yards and the work camp. */
+export const FORT_X0 = -420, FORT_X1 = 140, FORT_Z0 = -110, FORT_Z1 = 100;
 export interface FortSpot { id: string; label: string; icon: string; blurb: string; x: number; z: number; w: number; d: number; h: number }
 export const FORT_SPOTS: FortSpot[] = [
   { id: 'f-airport', label: 'Fort McChud Airport', icon: '✈️', blurb: 'Fly home to Chud Hub. The return flight is free.', x: -105, z: 70, w: 40, d: 14, h: 6 },
@@ -326,9 +332,18 @@ export function ownerColor(key: string): string {
 /** World offset for one operator's plant units so copies do not sit on top of each other. Index 0 keeps the original slots. */
 export function plantOwnerOffset(index: number): { x: number; z: number } {
   if (index <= 0) return { x: 0, z: 0 };
-  const i = index - 1;
-  return { x: -100 + (i % 2) * 26, z: 6 + Math.floor(i / 2) * 20 };
+  const y = FORT_YARDS[(index - 1) % FORT_YARDS.length]!;
+  return { x: y.x, z: y.z };
 }
+/** Operator yards in the west half (centres; YARD_W x YARD_D each). Every operator after the first gets their own yard,
+ *  so plants never sit on top of each other, the airport or the map edge. The last two share ground with the work camp,
+ *  which is cleared when they are needed. */
+export const YARD_W = 50, YARD_D = 40;
+export const FORT_YARDS: Array<{ x: number; z: number; camp?: boolean }> = [
+  ...[-379, -325, -271, -217, -163].map((x) => ({ x, z: 27 })),
+  ...[-271, -217, -163].map((x) => ({ x, z: 79 })),
+  ...[-379, -325].map((x) => ({ x, z: 79, camp: true })),
+];
 
 export interface FortOverlapReport { tracts: number; wells: number; pipes: number; details: Array<{ tract: number; official: string; foreignWells: number; foreignPipes: number }> }
 /** Count foreign (non-official-lessor) wells and pipes left on official leases. Does not delete anything. */

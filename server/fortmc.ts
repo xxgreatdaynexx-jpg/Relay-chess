@@ -32,6 +32,14 @@ export const FORTMC_MIGRATION = `
 CREATE TABLE IF NOT EXISTS fortmc_state (player_key TEXT PRIMARY KEY, name TEXT NOT NULL, state TEXT NOT NULL, updated_at BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS fortmc_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 CREATE TABLE IF NOT EXISTS fortmc_leases (tract SMALLINT PRIMARY KEY CHECK (tract >= 1 AND tract <= 10), player_key TEXT NOT NULL, name TEXT NOT NULL, leased_at BIGINT NOT NULL);`;
+/** West Field (map expansion): tracts 11-20 become leasable. Widens the original 1-10 check once; no rows are touched.
+ *  Run separately from FORTMC_MIGRATION (plpgsql DO block) so in-memory test databases without plpgsql keep booting. */
+export const FORTMC_LEASE_RANGE_MIGRATION = `DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fortmc_leases_tract_range') THEN
+    ALTER TABLE fortmc_leases DROP CONSTRAINT IF EXISTS fortmc_leases_tract_check;
+    ALTER TABLE fortmc_leases ADD CONSTRAINT fortmc_leases_tract_range CHECK (tract >= 1 AND tract <= 20);
+  END IF;
+END $$;`;
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
 type PoolLike = Q & { connect: () => Promise<Q & { release: () => void }> };
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -57,7 +65,10 @@ export class FortMc {
   attachIo(io: Server) { this.io = io; }
   overlaps() { return this.lastOverlaps; }
   async init() {
-    if (this.pool) await this.pool.query(FORTMC_MIGRATION);
+    if (this.pool) {
+      await this.pool.query(FORTMC_MIGRATION);
+      await this.pool.query(FORTMC_LEASE_RANGE_MIGRATION).catch((e) => console.warn('[fortmc] lease range check not widened (tracts 11-20 may refuse leases):', (e as Error).message));
+    }
     await this.ensureLoaded();
     await this.backfillLeases();
   }

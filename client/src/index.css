@@ -2663,7 +2663,8 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 
 /* Fort-only non-WebGL map: readable geometry-backed fallback, touch-scrolls on narrow displays. */
 .fort-flat-map { position: absolute; inset: 130px 0 66px; overflow: auto; touch-action: pan-x pan-y; background: #384632; }
-.fort-flat-board { position: relative; width: 100%; min-width: 640px; height: max(480px, 100%); }
+.fort-flat-board { position: relative; width: 100%; min-width: 1280px; height: max(480px, 100%); } /* doubled (wider) map: keep the east field at its old readable scale */
+.fort-flat-board .fort-flat-note { position: absolute; transform: translate(-50%,-50%); padding: 2px 8px; border-radius: 6px; background: rgba(20,26,22,.72); color: #e9dcb8; font: 600 11px/1.2 system-ui; pointer-events: none; white-space: nowrap; }
 .fort-flat-board > svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .fort-flat-board button { position: absolute; transform: translate(-50%,-50%); min-height: 44px; width: 90px; padding: 5px; border: 1px solid #f2b630; border-radius: 8px; background: #202a26; color: #fff3d3; font: 600 12px/1.2 system-ui; }
 .fort-flat-board .fort-flat-tract { width: 72px; background: #655740; }
