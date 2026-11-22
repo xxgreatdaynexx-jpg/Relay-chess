@@ -125,7 +125,7 @@ describe('map expansion and Goldwood', () => {
       ...expansionFarms().map((f) => `cf:${f.n}`),
     ]);
     const added = properties().filter((p) => fresh.has(p.id));
-    const old = properties().filter((p) => !fresh.has(p.id) && p.map !== 'resort' && p.map !== 'island');
+    const old = properties().filter((p) => !fresh.has(p.id) && p.map !== 'resort' && p.map !== 'island' && p.map !== 'chudbai');
     expect(added.length).toBe(fresh.size);
     for (const a of added) {
       for (const b of added) if (a !== b) expect(obbOverlap(a, b), `${a.id} vs ${b.id}`).toBe(false);
@@ -138,7 +138,7 @@ describe('map expansion and Goldwood', () => {
 
   it('keeps the original catalog (568 after Bill Chud 3) plus the new prefixes only', () => {
     const isNew = (id: string) => /^(lot:estate:|winery:|b:mansion:|orchard:)/.test(id) || /^cf:2\d{3}$/.test(id) || isWestDeed(id) || isResortGrandId(id);
-    expect(properties().filter((p) => !/^(sky|isl):/.test(p.id) && !isNew(p.id))).toHaveLength(568);
+    expect(properties().filter((p) => !/^(sky|isl|cb):/.test(p.id) && !isNew(p.id))).toHaveLength(568);
     expect(allFieldPlots().filter((p) => p.n >= 2000)).toHaveLength(10);
   });
 });

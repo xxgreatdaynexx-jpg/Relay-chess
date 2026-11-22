@@ -27,6 +27,7 @@ import { propertyPaid } from './netWorth.js';
 import { allFieldPlots, fieldPlotId, fieldPlotPrice, fieldPlotLabel } from './fieldFarms.js';
 import { RESORT_TYPES, resortLots, resortPlots, resortPlotId, resortPlotPrice } from './resort.js';
 import { islandProperties } from './island.js';
+import { chudbaiProperties } from './chudbaiCity.js';
 import { skyProperties } from './skyPenthouses.js';
 import { estateLotId, estateLots, goldwoodHomes, goldwoodId, wineryId, wineryPlots } from './mapExpansion.js';
 import { orchardId, orchardPlots } from './orchard.js';
@@ -55,7 +56,7 @@ const PATCH_LABEL: Record<string, string> = { lot: 'Empty lot', park: 'Park', pl
 const PATCH_REF: Record<string, number> = { lot: 13 * 13 * 0.95, park: 13 * 13 * 0.95, plaza: 81 * 0.95, estate_lot: 32 * 26, power_plant: 40 * 32 };
 
 export type PropertyKind = 'building' | 'patch' | 'landmark' | 'farm';
-export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; /** farmland: full plot cols × rows (zoning) */ tiles?: number; h?: number; map?: 'resort' | 'island'; /** under a civic plot: never for sale again, drawn only while someone still owns it */ retired?: boolean; /** Off-map catalog (additional factory plants): buyable and tradable, not drawn as a lot. */ hidden?: boolean; /** Housing capacity captured from its original canonical price band, never from its new price. */ housingEmployees?: number }
+export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; /** farmland: full plot cols × rows (zoning) */ tiles?: number; h?: number; map?: 'resort' | 'island' | 'chudbai'; /** under a civic plot: never for sale again, drawn only while someone still owns it */ retired?: boolean; /** Off-map catalog (additional factory plants): buyable and tradable, not drawn as a lot. */ hidden?: boolean; /** Housing capacity captured from its original canonical price band, never from its new price. */ housingEmployees?: number }
 
 const clamp = (x: number) => Math.min(1.25, Math.max(0.8, x));
 const round500 = (n: number) => Math.max(500, Math.round(n / 500) * 500);
@@ -171,6 +172,8 @@ export function properties(): Property[] {
   for (const f of resortPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: resortPlotId(f.n), kind: 'farm', type: 'plantation', label: `${f.estate ? 'Estate plantation' : 'Plantation plot'} #${f.n} (${f.cols}×${f.rows})`, price: resortPlotPrice(f), map: 'resort', tiles: f.cols * f.rows });
   for (const u of skyProperties()) out.push(u);
   for (const u of islandProperties()) out.push(u);
+  // Chudbai (shared/chudbaiCity.ts): penthouses and villas on the Gulf map, buyable only in Chudbai.
+  for (const u of chudbaiProperties()) out.push(u);
   // Billionaire Update: open construction lots, Goldwood mansions, wineries (existing ids unchanged).
   for (const l of estateLots()) out.push({ x: l.x, z: l.z, w: l.w, d: l.d, rot: l.rot, h: l.h, id: estateLotId(l.n), kind: 'patch', type: l.kind === 'turnkey_plant' ? 'power_plant' : 'estate_lot', label: l.label, price: l.price });
   for (const h of goldwoodHomes()) out.push({ x: h.x, z: h.z, w: h.w, d: h.d, rot: h.rot, h: h.h, id: goldwoodId(h.n), kind: 'building', type: 'mansion', label: h.label, price: h.price, housingEmployees: 4 });

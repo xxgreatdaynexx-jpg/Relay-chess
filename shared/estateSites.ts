@@ -21,7 +21,7 @@ export const isDemolishedSite = (s: Pick<EstateSiteSummary, 'kind' | 'lotId'> | 
  *  best, and shrunk (never grown) so it stays inside the lot. Null when the lot is not on the city map. */
 export function demolishedPlacement(lotId: string, build: EstateBuildId): { x: number; z: number; rot: number; scale: number } | null {
   const p = propertyById(lotId); const plan = ESTATE_BUILDS[build];
-  if (!p || !plan || p.hidden || p.map === 'resort' || p.map === 'island') return null;
+  if (!p || !plan || p.hidden || p.map === 'resort' || p.map === 'island' || p.map === 'chudbai') return null;
   if (!Number.isFinite(p.x) || !Number.isFinite(p.z) || !(p.w > 0) || !(p.d > 0)) return null;
   const fit = (w: number, d: number) => Math.min(1, p.w / w, p.d / d);
   const straight = fit(plan.w, plan.d), turned = fit(plan.d, plan.w);

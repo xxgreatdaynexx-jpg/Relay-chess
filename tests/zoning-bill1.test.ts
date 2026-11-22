@@ -26,7 +26,7 @@ describe('classification (every catalog deed)', () => {
       if (['house', 'rowhouse', 'apartment', 'tower', 'penthouse', 'mansion', 'highrise'].includes(p.type) && !p.map) expect(z(p)).toBe('residential');
       else if (p.kind === 'landmark' || ['gas', 'depot', 'barn', 'factory_plant'].includes(p.type)) expect(z(p)).toBe('commercial');
       else if (p.kind === 'farm') { expect(z(p)).toBe('farmland'); const m = /\((\d+)×(\d+)\)/.exec(p.label)!; expect(tilesOf(p)).toBe(Number(m[1]) * Number(m[2])); }
-      else { expect(z(p)).toBe('exempt'); expect(p.kind === 'patch' || p.map === 'resort' || p.map === 'island').toBe(true); }
+      else { expect(z(p)).toBe('exempt'); expect(p.kind === 'patch' || p.map === 'resort' || p.map === 'island' || p.map === 'chudbai').toBe(true); }
     }
     expect(z(byId('lm:jail'))).toBe('commercial'); expect(z(byId('lm:harbour'))).toBe('commercial');
     expect(zoneOf({ kind: 'farm', type: 'plantation', map: 'resort' })).toBe('farmland'); expect(zoneOf({ kind: 'building', type: 'mystery' })).toBe('commercial'); // fail closed

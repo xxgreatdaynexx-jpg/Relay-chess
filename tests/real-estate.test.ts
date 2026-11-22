@@ -166,8 +166,8 @@ describe('countryside crop fields are buyable farms (pt1250u)', () => {
     const isExp = (id: string) => /^cf:2\d{3}$/.test(id); // East Estates expansion farms
     const cf = properties().filter((p) => p.id.startsWith('cf:') && !isBig(p.id) && !isExp(p.id)); const big = properties().filter((p) => isBig(p.id));
     expect(cf).toHaveLength(outskirts().fields.length); expect(big).toHaveLength(12);
-    for (const b of big) { for (const o of properties().filter((p) => p !== b && p.map !== 'resort' && p.map !== 'island')) expect(obbOverlap(b, o), `${b.id} vs ${o.id}`).toBe(false); } expect(cf.length).toBeGreaterThan(20);
-    const others = properties().filter((p) => !p.id.startsWith('cf:') && p.map !== 'resort' && p.map !== 'island');
+    for (const b of big) { for (const o of properties().filter((p) => p !== b && p.map !== 'resort' && p.map !== 'island' && p.map !== 'chudbai')) expect(obbOverlap(b, o), `${b.id} vs ${o.id}`).toBe(false); } expect(cf.length).toBeGreaterThan(20);
+    const others = properties().filter((p) => !p.id.startsWith('cf:') && p.map !== 'resort' && p.map !== 'island' && p.map !== 'chudbai');
     for (const p of cf) { expect(p.kind).toBe('farm'); expect(p.price).toBe(farmPrice(Math.floor(p.w / 2) * Math.floor(p.d / 2)));
       for (const o of others) expect(obbOverlap(p, o), `${p.id} vs ${o.id}`).toBe(false);
       for (const q of cf) if (q !== p) expect(obbOverlap(p, q)).toBe(false); }

@@ -218,7 +218,7 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
       {properties().filter((p) => p.type === 'barn').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
       {properties().filter((p) => p.type === 'factory_plant').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
       <h4>🌾 Farmland (east of the city)</h4>
-      {properties().filter((p) => p.kind === 'farm' && p.map !== 'resort' && p.map !== 'island').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
+      {properties().filter((p) => p.kind === 'farm' && p.map !== 'resort' && p.map !== 'island' && p.map !== 'chudbai').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
       <h4>Landmarks (trophy deeds)</h4>
       {lms.map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
     </MapSheet>

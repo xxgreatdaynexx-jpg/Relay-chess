@@ -13,7 +13,8 @@ import { RECIPES as KITCHEN_RECIPES } from './cooking.js';
 import { JOBS, OFFLINE_CAP_MS, MAX_WORKERS, baseWage, baseHire, dayValue, itemsPerDay, expectedDayHaul, formatExpectedDay, MINER_EVERY_MS, WORKER_EVERY_MS } from './employment.js';
 import { FISH, RARITY_ODDS, FISH_SPOT_CAP, FISH_SELL_MUL, COOLER_MAX, type FishSpot } from './fishing.js';
 import { PRODUCTS, PRODUCT_ORDER, WELL_RATE, PUMPJACK_MULT, TRACTS, LEASE_BASE, WELL_COST, PUMPJACK_COST, FORTMC_TICKET_BASE } from './fortmc.js';
-import { G_PRODUCTS, G_PRODUCT_ORDER, CHUDBAI_TICKET_BASE, G_TRACTS, OFFSHORE_FROM, DESERT_WELL_RATE, OFFSHORE_WELL_RATE, DESERT_WELL_COST, OFFSHORE_WELL_COST, ESP_COST, ESP_MULT, G_LEASE_BASE, G_LEASE_OFFSHORE, EXPORT_LEVY } from './chudbai.js';
+import { G_PRODUCTS, G_PRODUCT_ORDER, CHUDBAI_TICKET_BASE, G_TRACTS, OFFSHORE_FROM, DESERT_WELL_RATE, OFFSHORE_WELL_RATE, DESERT_WELL_COST, OFFSHORE_WELL_COST, ESP_COST, ESP_MULT, G_LEASE_BASE, G_LEASE_OFFSHORE, EXPORT_LEVY, GOLD_BAR_BASE, GOLD_MAX_BARS, GOLD_SELL_PER_DAY, GOLD_SPREAD, DECK_TICKET_BASE } from './chudbai.js';
+import { CHUDBAI_DEEDS } from './chudbaiCity.js';
 import { properties, TAX_RATE } from './realEstate.js';
 import { LEVERS, LEVER_IDS, POLICIES, POLICY_IDS, BUILDINGS, BUILDING_IDS, PROJECTS, PROJECT_IDS, TREASURY_SHARE, fundingView, FUNDING_LEVER_IDS, leverText, RIOT_STOP_COST } from './city.js';
 import { DAILY_EVENTS_X3, DAILY_EVENT_TIERS, DAILY_EVENT_TIERS_RETUNE, EVENT_ORDER, LEGACY_EVENT_TIERS, EVENT_PAYOUT_FROM, EVENT_DAILY_FROM, EVENT_RETUNE_FROM, EVENT_TIERS, goalMul, EVENT_CLAIM_MS } from './coop3.js';
@@ -70,7 +71,7 @@ export function buildWiki(): WikiSection[] {
     return { cells: [`${j.emoji} ${j.label}`, `${itemsPerDay(j)}/day`, chips(baseWage(j)), chips(baseHire(j)), chips(Math.round(dayValue(j))), formatExpectedDay(haul)] };
   });
 
-  const fishRows = (['lake', 'reef', 'deep', 'lagoon'] as FishSpot[]).map((spot) => ({
+  const fishRows = (['lake', 'reef', 'deep', 'lagoon', 'dhow'] as FishSpot[]).map((spot) => ({
     cells: [spot, chips(FISH_SPOT_CAP[spot]), String(FISH.filter((f) => (f.spot ?? 'lake') === spot).length)],
   }));
 
@@ -192,6 +193,9 @@ export function buildWiki(): WikiSection[] {
       bullets: [
         `Desert well ${chips(DESERT_WELL_COST)} (${DESERT_WELL_RATE}/h at richness 1), offshore platform well ${chips(OFFSHORE_WELL_COST)} (${OFFSHORE_WELL_RATE}/h). ESP pump ${chips(ESP_COST)}, ×${ESP_MULT} flow. Concessions from ~${chips(G_LEASE_BASE)} onshore, ~${chips(G_LEASE_OFFSHORE)} offshore.`,
         `Sell in person at the Mercantile Exchange: ${Math.round(EXPORT_LEVY * 100)}% export levy, same daily revenue tiers as Fort McChud (its own daily total).`,
+        `Gold Souk: 10-tola bars at the day's price (base ${chips(GOLD_BAR_BASE)} × a daily factor of 0.85 to 1.15 that moves at most about 3% a day). You buy ${Math.round(GOLD_SPREAD * 100)}% above it and sell ${Math.round(GOLD_SPREAD * 100)}% below it. Hold up to ${GOLD_MAX_BARS} bars, sell back up to ${GOLD_SELL_PER_DAY} a day. Gold is a store of value, not an income.`,
+        `Homes (normal deed rules, buy only in Chudbai): ${CHUDBAI_DEEDS.map((d) => `${d.label} ${chips(d.price)}`).join(' · ')}.`,
+        `At the Top (Burj Chudifa observation deck): ${chips(DECK_TICKET_BASE)} ticket. Gulf dhow fishing at the Creek Dhow Wharf has its own daily cap (see Fishing).`,
       ],
       headers: ['Product', 'Price'],
       rows: gulfProductRows,

@@ -46,7 +46,7 @@ type BoardRow = { name: string; fish: string; grams: number; value: number };
 export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null; onClose: () => void; spot?: FishSpot }) {
   useDoing('fishing', FISH_SPOT_LABEL[spot]);
   const dragFishing = usePanelDrag('fishing');
-  const reef = spot !== 'lake'; const deep = spot === 'deep'; const lagoon = spot === 'lagoon';
+  const reef = spot !== 'lake'; const deep = spot === 'deep'; const lagoon = spot === 'lagoon'; const dhow = spot === 'dhow';
   const [view, setView] = useState<FishView | null>(null); const [board, setBoard] = useState<BoardRow[]>([]); const [showAllFish, setShowAllFish] = useState(false);
   const [phase, setPhase] = useState<Phase>({ k: 'idle' }); const [play3d, setPlay3d] = useState(false); const [msg, setMsg] = useState<string | null>(null);
   const [reelUi, setReelUi] = useState<{ x: number; c: number; h: number; prog: number } | null>(null);
@@ -110,15 +110,16 @@ export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null
   const estFor = (list: FishCatch[]) => Math.floor((FISH_SPOTS).reduce((a, sp) => a + fishPayout(list.filter((c) => { const f = fishById(c.fish); return (f ? spotOf(f) : 'lake') === sp; }).reduce((x, c) => x + fishSellValue(c.value), 0), spotToday(sp).gross, sp, capIdx), 0) * idx);
   const est = view ? estFor(cooler) : 0; const capMax = fishSpotCap(spot, capIdx); const capLeft = Math.max(0, capMax - spotToday(spot).gross);
   return (
-    <MapSheet className={`world-deed world-venue fish-panel${reef ? ' fish-reef' : ''}`} data-testid={lagoon ? 'venue-lagoon' : deep ? 'venue-deep' : reef ? 'venue-reef' : 'venue-dock'} data-drag-panel="fishing" onPointerDown={dragFishing.onPointerDown} style={dragFishing.style()} ref={dragFishing.ref}>{dragFishing.handle}
+    <MapSheet className={`world-deed world-venue fish-panel${reef ? ' fish-reef' : ''}`} data-testid={dhow ? 'venue-dhow' : lagoon ? 'venue-lagoon' : deep ? 'venue-deep' : reef ? 'venue-reef' : 'venue-dock'} data-drag-panel="fishing" onPointerDown={dragFishing.onPointerDown} style={dragFishing.style()} ref={dragFishing.ref}>{dragFishing.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
-      <h3>{lagoon ? '✨ Pearl Lagoon' : deep ? '🌊 Deep-Sea Charter' : reef ? '🌴 Reef Pier' : '🎣 Fishing Dock'}</h3>
+      <h3>{dhow ? '⛵ Gulf Dhow Fishing' : lagoon ? '✨ Pearl Lagoon' : deep ? '🌊 Deep-Sea Charter' : reef ? '🌴 Reef Pier' : '🎣 Fishing Dock'}</h3>
       {lagoon && <small data-testid="lagoon-blurb">Private Island exclusive. Fifteen species, from Queen Angelfish to the legendary Pearl Stingray and Golden Sunfish. Same Fishing skill, gear and reel rules; about 1.5× reef values. Catches go to your Resort Warehouse for shipping, cooking or selling there. No boat needed once on the island.</small>}
+      {dhow && <small data-testid="dhow-blurb">Chudbai exclusive. Fish the Gulf from a wooden dhow: fifteen species, from Safi and Hamour to the legendary Golden Hammour and Pearl Marlin. Same Fishing skill, gear and reel rules and the same values as the Pearl Lagoon, with its own daily cap. Catches ship to your city warehouse; sell them at the Chud City fishmonger.</small>}
       {deep && <small data-testid="deep-blurb">Out past the reef on your own boat. Better boats reach farther: the Outer Banks (bonito, wahoo, Black Marlin), Blue Water (swordfish, mako, Giant Squid) and the Abyss (oarfish, anglerfish, Coelacanth).</small>}
-      {reef && !deep && !lagoon && <small data-testid="reef-blurb">Sunset over the reef: clownfish and tang in the shallows, mahi-mahi and tuna off the drop-off, and the odd Blue Marlin or Sunset Manta.</small>}
+      {reef && !deep && !lagoon && !dhow && <small data-testid="reef-blurb">Sunset over the reef: clownfish and tang in the shallows, mahi-mahi and tuna off the drop-off, and the odd Blue Marlin or Sunset Manta.</small>}
       {!me ? <small>Sign in to fish.</small> : <>
         <button type="button" className="fish-play3d" data-testid="fish-3d" disabled={phase.k !== 'idle'} onClick={() => setPlay3d(true)}>🎮 Play 3D fishing</button>
-        {play3d && createPortal(<TimedSuspense label={lagoon ? 'Loading Pearl Lagoon…' : deep ? 'Heading out to sea…' : reef ? 'Loading the reef…' : 'Loading the lake…'} onClose={() => { setPlay3d(false); load(); }}><Fishing3DGame me={me} spot={spot} onClose={() => { setPlay3d(false); load(); }} onChange={load} /></TimedSuspense>, document.body)}
+        {play3d && createPortal(<TimedSuspense label={dhow ? 'Casting off from the wharf…' : lagoon ? 'Loading Pearl Lagoon…' : deep ? 'Heading out to sea…' : reef ? 'Loading the reef…' : 'Loading the lake…'} onClose={() => { setPlay3d(false); load(); }}><Fishing3DGame me={me} spot={spot} onClose={() => { setPlay3d(false); load(); }} onChange={load} /></TimedSuspense>, document.body)}
         <small>Quick cast (2D): cast, wait for the bite, strike, then <b>hold</b> (Space or mouse) to reel — keep the hook inside the fish’s green zone until the catch bar fills. Rarer and bigger fish fight harder.</small>
         <div className="fish-water" data-testid="fish-stage" onPointerDown={(e) => { e.preventDefault(); const k = phaseRef.current.k; if (k === 'reel') holdRef.current = true; else if (k === 'wait' || k === 'bite') void hook(); }}>
           {phase.k === 'reel' && reelUi ? <div className="fish-reel" data-testid="fish-reel">

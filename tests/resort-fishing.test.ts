@@ -24,7 +24,7 @@ const band = (r: Rarity) => { const v = lake.filter((x) => x.rarity === r).map((
 
 describe('Reef Pier fishing (Chud Resort)', () => {
   it('has its own 15-species tropical pool, every rarity, values about 2x the lake tier bands', () => {
-    expect(reef.length).toBe(15); expect(lake.length + reef.length + fishPool('deep').length + fishPool('lagoon').length).toBe(FISH.length);
+    expect(reef.length).toBe(15); expect(lake.length + reef.length + fishPool('deep').length + fishPool('lagoon').length + fishPool('dhow').length).toBe(FISH.length);
     for (const r of Object.keys(RARITY_ODDS) as Rarity[]) { expect(reef.some((f) => f.rarity === r)).toBe(true); const [lo, hi] = band(r); for (const f of reef.filter((x) => x.rarity === r)) { expect(f.base).toBeGreaterThanOrEqual(Math.floor(lo * 1.8)); expect(f.base).toBeLessThanOrEqual(Math.ceil(hi * 2.1)); } }
     expect(new Set(FISH.map((f) => f.id)).size).toBe(FISH.length);
     for (const f of reef) { expect(spotOf(f)).toBe('reef'); expect(f.max).toBeGreaterThan(f.min); }
@@ -38,7 +38,7 @@ describe('Reef Pier fishing (Chud Resort)', () => {
   });
   it('every reef species has a distinct crafted svg icon', () => {
     const svgs = reef.map((f) => { expect(hasItemIcon('fish', f.id)).toBe(true); const s = itemIconSvg('fish', f.id); expect(s).toMatch(/^<svg[\s\S]*<\/svg>$/); return s; });
-    expect(new Set(svgs).size).toBe(reef.length); expect([...ICON_FISH_IDS].sort()).toEqual([...reef, ...fishPool('deep'), ...fishPool('lagoon')].map((f) => f.id).sort());
+    expect(new Set(svgs).size).toBe(reef.length); expect([...ICON_FISH_IDS].sort()).toEqual([...reef, ...fishPool('deep'), ...fishPool('lagoon'), ...fishPool('dhow')].map((f) => f.id).sort());
   });
   it('the pier is a resort spot reaching out into the ocean', () => {
     const p = RESORT_SPOTS.find((s) => s.id === 'r-pier')!; expect(p).toBeTruthy(); expect(p.z).toBeGreaterThan(SHORE_Z); expect(p.z - p.d / 2).toBeGreaterThanOrEqual(SHORE_Z - 2); // starts at the sand, runs out to sea
@@ -73,7 +73,7 @@ describe('fishing profitability by spot (mu-fishing)', () => {
     expect(fishById('bluegill')!.base).toBe(6); expect(fishById('oldchud')!.base).toBe(500); // pond unchanged
   });
   it('daily caps are separate per spot: lake 115k, reef 230k, deep 575k (+15% buff)', () => {
-    expect(FISH_SPOT_CAP).toEqual({ lake: 115_000, reef: 230_000, deep: 575_000, lagoon: 345_000 });
+    expect(FISH_SPOT_CAP).toEqual({ lake: 115_000, reef: 230_000, deep: 575_000, lagoon: 345_000, dhow: 230_000 });
     for (const sp of ['lake', 'reef', 'deep'] as FishSpot[]) { const c = FISH_SPOT_CAP[sp]; expect(fishPayout(1e9, 0, sp)).toBe(c); expect(fishPayout(10, c, sp)).toBe(0); expect(fishPayout(200, c - 100, sp)).toBe(100); }
     expect(fishDailyKey('ann')).toBe('ann'); expect(fishDailyKey('ann', 'reef')).toBe('ann#reef'); expect(fishDailyKey('ann', 'deep')).toBe('ann#deep');
   });

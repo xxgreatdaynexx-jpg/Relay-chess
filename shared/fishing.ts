@@ -13,11 +13,11 @@
  */
 export type Rarity = 'junk' | 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 /** Where a species lives: 'lake' = the city dock (default), 'reef' = the Chud Resort pier (pt1304u). */
-export type FishSpot = 'lake' | 'reef' | 'deep' | 'lagoon';
-export const isFishSpot = (v: unknown): v is FishSpot => v === 'lake' || v === 'reef' || v === 'deep' || v === 'lagoon';
-/** Every fishing spot, in display order. 'lagoon' = the Pearl Lagoon pier on the Private Island. */
-export const FISH_SPOTS: readonly FishSpot[] = ['lake', 'reef', 'deep', 'lagoon'];
-export const FISH_SPOT_LABEL: Record<FishSpot, string> = { lake: 'Lake', reef: 'Reef', deep: 'Deep sea', lagoon: 'Pearl Lagoon' };
+export type FishSpot = 'lake' | 'reef' | 'deep' | 'lagoon' | 'dhow';
+export const isFishSpot = (v: unknown): v is FishSpot => v === 'lake' || v === 'reef' || v === 'deep' || v === 'lagoon' || v === 'dhow';
+/** Every fishing spot, in display order. 'lagoon' = the Pearl Lagoon pier on the Private Island; 'dhow' = the Creek Dhow Wharf in Chudbai. */
+export const FISH_SPOTS: readonly FishSpot[] = ['lake', 'reef', 'deep', 'lagoon', 'dhow'];
+export const FISH_SPOT_LABEL: Record<FishSpot, string> = { lake: 'Lake', reef: 'Reef', deep: 'Deep sea', lagoon: 'Pearl Lagoon', dhow: 'Gulf dhow' };
 export interface Fish { id: string; label: string; emoji: string; rarity: Rarity; min: number; max: number; base: number; spot?: FishSpot; /** Deep sea only: 1 Outer Banks, 2 Blue Water, 3 The Abyss (boat range, shared/fleet.ts). */ zone?: 1 | 2 | 3; /** mu-coop3: only bites on a crewed fishing-fleet trip (server/fishFleet.ts). */ crew?: true }
 /** Weights in kg; base = sale value (base chips) of an average-sized one. */
 export const FISH: Fish[] = [
@@ -69,6 +69,22 @@ export const FISH: Fish[] = [
   { id: 'roosterfish', label: 'Roosterfish', emoji: '🐓', rarity: 'epic', min: 8, max: 45, base: 395, spot: 'lagoon' },
   { id: 'goldensunfish', label: 'Golden Sunfish', emoji: '🌞', rarity: 'legendary', min: 80, max: 400, base: 1420, spot: 'lagoon' },
   { id: 'pearlray', label: 'Pearl Stingray', emoji: '✨', rarity: 'legendary', min: 30, max: 160, base: 1400, spot: 'lagoon' },
+  // Gulf dhow (Creek Dhow Wharf, Chudbai): same rarity mix and values as the Pearl Lagoon.
+  { id: 'dhowrope', label: 'Frayed Dhow Rope', emoji: '🪢', rarity: 'junk', min: 0.2, max: 1.2, base: 4, spot: 'dhow' },
+  { id: 'shishapipe', label: 'Lost Shisha Pipe', emoji: '🏺', rarity: 'junk', min: 0.3, max: 1.5, base: 6, spot: 'dhow' },
+  { id: 'safi', label: 'Safi Rabbitfish', emoji: '🐟', rarity: 'common', min: 0.1, max: 0.6, base: 20, spot: 'dhow' },
+  { id: 'sheri', label: 'Sheri Emperor', emoji: '🐟', rarity: 'common', min: 0.3, max: 1.8, base: 24, spot: 'dhow' },
+  { id: 'shaari', label: 'Shaari Sea Bream', emoji: '🐟', rarity: 'common', min: 0.2, max: 1.2, base: 18, spot: 'dhow' },
+  { id: 'hamour', label: 'Hamour', emoji: '🐟', rarity: 'uncommon', min: 1, max: 8, base: 60, spot: 'dhow' },
+  { id: 'zubaidi', label: 'Zubaidi Pomfret', emoji: '🐟', rarity: 'uncommon', min: 0.3, max: 1.5, base: 66, spot: 'dhow' },
+  { id: 'kanaad', label: 'Kanaad Kingfish', emoji: '🐟', rarity: 'uncommon', min: 2, max: 12, base: 56, spot: 'dhow' },
+  { id: 'cobia', label: 'Cobia', emoji: '🐟', rarity: 'rare', min: 5, max: 40, base: 145, spot: 'dhow' },
+  { id: 'queenfish', label: 'Queenfish', emoji: '🐟', rarity: 'rare', min: 2, max: 12, base: 135, spot: 'dhow' },
+  { id: 'goldtrevally', label: 'Golden Trevally', emoji: '🐟', rarity: 'rare', min: 3, max: 15, base: 150, spot: 'dhow' },
+  { id: 'gulfsail', label: 'Gulf Sailfish', emoji: '🐟', rarity: 'epic', min: 20, max: 90, base: 400, spot: 'dhow' },
+  { id: 'giantgrouper', label: 'Giant Grouper', emoji: '🐟', rarity: 'epic', min: 30, max: 200, base: 395, spot: 'dhow' },
+  { id: 'goldhammour', label: 'Golden Hammour', emoji: '👑', rarity: 'legendary', min: 15, max: 80, base: 1420, spot: 'dhow' },
+  { id: 'pearlmarlin', label: 'Pearl Marlin', emoji: '✨', rarity: 'legendary', min: 80, max: 400, base: 1400, spot: 'dhow' },
   // Deep sea (Millionaire Update #10c): only from a boat out of the Resort Marina. Zone = how far out the boat can go.
   // mu-fishing: values ≈ 3.1x the original so the skiff (zone 1) earns ≈ 5x the pond per minute; bigger boats a bit more.
   { id: 'ghostnet', label: 'Ghost Net', emoji: '🕸️', rarity: 'junk', min: 0.5, max: 4, base: 6, spot: 'deep', zone: 1 },
@@ -127,7 +143,7 @@ export const fishSellValue = (value: number) => (value * 115) / 100; // = value 
 export const FISH_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 115_000, rate: 1 }, { upTo: Infinity, rate: 0 }];
 export const FISH_DAILY_MAX = FISH_TIERS.reduce((a, t, i) => a + (Number.isFinite(t.upTo) ? (t.upTo - (i ? FISH_TIERS[i - 1]!.upTo : 0)) * t.rate : 0), 0);
 /** Floor per-spot daily caps (base chips, before the house-sell cap index). Each spot is tracked on its own (fish_daily row per spot). */
-export const FISH_SPOT_CAP: Record<FishSpot, number> = { lake: 115_000, reef: 230_000, deep: 575_000, lagoon: 345_000 };
+export const FISH_SPOT_CAP: Record<FishSpot, number> = { lake: 115_000, reef: 230_000, deep: 575_000, lagoon: 345_000, dhow: 230_000 };
 /** Daily cap for a spot: the floor, or the floor times the house-sell cap index, whichever is higher. */
 export function fishSpotCap(spot: FishSpot = 'lake', capIndex = 1): number {
   const base = FISH_SPOT_CAP[spot];

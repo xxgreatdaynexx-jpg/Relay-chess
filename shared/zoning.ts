@@ -19,7 +19,7 @@ export function zoneOf(p: Pick<Property, 'kind' | 'type' | 'map'>): Zone {
   if (p.kind === 'farm') return 'farmland';                 // farm plots, fields, Big Farms, plantations (resort map too)
   if (p.kind === 'patch') return 'exempt';
   if (p.kind === 'landmark') return 'commercial';
-  if (p.map === 'resort' || p.map === 'island') return 'exempt'; // resort lots and private-island estates
+  if (p.map === 'resort' || p.map === 'island' || p.map === 'chudbai') return 'exempt'; // resort lots, private-island and Chudbai estates
   if (RESIDENTIAL.has(p.type)) return 'residential';
   if (COMMERCIAL.has(p.type)) return 'commercial';
   return 'commercial';                                      // fail closed: an unclassified future building is capped, never free

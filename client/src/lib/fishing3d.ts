@@ -26,6 +26,12 @@ const FISH_LOOK: Record<string, { color: number; belly: number; len: number; fat
   napoleon: { color: 0x259c87, belly: 0x9ee5b8, len: 1.9, fat: 0.55 }, permit: { color: 0xa6bec9, belly: 0xedf2e5, len: 1.3, fat: 0.6 }, trevally: { color: 0x4a6673, belly: 0xa9c7c6, len: 1.6, fat: 0.45 },
   dogtooth: { color: 0x215473, belly: 0xdfebe3, len: 2, fat: 0.4 }, roosterfish: { color: 0x648795, belly: 0xd4e4db, len: 1.6, fat: 0.35, spots: 0x20404a },
   goldensunfish: { color: 0xe6b342, belly: 0xfff0b5, len: 2.2, fat: 0.9, glow: 0x553300 }, pearlray: { color: 0x7686b0, belly: 0xfff9db, len: 2, fat: 0.25, glow: 0x223355 },
+  // Gulf dhow (Chudbai)
+  safi: { color: 0x8a8a5a, belly: 0xe0dcc0, len: 0.8, fat: 0.5 }, sheri: { color: 0xb07a5a, belly: 0xf0d8c0, len: 1, fat: 0.5 }, shaari: { color: 0xc0c4b8, belly: 0xf2f0e4, len: 0.9, fat: 0.55 },
+  hamour: { color: 0x7a5236, belly: 0xd8b48a, len: 1.3, fat: 0.6, spots: 0xc0603a }, zubaidi: { color: 0xc8ccd8, belly: 0xf4f4f8, len: 0.8, fat: 0.85 }, kanaad: { color: 0x5a7a9a, belly: 0xdfe8ef, len: 1.6, fat: 0.35, spots: 0x3a4a5a },
+  cobia: { color: 0x4a3a2e, belly: 0xe8dcc8, len: 1.8, fat: 0.4 }, queenfish: { color: 0x9ab0c4, belly: 0xf2f4f6, len: 1.4, fat: 0.4, spots: 0x3a4a5a }, goldtrevally: { color: 0xe0b440, belly: 0xfff0b0, len: 1.3, fat: 0.6, spots: 0x303030 },
+  gulfsail: { color: 0x1f3f78, belly: 0xd8e4ef, len: 2.3, fat: 0.3, spots: 0x5aa0e0 }, giantgrouper: { color: 0x5a5236, belly: 0xc8bc8a, len: 2.3, fat: 0.75, spots: 0x2e2a1c },
+  goldhammour: { color: 0xe8b23a, belly: 0xfff0b5, len: 1.7, fat: 0.65, glow: 0x553300, spots: 0xb06a20 }, pearlmarlin: { color: 0xc8d4e8, belly: 0xffffff, len: 2.4, fat: 0.3, glow: 0x334466 },
   bluegill: { color: 0x3f6f9a, belly: 0xf2c14e, len: 0.9, fat: 0.55 }, perch: { color: 0x8a9a2c, belly: 0xf4e3a1, len: 1, fat: 0.4, spots: 0x2d3a10 },
   sunfish: { color: 0x2f8f78, belly: 0xff9a3c, len: 0.8, fat: 0.6 }, bass: { color: 0x4b6b2a, belly: 0xdfe8c0, len: 1.2, fat: 0.42 },
   trout: { color: 0x7c8f9c, belly: 0xff8fb0, len: 1.15, fat: 0.33, spots: 0x223 }, catfish: { color: 0x575049, belly: 0xc9c0b0, len: 1.4, fat: 0.36 },

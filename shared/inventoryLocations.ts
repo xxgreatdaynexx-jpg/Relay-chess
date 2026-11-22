@@ -29,7 +29,8 @@ export const CITY_CAVES = ['mine', 'frost', 'magma', 'quarry'] as const;
  *  stay readable; server/mapPools.ts folds them once. */
 export const mineLoc = (cave: string) => (cave === 'coral' ? RESORT_WAREHOUSE : WAREHOUSE);
 export const farmLoc = (plotId: string) => (plotId.startsWith('rf:') ? RESORT_WAREHOUSE : WAREHOUSE);
-export const fishingLoc = (spot: string) => (spot === 'lake' ? WAREHOUSE : RESORT_WAREHOUSE);
+/** Lake and Chudbai dhow catches land in the city warehouse (Chudbai has no fish market); resort/island catches at the resort. */
+export const fishingLoc = (spot: string) => (spot === 'lake' || spot === 'dhow' ? WAREHOUSE : RESORT_WAREHOUSE);
 /** Resort homes have ids 'r:<type>:<n>' (shared/resort.ts) and plantation plots 'rf:<n>'; every other home is in the city. */
 export const kitchenLoc = (homeId: string) => (/^rf?:/.test(homeId) ? RESORT_WAREHOUSE : WAREHOUSE);
 export type LocKind = 'factory' | 'warehouse' | 'resort' | 'mine' | 'farm' | 'fishing' | 'kitchen' | 'coral';
@@ -42,7 +43,7 @@ export function parseLoc(v: unknown): Loc {
   const i = v.indexOf(':'); const kind = v.slice(0, i); const ref = v.slice(i + 1);
   if (i < 1 || !REF.test(ref)) throw new Error('Unknown location.');
   if (kind === 'mine' && (CITY_CAVES as readonly string[]).includes(ref)) return { kind, ref, id: v };
-  if (kind === 'fishing' && (ref === 'lake' || ref === 'reef' || ref === 'deep' || ref === 'lagoon')) return { kind, ref, id: v };
+  if (kind === 'fishing' && (ref === 'lake' || ref === 'reef' || ref === 'deep' || ref === 'lagoon' || ref === 'dhow')) return { kind, ref, id: v };
   if (kind === 'farm') return { kind, ref, id: v };
   if (kind === 'kitchen') return { kind, ref, id: v };
   throw new Error('Unknown location.');
@@ -70,7 +71,7 @@ export function locLabel(loc: string): string {
       case 'resort': return 'Resort Warehouse';
       case 'mine': return l.ref === 'frost' ? 'Frostbite Caverns' : l.ref === 'magma' ? 'Magma Depths' : l.ref === 'quarry' ? 'Stone Quarry' : 'The Mine';
       case 'farm': return l.ref.startsWith('rf:') ? `Plantation plot ${l.ref.slice(3)}` : `Farm plot ${l.ref}`;
-      case 'fishing': return l.ref === 'lake' ? 'Lake dock' : l.ref === 'reef' ? 'Reef Pier' : l.ref === 'lagoon' ? 'Pearl Lagoon (Private Island)' : 'Resort Marina (deep sea)';
+      case 'fishing': return l.ref === 'lake' ? 'Lake dock' : l.ref === 'reef' ? 'Reef Pier' : l.ref === 'lagoon' ? 'Pearl Lagoon (Private Island)' : l.ref === 'dhow' ? 'Creek Dhow Wharf (Chudbai)' : 'Resort Marina (deep sea)';
       case 'kitchen': return `Kitchen · ${l.ref}`;
       case 'coral': return 'Coral Grotto';
     }

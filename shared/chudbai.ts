@@ -64,7 +64,7 @@ export const G_WATER_CUT = 0.05;
 export interface GTractInfo { n: number; name: string; offshore: boolean; richness: number; gas: number; lease: number; x: number; z: number }
 const rnd = (i: number) => { const x = Math.sin(i * 57.3 + 4.1) * 43758.5453; return x - Math.floor(x); };
 const G_TRACT_NAMES = ['Rub al Chudi', 'Dune Sea North', 'Oasis Flats', 'Camel Ridge', 'Liwa Sands', 'Mirage Basin', 'Pearl Bank', 'Coral Deep', 'Gulf Crown', 'Golden Shoal'];
-const OFFSHORE_POS = [{ x: -165, z: 150 }, { x: -110, z: 175 }, { x: 105, z: 165 }, { x: 165, z: 140 }];
+const OFFSHORE_POS = [{ x: -200, z: 170 }, { x: -130, z: 215 }, { x: 120, z: 200 }, { x: 210, z: 165 }];
 export const isOffshore = (n: number) => n >= OFFSHORE_FROM;
 export function gTractInfo(n: number): GTractInfo {
   const off = isOffshore(n);
@@ -106,6 +106,8 @@ export interface GulfState {
   surveyed: number[]; tracts: Record<string, GTractState>;
   units: GUnit[]; stock: Partial<Record<GProduct, number>>;
   /** volume-weighted gas ratio of the wellstream tank */ gr: number;
+  /** Gold Souk: 10-tola bars held, and bars sold on `goldDay.day` (UTC). */ gold?: number; goldDay?: { day: string; sold: number };
+  /** At the Top observation deck visits. */ deck?: number;
   made: Partial<Record<GProduct, number>>;
   power: { supply: number; demand: number };
 }
@@ -195,19 +197,50 @@ export const gulfWorth = (s: GulfState) => gulfBuildValue(s) + gulfStockValue(s)
 /** Gross (pre-tier) chips for selling `qty` of a product, after the export levy. */
 export const exchangeGross = (id: GProduct, qty: number) => Math.floor(qty * G_PRODUCTS[id].price * (1 - EXPORT_LEVY));
 
-// ---- map (x east, z south; the Gulf is to the south, desert to the north)
-export const GULF_X0 = -200, GULF_X1 = 200, GULF_Z0 = -160, GULF_Z1 = 200;
-export const GULF_SHORE_Z = 62;
-export interface GulfSpot { id: string; label: string; icon: string; blurb: string; x: number; z: number; w: number; d: number; h: number }
+// ---- map (x east, z south; the Gulf is to the south, desert to the north). The street grid, districts and every
+// building footprint live in shared/chudbaiCity.ts; the spots below are the clickable landmarks it reserves.
+export const GULF_X0 = -320, GULF_X1 = 320, GULF_Z0 = -160, GULF_Z1 = 260;
+export const GULF_SHORE_Z = 90;
+export type GulfSpotId = 'g-airport' | 'g-plant' | 'g-exchange' | 'g-burj' | 'g-fountain' | 'g-mall' | 'g-marina' | 'g-palm' | 'g-souk' | 'g-dhow' | 'g-sail' | 'g-port';
+/** `face`: the side the entrance is on (n = toward -z). Footprints are axis-aligned; x/z is the centre. */
+export interface GulfSpot { id: GulfSpotId; label: string; icon: string; blurb: string; x: number; z: number; w: number; d: number; h: number; face: 'n' | 's' | 'e' | 'w'; water?: boolean }
+const sp = (id: GulfSpotId, label: string, icon: string, blurb: string, x0: number, z0: number, x1: number, z1: number, h: number, face: GulfSpot['face'], water = false): GulfSpot =>
+  ({ id, label, icon, blurb, x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0, h, face, ...(water ? { water } : {}) });
 export const GULF_SPOTS: GulfSpot[] = [
-  { id: 'g-airport', label: 'Chudbai International', icon: '✈️', blurb: 'Fly home to Chud Hub. The return flight is included.', x: 140, z: -110, w: 70, d: 18, h: 8 },
-  { id: 'g-plant', label: 'Desert Refining & LNG Complex', icon: '🏭', blurb: 'Build stabilizers, LNG trains, premium refineries, an aromatics complex, solar farms and tanks.', x: 10, z: -105, w: 70, d: 40, h: 26 },
-  { id: 'g-exchange', label: 'Chudbai Mercantile Exchange', icon: '💹', blurb: 'Sell light sweet crude, LNG, jet fuel, premium gasoline and paraxylene in person (3% export levy).', x: 0, z: 0, w: 16, d: 16, h: 90 },
-  { id: 'g-burj', label: 'Burj Chudifa', icon: '🏙️', blurb: 'The tallest tower in the game. Observation deck only, for now.', x: -40, z: 20, w: 14, d: 14, h: 150 },
-  { id: 'g-marina', label: 'Chudbai Marina', icon: '🛥️', blurb: 'Superyachts, dhows and the marina skyline. Offshore blocks are out past the Palm.', x: 110, z: 70, w: 50, d: 28, h: 4 },
-  { id: 'g-palm', label: 'Palm Chudeirah', icon: '🌴', blurb: 'A palm-shaped island of villas and a golden hotel. Purely for the view.', x: -10, z: 110, w: 130, d: 80, h: 12 },
-  { id: 'g-souk', label: 'Gold Souk', icon: '🪙', blurb: 'Glittering stalls. Your chips look smaller here.', x: -110, z: 30, w: 30, d: 20, h: 10 },
+  sp('g-airport', 'Chudbai International', '✈️', 'Fly home to Chud Hub. The return flight is included.', 105, -119, 175, -101, 20, 's'),
+  sp('g-plant', 'Desert Refining & LNG Complex', '🏭', 'Build stabilizers, LNG trains, premium refineries, an aromatics complex, solar farms and tanks.', -55, -137, 75, -73, 26, 's'),
+  sp('g-exchange', 'Chudbai Mercantile Exchange', '💹', 'Sell light sweet crude, LNG, jet fuel, premium gasoline and paraxylene in person (3% export levy).', -2, 11.5, 22, 32, 92, 'n'),
+  sp('g-burj', 'Burj Chudifa', '🏙️', 'The tallest tower in the game. Ride up to the At the Top observation deck.', -68, 17, -42, 43, 220, 'n'),
+  sp('g-fountain', 'Chudbai Fountain', '⛲', 'The dancing fountain lake at the foot of the Burj.', -72, 46, -38, 66, 3, 's'),
+  sp('g-mall', 'The Chudbai Mall', '🛍️', 'Twelve hundred shops, an aquarium and an indoor ski slope. Window shopping only.', -92, 12, -74, 64, 16, 'w'),
+  sp('g-marina', 'Chudbai Marina', '🛥️', 'Superyachts in the marina basin. Marina towers line the promenade.', 115, 85, 175, 115, 4, 'n', true),
+  sp('g-palm', 'Palm Chudeirah', '🌴', 'A palm-shaped island of villas and a golden arch hotel. Two villas on the fronds are for sale.', -70, 112.5, 50, 226, 22, 'n', true),
+  sp('g-souk', 'Gold Souk', '🪙', 'Buy and sell gold bars at the day\'s price.', -142, 11.5, -108, 32, 10, 'n'),
+  sp('g-dhow', 'Creek Dhow Wharf', '⛵', 'Fish the Gulf from a wooden dhow: hammour, kingfish and the Golden Hammour.', -242, 84.5, -208, 106, 6, 'n', true),
+  sp('g-sail', 'Burj al Chud', '⛵', 'The sail-shaped hotel on its own islet. Seven and a half stars.', 59, 119, 81, 141, 56, 'n', true),
+  sp('g-port', 'Port Jebel Chud', '🚢', 'Container terminal, gantry cranes and the dry docks: the industrial edge of town.', 258.5, 11.5, 318, 104, 30, 'w', true),
 ];
+export const gulfSpot = (id: GulfSpotId): GulfSpot => GULF_SPOTS.find((s) => s.id === id)!;
+
+// ---- Gold Souk: buy and sell 10-tola gold bars at the day's price (a store of value, not an income).
+/** Base price of one 10-tola bar (before the price index). The day's price is BASE × f, f in [0.85, 1.15]. */
+export const GOLD_BAR_BASE = 12_000;
+export const GOLD_SPREAD = 0.02; // buy 2% over the day's price, sell 2% under: a 4% round trip
+export const GOLD_F_MIN = 0.85, GOLD_F_MAX = 1.15, GOLD_STEP = 0.03, GOLD_REVERT = 0.15;
+export const GOLD_MAX_BARS = 100;
+export const GOLD_SELL_PER_DAY = 25;
+/** Next day's price factor from the last one and a uniform u in [0,1): a step of up to ±3% plus 15% pull back toward 1. */
+export function goldNextF(prev: number, u: number): number {
+  const p = Number.isFinite(prev) ? prev : 1; const n = p * (1 + (u * 2 - 1) * GOLD_STEP) + (1 - p) * GOLD_REVERT;
+  return Math.round(Math.min(GOLD_F_MAX, Math.max(GOLD_F_MIN, n)) * 10_000) / 10_000;
+}
+/** Per-bar chips (pass the price-indexed base). */
+export const goldAsk = (base: number, f: number) => Math.ceil(base * f * (1 + GOLD_SPREAD));
+export const goldBid = (base: number, f: number) => Math.floor(base * f * (1 - GOLD_SPREAD));
+
+// ---- At the Top: the Burj Chudifa observation deck (a sightseeing ticket; a sink).
+export const DECK_TICKET_BASE = 2_500;
+export const DECK_FLOOR = 148;
 
 // ---- public site snapshot
 export interface GulfSiteLease { key: string; name: string; mine: boolean }

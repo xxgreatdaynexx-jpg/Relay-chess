@@ -6,6 +6,15 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-22T10:26:00-06:00", "title": "Chudbai becomes a real city, with gold, homes, a sky deck and dhow fishing", "bullets": [
+    "Chudbai is rebuilt as a proper city: a street grid with palm-lined boulevards, medians and sidewalks, and five districts. Downtown and the Marina have the towers, Al Chudha Old Town has wind-tower houses and souks, Chudeirah Hills has walled villas, and Jebel Chud has warehouses and a container port. Buildings get lower the farther they are from the two centres.",
+    "The blocks are filled with apartments, hotels, malls, shops with awnings, parking, plazas, parks and seven mosques with minarets. An elevated metro runs along Sheikh Chud Road with five stations, and traffic runs on the main roads.",
+    "Nothing overlaps or sits on a road any more. Every building faces a street, the roads all connect, and the oil wells, platforms and plant units each have their own spot.",
+    "New: the Gold Souk in the old town. Buy and sell 10-tola gold bars at the day's price (base 12,000, price-indexed). The price changes once a day, by at most about 3%, and stays between 85% and 115% of base. You buy 2% above the day's price and sell 2% below it. You can hold up to 100 bars and sell back up to 25 a day. Your gold counts toward your net worth.",
+    "New: Chudbai homes. Seven deeds with normal deed rules (tax, 70% sell-back, interiors): Marina Crown Penthouse 4,500,000, Marina Promenade Penthouse 3,500,000, Burj View Penthouse 6,000,000, Creekside Heritage House 2,400,000, Palm Frond Villa 7,000,000, Palm Signature Villa 12,000,000 and Chudeirah Hills Villa 3,000,000. You can only buy them in Chudbai.",
+    "New: At the Top. Ride to the Burj Chudifa observation deck for a 2,500 ticket (price-indexed). The camera flies up to the deck.",
+    "New: Gulf dhow fishing at the Creek Dhow Wharf, Chudbai only. There are 15 species, from Safi and Hamour to the legendary Golden Hammour and Pearl Marlin, with the same values as the Pearl Lagoon. Its own daily cap is 230,000. Catches go to your city warehouse.",
+  ]},
   {"commit": "", "at": "2026-11-22T09:45:00-06:00", "title": "More to do on the Private Island: snorkelling, a treasure hunt and helicopter tours", "bullets": [
     "New, island only: Snorkel Reef, a dive raft over a coral garden off Palm Beach. You get 5 dives a day, a minute apart, and every dive brings up a find: Conch Shell 400 (50%), Sea Glass 700 (25%), Red Coral 1,200 (13%), Lagoon Pearl 2,500 (8%), Black Pearl 6,000 (3%) or a Golden Doubloon 15,000 (1%). That averages about 1,060 a dive.",
     "New, island only: the Treasure Hunt. Twelve X marks are scattered round the beaches and one of them hides today's chest, worth 25,000. You get 3 digs a day. An empty X still turns up a 250 trinket, and finding the chest ends the hunt for the day. The chest is in a different place for every player, every day.",

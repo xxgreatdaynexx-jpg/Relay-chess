@@ -13,23 +13,19 @@ import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { skyNow, parseTod, mix as mixHex } from '../../../shared/daynight';
 import { sg, BOX, SPH, buildOcean, buildBeach } from './ocean3d';
 import { ownerColor } from '../../../shared/fortmc';
-import { GULF_SPOTS, GULF_X0, GULF_X1, GULF_Z0, GULF_Z1, GULF_SHORE_Z, G_TRACTS, gTractInfo, type GulfSite, type GulfState, type GUnitKind } from '../../../shared/chudbai';
+import { GULF_SPOTS, GULF_X0, GULF_X1, GULF_Z0, GULF_Z1, GULF_SHORE_Z, G_TRACTS, gTractInfo, gulfSpot, type GulfSite, type GulfSpot, type GulfState, type GUnitKind } from '../../../shared/chudbai';
+import {
+  BEACH_Z0, CAR_L, CAR_W, CHUDBAI_DEEDS, DISTRICTS, DISTRICT_LABELS, GULF_BLOCKS, GULF_LANES, GULF_LOTS, GULF_PROPS, GULF_ROADS, METRO_GUIDEWAY, METRO_PILLARS, METRO_STATIONS, METRO_X0, METRO_X1, METRO_Y,
+  PALM_CRESCENT, PALM_FRONDS, PALM_HOTEL, PALM_SPINE, PALM_VILLAS, PIPE_CORRIDOR, PLANT_FLARE, PLANT_RACK, Z_HWY, carX, carriage, isHorizontal, medianRect, padRect, pipeStub, spotRect, unitSlot, walkSegments, wellSlot,
+  type MatKey, type Part, type Rect,
+} from '../../../shared/chudbaiCity';
 
 type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void };
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
 export const clampGulfTarget = (x: number, z: number): [number, number] => [Math.min(GULF_X1 - 10, Math.max(GULF_X0 + 10, x)), Math.min(GULF_Z1 - 10, Math.max(GULF_Z0 + 10, z))];
 const TW = 30, TD = 26;
-/** Asphalt roads (x, z, w, d). */
-export const GULF_ROADS: Array<[number, number, number, number]> = [
-  [0, -45, 400, 12],            // Sheikh Chud Road (highway)
-  [60, -100, 8, 110],           // north avenue to the plant / airport
-  [20, 50, 360, 7],             // Corniche along the beach
-  [20, -15, 300, 6], [20, 28, 300, 6],
-  ...([-80, -20, 30, 100, 150] as const).map((x): [number, number, number, number] => [x, 3, 6, 96]),
-  [140, -78, 8, 56],            // airport spur
-];
-const inRoad = (x: number, z: number, pad = 0) => GULF_ROADS.some(([rx, rz, w, d]) => Math.abs(x - rx) < w / 2 + pad && Math.abs(z - rz) < d / 2 + pad);
-const inSpot = (x: number, z: number, pad = 0) => GULF_SPOTS.some((s) => Math.abs(x - s.x) < s.w / 2 + pad && Math.abs(z - s.z) < s.d / 2 + pad);
+const cx = (r: Rect) => (r.x0 + r.x1) / 2, cz = (r: Rect) => (r.z0 + r.z1) / 2, rw = (r: Rect) => r.x1 - r.x0, rd = (r: Rect) => r.z1 - r.z0;
+const inRect = (x: number, z: number, r: Rect, pad = 0) => x > r.x0 - pad && x < r.x1 + pad && z > r.z0 - pad && z < r.z1 + pad;
 
 export type GulfWorld = ReturnType<typeof createChudbai>;
 export function createChudbai(canvas: HTMLCanvasElement, h: Handlers) {
@@ -71,16 +67,11 @@ export function createChudbai(canvas: HTMLCanvasElement, h: Handlers) {
 
   const hemi = new THREE.HemisphereLight(0xcfe0f5, 0x9a7a50, 1.0); scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff0d0, 3); sun.position.set(-120, 160, 80); sun.castShadow = renderer.shadowMap.enabled;
-  Object.assign(sun.shadow.camera, { left: -230, right: 230, top: 230, bottom: -230, near: 10, far: 700 }); sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0005; scene.add(sun);
+  Object.assign(sun.shadow.camera, { left: -340, right: 340, top: 340, bottom: -340, near: 10, far: 900 }); sun.shadow.mapSize.set(tier === 'high' ? 4096 : 2048, tier === 'high' ? 4096 : 2048); sun.shadow.bias = -0.0005; scene.add(sun);
 
   // Ground: sand with dunes outside the built-up areas (pads, plant, city stay flat).
-  const flatAt = (x: number, z: number) => {
-    if (z > GULF_SHORE_Z - 6) return 1;
-    for (let n = 1; n <= G_TRACTS; n++) { const t = gTractInfo(n); if (!t.offshore && Math.abs(x - t.x) < TW / 2 + 8 && Math.abs(z - t.z) < TD / 2 + 8) return 1; }
-    if (inSpot(x, z, 10) || inRoad(x, z, 6)) return 1;
-    if (x > -125 && x < 185 && z > -55 && z < GULF_SHORE_Z) return 1; // downtown
-    return 0;
-  };
+  // the whole built-up strip (city, oilfield, plant, airport) is flat; dunes rise beyond it
+  const flatAt = (x: number, z: number) => (x > GULF_X0 - 14 && x < GULF_X1 + 14 && z > GULF_Z0 + 4 ? 1 : 0);
   const dune = (x: number, z: number) => Math.max(0, Math.sin(x * 0.035 + z * 0.012) * 3.2 + Math.sin(x * 0.011 - z * 0.04 + 1.7) * 2.6 + Math.sin(x * 0.09 + z * 0.07) * 0.6);
   const groundG = geo(new THREE.PlaneGeometry(GULF_X1 - GULF_X0 + 500, (GULF_SHORE_Z + 4) - (GULF_Z0 - 300), 150, 110)); {
     groundG.translate(0, -((GULF_SHORE_Z + 4) + (GULF_Z0 - 300)) / 2, 0); // plane y = -z after the rotation
@@ -91,7 +82,7 @@ export function createChudbai(canvas: HTMLCanvasElement, h: Handlers) {
       pa.setZ(i, hgt);
       const n = Math.sin(x * 0.05 + 1.3) * Math.cos(z * 0.06) + 0.4 * Math.sin(x * 0.17 - z * 0.13);
       c.setHex(0xdcb47a); c2.setHex(n > 0.4 ? 0xe8c890 : n < -0.5 ? 0xc49a62 : 0xd8b07a); c.lerp(c2, 0.6); if (hgt > 2) c.lerp(new THREE.Color(0xf0d29a), Math.min(1, hgt / 12));
-      if (x > -125 && x < 185 && z > -55 && z < GULF_SHORE_Z - 4) c.lerp(new THREE.Color(0xcab89a), 0.55); // paved downtown
+      if (x > GULF_X0 && x < GULF_X1 && z > Z_HWY - 16 && z < BEACH_Z0) c.lerp(new THREE.Color(0xcdbfa4), 0.7); // paved city south of the highway
       col.push(c.r, c.g, c.b);
     }
     groundG.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); groundG.computeVertexNormals(); }
@@ -109,210 +100,282 @@ export function createChudbai(canvas: HTMLCanvasElement, h: Handlers) {
   const goldGlow = glowM(0xf2c860, 0xe8a020, 0.9);
   const white = mat({ color: 0xf2eee6, roughness: 0.6 }); const cream = mat({ color: 0xe8dcc4, roughness: 0.8 });
   const steel = mat({ color: 0xa8b0b8, metalness: 0.7, roughness: 0.35 }); const dark = mat({ color: 0x2c3036, metalness: 0.5, roughness: 0.6 });
-  const conc = mat({ color: 0xb8ae9c, roughness: 0.95 }); const asphalt = mat({ color: 0x3a3a3e, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  const conc = mat({ color: 0xb8ae9c, roughness: 0.95 }); const asphalt = mat({ color: 0x3a3a3e, roughness: 1 });
   const red = mat({ color: 0xb0302a, roughness: 0.6 }); const blue = mat({ color: 0x1f3d6a, metalness: 0.5, roughness: 0.25 });
   const flameM = mat({ color: 0xffa040, emissive: 0xff7a20, emissiveIntensity: 4 });
   const navRed = glowM(0xff3030, 0xff2020, 2.2); const lampHead = glowM(0xfff1c8, 0xffcc66, 2.6);
   const palmTrunk = mat({ color: 0x8a6a44, roughness: 0.9 }); const palmLeaf = mat({ color: 0x3f7a3a, roughness: 0.8, side: THREE.DoubleSide });
   const sandM = mat({ color: 0xe9d3a0, roughness: 1 }); const lawn = mat({ color: 0x5f9a4a, roughness: 1 }); const pool = mat({ color: 0x3fc4e0, roughness: 0.15, metalness: 0.1, emissive: 0x0a4050, emissiveIntensity: 0.4 });
-  const winTex = (tint: string, lit: string) => { const c = document.createElement('canvas'); c.width = 64; c.height = 128; const x = c.getContext('2d')!; x.fillStyle = tint; x.fillRect(0, 0, 64, 128);
-    for (let rr = 0; rr < 32; rr++) for (let q = 0; q < 8; q++) { const on = Math.abs(Math.sin(rr * 12.9 + q * 78.2) * 43758 % 1); x.fillStyle = on > 0.55 ? lit : 'rgba(255,255,255,0.10)'; x.fillRect(q * 8 + 1, rr * 4 + 1, 6, 2); }
+  const paving = mat({ color: 0xd9cdb4, roughness: 0.95 }); const kerb = mat({ color: 0xc9c2b4, roughness: 0.9 }); const stripe = mat({ color: 0xf4f0e0, roughness: 0.8 });
+  const wood = mat({ color: 0x7a5232, roughness: 0.85 }); const sailCloth = mat({ color: 0xf4efe2, roughness: 0.7, side: THREE.DoubleSide });
+  const winTex = (tint: string, lit: string, off = 'rgba(255,255,255,0.10)', rows = 32, cols = 8, wPx = 6) => { const c = document.createElement('canvas'); c.width = 64; c.height = 128; const x = c.getContext('2d')!; x.fillStyle = tint; x.fillRect(0, 0, 64, 128);
+    const rh = 128 / rows, cw = 64 / cols; for (let rr = 0; rr < rows; rr++) for (let q = 0; q < cols; q++) { const on = Math.abs(Math.sin(rr * 12.9 + q * 78.2) * 43758 % 1); x.fillStyle = on > 0.55 ? lit : off; x.fillRect(q * cw + (cw - wPx) / 2, rr * rh + rh * 0.25, wPx, rh * 0.5); }
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; disposables.push(t); return t; };
   const TINTS = [['#6f9cc0', '#ffe0a0'], ['#8fb4bc', '#fff0c0'], ['#4f7a9e', '#ffd890'], ['#b8c6d0', '#fff4d0'], ['#c9b48c', '#ffe6b0']];
+  const WALLS = ['#e8dcc4', '#d8c8a8', '#f0ebe0', '#c8b490'];
   const glassCache = new Map<string, THREE.MeshStandardMaterial>();
-  /** Glass curtain wall for a tower of height `hgt`: the window texture repeats every ~16 m so panes keep their size. */
-  const glassFor = (style: number, hgt: number) => { const i = style % TINTS.length; const rep = Math.max(1, Math.round(hgt / 16)); const key = `${i}:${rep}`; let m = glassCache.get(key);
+  /** Glass curtain wall of height `hgt`: the window texture repeats every ~16 m so panes keep their size. */
+  const glassFor = (style: number, hgt: number) => { const i = style % TINTS.length; const rep = Math.max(1, Math.round(hgt / 16)); const key = `g${i}:${rep}`; let m = glassCache.get(key);
     if (!m) { const t = winTex(TINTS[i]![0]!, TINTS[i]![1]!); t.repeat.set(1, rep); m = mat({ color: 0xffffff, map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.5, metalness: 0.55, roughness: 0.18, envMapIntensity: 1 }); m.userData.ei = 0.5; glowMats.push(m); glassCache.set(key, m); }
     return m; };
+  /** Stucco wall with punched windows (one row per ~3.5 m floor). */
+  const wallFor = (style: number, hgt: number) => { const i = style % WALLS.length; const rep = Math.max(1, Math.round(hgt / 3.5)); const key = `w${i}:${rep}`; let m = glassCache.get(key);
+    if (!m) { const t = winTex(WALLS[i]!, '#ffe2a8', '#5a6470', 1, 5, 5); t.repeat.set(1, rep); m = mat({ color: 0xffffff, map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.12, roughness: 0.85 }); m.userData.ei = 0.12; glowMats.push(m); glassCache.set(key, m); }
+    return m; };
   const glassMats = TINTS.map((_, i) => glassFor(i, 32));
+  const FLAT: Record<string, THREE.Material> = {
+    cream, stone: mat({ color: 0xcdb48a, roughness: 0.9 }), white, gold, goldGlow, dark, steel, conc, paving, lawn, pool, lot: mat({ color: 0x4a4a4e, roughness: 1 }), metal: mat({ color: 0x8a96a0, metalness: 0.6, roughness: 0.45 }),
+    awning0: mat({ color: 0xc0392b, roughness: 0.8 }), awning1: mat({ color: 0x2a7a6a, roughness: 0.8 }), awning2: mat({ color: 0xd8a040, roughness: 0.8 }), navRed, door: mat({ color: 0x5a3a24, roughness: 0.7 }), truck: mat({ color: 0xd84a2a, roughness: 0.6 }), teal: mat({ color: 0x2a9a9a, metalness: 0.3, roughness: 0.35 }),
+  };
+  const matFor = (k: MatKey, hgt: number): THREE.Material => k.startsWith('glass') ? glassFor(Number(k.slice(5)), hgt) : k.startsWith('wall') ? wallFor(Number(k.slice(4)), hgt) : FLAT[k]!;
 
   const box = (w: number, hh: number, dd: number, m: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = scene) => { const o = new THREE.Mesh(BOX(), m); o.scale.set(w, hh, dd); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; parent.add(o); return o; };
   const cyl = (rt: number, hh: number, m: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = scene, rb = rt, seg = 16) => { const k = Math.round((rb / rt) * 20) / 20; const o = new THREE.Mesh(sg(`gcyl${k}:${seg}`, () => new THREE.CylinderGeometry(0.5, 0.5 * k, 1, seg)), m); o.scale.set(rt * 2, hh, rt * 2); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
   const sph = (rad: number, m: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = scene) => { const o = new THREE.Mesh(SPH(), m); o.scale.setScalar(rad * 2); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
-  const dome = (rad: number, m: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = scene) => { const o = new THREE.Mesh(sg('gdome', () => new THREE.SphereGeometry(0.5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2)), m); o.scale.setScalar(rad * 2); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
-
-  // Roads + lamps
-  const posts: THREE.Matrix4[] = [], heads: THREE.Matrix4[] = []; const q0 = new THREE.Quaternion();
-  for (const [x, z, w, d] of GULF_ROADS) {
-    const o = new THREE.Mesh(sg('gplane', () => new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2)), asphalt); o.scale.set(w, 1, d); o.position.set(x, 0.05, z); o.receiveShadow = true; scene.add(o);
-    const long = w > d; const len = long ? w : d; const off = (long ? d : w) / 2 + 1.2;
-    for (let s = -len / 2 + 8; s < len / 2; s += 22) for (const side of [-1, 1]) { const px = long ? x + s : x + side * off, pz = long ? z + side * off : z + s; if (inSpot(px, pz, 1)) continue; posts.push(new THREE.Matrix4().compose(new THREE.Vector3(px, 3, pz), q0, new THREE.Vector3(0.25, 6, 0.25))); heads.push(new THREE.Matrix4().compose(new THREE.Vector3(px, 6.1, pz), q0, new THREE.Vector3(0.8, 0.3, 0.8))); }
-  }
-  { const pm = new THREE.InstancedMesh(BOX(), steel, posts.length); posts.forEach((m, i) => pm.setMatrixAt(i, m)); scene.add(pm); const hm = new THREE.InstancedMesh(BOX(), lampHead, heads.length); heads.forEach((m, i) => hm.setMatrixAt(i, m)); scene.add(hm); }
-  // highway median: gold-lit date palms
-  const palms: THREE.Matrix4[] = [], fronds: THREE.Matrix4[] = [];
-  const palm = (x: number, z: number, s = 1) => { palms.push(new THREE.Matrix4().compose(new THREE.Vector3(x, 3.5 * s, z), q0, new THREE.Vector3(0.35 * s, 7 * s, 0.35 * s))); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + r(); const qq = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.5, a, 0, 'YXZ')); fronds.push(new THREE.Matrix4().compose(new THREE.Vector3(x + Math.sin(a) * 1.4 * s, 7 * s, z + Math.cos(a) * 1.4 * s), qq, new THREE.Vector3(0.9 * s, 0.08 * s, 3.4 * s))); } };
-  for (let x = -190; x <= 190; x += 14) if (!inSpot(x, -45, 2)) palm(x, -45, 0.9);
-  for (let x = -180; x <= 200; x += 12) if (!inSpot(x, 56, 1)) palm(x + r() * 3, 56, 0.8 + r() * 0.3);
+  const DOME_G = () => sg('gdome', () => new THREE.SphereGeometry(0.5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2));
+  const CONE_G = () => sg('gcone1', () => new THREE.ConeGeometry(0.5, 1, 12).translate(0, 0.5, 0));
+  const CYL_G = () => sg('gcyl1:16', () => new THREE.CylinderGeometry(0.5, 0.5, 1, 16));
+  const dome = (rad: number, m: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = scene) => { const o = new THREE.Mesh(DOME_G(), m); o.scale.setScalar(rad * 2); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
+  const slab = (r: Rect, y0: number, y1: number, m: THREE.Material, parent: THREE.Object3D = scene) => { const o = box(rw(r), y1 - y0, rd(r), m, cx(r), (y0 + y1) / 2, cz(r), parent); o.castShadow = y1 - y0 > 0.6; return o; };
 
   const signs: THREE.Sprite[] = []; let labelRenderer = renderer;
   const label = (text: string, sub: string | undefined, color: string, x: number, y: number, z: number, k = 1) => {
     const tex = cityLabel(text, color, sub, labelRenderer); disposables.push(tex); const m = labelMaterial(tex, { fog: false }); disposables.push(m);
     const s = asLabel(new THREE.Sprite(m)); s.position.set(x, y, z); s.userData.k = k; fitLabel(s, 8 * k); scene.add(s); signs.push(s); return s;
   };
-  const pickables: THREE.Object3D[] = []; const flames: THREE.Mesh[] = []; const yachts: THREE.Group[] = [];
-
-  // ---- skyline: glass towers with gold crowns, kept off roads and landmarks
-  const tower = (x: number, z: number, w: number, d: number, hgt: number, style: number) => {
-    const g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g); const m = glassFor(style, hgt);
-    box(w, hgt, d, m, 0, hgt / 2, 0, g);
-    box(w + 0.6, 2, d + 0.6, cream, 0, 1, 0, g);
-    if (style % 3 === 0) { box(w * 0.7, hgt * 0.18, d * 0.7, glassFor(style, hgt * 0.18), 0, hgt + hgt * 0.09, 0, g); box(w * 0.72, 0.6, d * 0.72, gold, 0, hgt + hgt * 0.18, 0, g); cyl(0.25, hgt * 0.12, steel, 0, hgt * 1.24, 0, g); }
-    else if (style % 3 === 1) { cyl(Math.min(w, d) * 0.4, hgt * 0.1, gold, 0, hgt + hgt * 0.05, 0, g, Math.min(w, d) * 0.55, 6); }
-    else { box(w + 0.3, 0.8, d + 0.3, gold, 0, hgt * 0.5, 0, g); box(w + 0.3, 0.8, d + 0.3, gold, 0, hgt, 0, g); }
-    box(0.5, 0.5, 0.5, navRed, 0, hgt * (style % 3 === 0 ? 1.31 : 1.12) + 0.3, 0, g);
+  // ---- instanced batches: one InstancedMesh per (shape, material)
+  type Shape = 'box' | 'cyl' | 'dome' | 'cone';
+  const batches = new Map<string, { s: Shape; m: THREE.Material; mats: THREE.Matrix4[] }>(); const q0 = new THREE.Quaternion(); const v1 = new THREE.Vector3(), v2 = new THREE.Vector3();
+  const put = (s: Shape, m: THREE.Material, x: number, y: number, z: number, sx: number, sy: number, sz: number, q = q0) => {
+    const key = `${s}|${m.uuid}`; let b = batches.get(key); if (!b) { b = { s, m, mats: [] }; batches.set(key, b); }
+    b.mats.push(new THREE.Matrix4().compose(v1.set(x, y, z), q, v2.set(sx, sy, sz)));
   };
-  let towers = 0;
-  for (let i = 0; i < 1400 && towers < 52; i++) {
-    const x = -118 + r() * 300, z = -36 + r() * 84; const w = 8 + r() * 7, d = 8 + r() * 7;
-    if (inRoad(x, z, Math.max(w, d) / 2 + 1) || inSpot(x, z, Math.max(w, d) / 2 + 2) || z > 42) continue;
-    if (scene.children.some((o) => o.userData.tw && Math.abs(o.position.x - x) < (w + (o.userData.tw as number)) / 2 + 6 && Math.abs(o.position.z - z) < (d + (o.userData.td as number)) / 2 + 6)) continue;
-    const nearCore = Math.hypot(x + 20, z - 10) < 70; const hgt = (nearCore ? 36 : 16) + r() * (nearCore ? 64 : 38); towers++;
-    tower(x, z, w, d, hgt, Math.floor(r() * 9)); const g = scene.children[scene.children.length - 1]!; g.userData.tw = w; g.userData.td = d;
+  const putPart = (p: Part) => {
+    const m = matFor(p.m, p.h);
+    if (p.s === 'box') put('box', m, p.x, p.y0 + p.h / 2, p.z, p.w, p.h, p.d);
+    else if (p.s === 'cyl') put('cyl', m, p.x, p.y0 + p.h / 2, p.z, p.w, p.h, p.d);
+    else if (p.s === 'dome') put('dome', m, p.x, p.y0, p.z, p.w, p.h * 2, p.d);
+    else put('cone', m, p.x, p.y0, p.z, p.w, p.h, p.d);
+  };
+  const flushBatches = () => { for (const b of batches.values()) { const g = b.s === 'box' ? BOX() : b.s === 'cyl' ? CYL_G() : b.s === 'dome' ? DOME_G() : CONE_G(); const im = new THREE.InstancedMesh(g, b.m, b.mats.length); b.mats.forEach((m, i) => im.setMatrixAt(i, m)); im.castShadow = im.receiveShadow = true; im.computeBoundingSphere(); scene.add(im); disposables.push({ dispose: () => im.dispose() }); } batches.clear(); };
+
+  // palms (instanced trunks + fronds); deterministic frond angles
+  const palms: THREE.Matrix4[] = [], fronds: THREE.Matrix4[] = [];
+  const palm = (x: number, z: number, s = 1) => { palms.push(new THREE.Matrix4().compose(new THREE.Vector3(x, 3.5 * s, z), q0, new THREE.Vector3(0.35 * s, 7 * s, 0.35 * s))); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + r() * 0.6; const qq = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.5, a, 0, 'YXZ')); fronds.push(new THREE.Matrix4().compose(new THREE.Vector3(x + Math.sin(a) * 0.9 * s, 7 * s, z + Math.cos(a) * 0.9 * s), qq, new THREE.Vector3(0.7 * s, 0.08 * s, 1.8 * s))); } };
+
+  // ---- ground pads under each city block (subtle district tint), the beach promenade
+  for (const b of GULF_BLOCKS) { const c = new THREE.Color(DISTRICTS[b.district].color).lerp(new THREE.Color(0xd9cdb4), 0.6); put('box', FLAT[`blk:${b.district}`] ??= mat({ color: c, roughness: 1 }), cx(b.r), 0.03, cz(b.r), rw(b.r), 0.06, rd(b.r)); }
+
+  /** Perpendicular carriageways crossing a horizontal road at x (medians and lane lines stop there). */
+  const crossers = (r0: (typeof GULF_ROADS)[number]) => GULF_ROADS.filter((o) => isHorizontal(o) !== isHorizontal(r0) && (isHorizontal(r0) ? o.z0 <= r0.z0 + r0.w / 2 && o.z1 >= r0.z0 - r0.w / 2 && o.x0 >= r0.x0 && o.x0 <= r0.x1 : o.x0 <= r0.x0 + r0.w / 2 && o.x1 >= r0.x0 - r0.w / 2 && o.z0 >= r0.z0 && o.z0 <= r0.z1)).map(carriage);
+  const crossAt = (r0: (typeof GULF_ROADS)[number], x: number, pad: number) => crossers(r0).some((c) => x > c.x0 - pad && x < c.x1 + pad);
+  const cutAtCrossings = (r0: (typeof GULF_ROADS)[number], m: Rect): Rect[] => { const hz = isHorizontal(r0); let spans: Array<[number, number]> = [[hz ? m.x0 : m.z0, hz ? m.x1 : m.z1]];
+    for (const c of crossers(r0)) { const a = (hz ? c.x0 : c.z0) - 1, b = (hz ? c.x1 : c.z1) + 1; spans = spans.flatMap(([s0, s1]) => (b <= s0 || a >= s1) ? [[s0, s1] as [number, number]] : ([[s0, a], [b, s1]] as Array<[number, number]>).filter(([p, q]) => q - p > 1)); }
+    return spans.map(([s0, s1]) => (hz ? { x0: s0, z0: m.z0, x1: s1, z1: m.z1 } : { x0: m.x0, z0: s0, x1: m.x1, z1: s1 })); };
+  // ---- roads: carriageway, lane stripes, raised medians with lawn, sidewalks; causeways where a road runs out over the water
+  for (const rd0 of GULF_ROADS) {
+    const c = carriage(rd0); put('box', asphalt, cx(c), 0.05, cz(c), rw(c), 0.1, rd(c));
+    if (c.z1 > BEACH_Z0) { const wet = { ...c, z0: Math.max(c.z0, BEACH_Z0) }; put('box', sandM, cx(wet), -0.9, cz(wet), rw(wet) + 2, 1.9, rd(wet)); }
+    const m = medianRect(rd0); if (m) for (const seg of cutAtCrossings(rd0, m)) { put('box', kerb, cx(seg), 0.15, cz(seg), rw(seg), 0.3, rd(seg)); put('box', lawn, cx(seg), 0.31, cz(seg), rw(seg) - 0.4, 0.02, rd(seg) - 0.4); }
+    for (const w of walkSegments(rd0)) put('box', paving, cx(w), 0.09, cz(w), rw(w), 0.18, rd(w));
+    if (isHorizontal(rd0) && rd0.w >= 10) { // dashed lane lines between same-direction lanes, solid edge lines
+      const per = (rd0.w - rd0.median) / 2; const lanes = per >= 7 ? 2 : 1;
+      for (const side of [-1, 1]) { if (lanes === 2) for (let x = rd0.x0 + 4; x < rd0.x1 - 4; x += 8) if (!crossAt(rd0, x, 2)) put('box', stripe, x, 0.105, rd0.z0 + side * (rd0.median / 2 + per / 2), 3, 0.01, 0.18); }
+    }
+  }
+  // zebra crossings on the Corniche and Al Wasl where an avenue meets them
+  for (const h0 of GULF_ROADS.filter((o) => isHorizontal(o) && (o.id === 'wasl' || o.id === 'cor'))) for (const v of GULF_ROADS.filter((o) => !isHorizontal(o) && o.z0 <= h0.z0 && o.z1 >= h0.z0 && o.x0 > h0.x0 && o.x0 < h0.x1)) {
+    for (const side of [-1, 1]) { const x = v.x0 + side * (v.w / 2 + 1.2); for (let z = h0.z0 - h0.w / 2 + 0.6; z < h0.z0 + h0.w / 2 - 0.5; z += 1.2) if (!(h0.median && Math.abs(z - h0.z0) < h0.median / 2)) put('box', stripe, x, 0.106, z + 0.3, 2, 0.01, 0.6); }
   }
 
-  // ---- landmarks
+  // ---- city lots: every part of every building, exactly as laid out in shared/chudbaiCity.ts
+  const pickables: THREE.Object3D[] = []; const flames: THREE.Mesh[] = []; const yachts: THREE.Group[] = [];
+  const hitM = new THREE.MeshBasicMaterial({ visible: false }); disposables.push(hitM);
+  const hitBox = (r: Rect, y1: number, id: string) => { const o = box(rw(r), y1, rd(r), hitM, cx(r), y1 / 2, cz(r)); o.castShadow = o.receiveShadow = false; o.userData.spot = id; pickables.push(o); return o; };
+  for (const l of GULF_LOTS) { for (const p of l.parts) putPart(p); for (const p of l.palms) palm(p.x, p.z, p.s); if (l.deed) hitBox(l.r, l.h, l.deed); }
+
+  // ---- street props
+  const benchM = wood, shelterGlass = mat({ color: 0x9fc4d8, transparent: true, opacity: 0.45, roughness: 0.1 });
+  for (const p of GULF_PROPS) {
+    if (p.k === 'lamp') { put('box', steel, p.x, 3, p.z, 0.22, 6, 0.22); put('box', lampHead, p.x, 6.2, p.z, 0.5, 0.25, 0.5); }
+    else if (p.k === 'palm') palm(p.x, p.z, p.s);
+    else if (p.k === 'bench') { put('box', benchM, p.x, 0.45, p.z, 1.8, 0.12, 0.6); put('box', steel, p.x, 0.22, p.z, 1.6, 0.44, 0.1); put('box', benchM, p.x, 0.75, p.z + 0.25, 1.8, 0.4, 0.08); }
+    else { put('box', steel, p.x - 1.9, 1.3, p.z, 0.12, 2.6, 1.3); put('box', steel, p.x + 1.9, 1.3, p.z, 0.12, 2.6, 1.3); put('box', gold, p.x, 2.62, p.z, 4, 0.16, 1.4); put('box', shelterGlass, p.x, 1.3, p.z - 0.6, 3.7, 2.4, 0.06); put('box', benchM, p.x, 0.45, p.z - 0.2, 3, 0.1, 0.5); }
+  }
+
+  // ---- metro: elevated guideway on the highway median, pillars, five stations and a driverless train
+  { const gw = METRO_GUIDEWAY; put('box', conc, cx(gw), (gw.y0 + gw.y1) / 2, cz(gw), rw(gw), gw.y1 - gw.y0, rd(gw)); put('box', gold, cx(gw), gw.y1 + 0.02, Z_HWY - 1.15, rw(gw), 0.04, 0.1); put('box', gold, cx(gw), gw.y1 + 0.02, Z_HWY + 1.15, rw(gw), 0.04, 0.1); }
+  for (const p of METRO_PILLARS) put('box', conc, p.x, METRO_Y / 2, p.z, 1.6, METRO_Y, 1.6);
+  const metroTop = METRO_Y + 1.4;
+  for (const s of METRO_STATIONS) {
+    for (const side of [-1, 1]) { put('box', paving, s.x, metroTop + 0.3, Z_HWY + side * 3.4, 28, 0.6, 4); put('box', shelterGlass, s.x, metroTop + 2.6, Z_HWY + side * 5.7, 27.6, 4, 0.12); }
+    const roof = new THREE.Mesh(sg('groof', () => new THREE.CylinderGeometry(1, 1, 1, 24, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2)), gold); roof.scale.set(6, 0.9, 28); roof.rotation.y = Math.PI / 2; roof.position.set(s.x, METRO_Y + 6 - 0.9, Z_HWY); roof.castShadow = true; scene.add(roof);
+    label(`Ⓜ ${s.name}`, undefined, '#e05040', s.x, METRO_Y + 11, Z_HWY, 0.55);
+  }
+  const train = new THREE.Group(); scene.add(train); const trainM = mat({ color: 0xe8ecef, metalness: 0.5, roughness: 0.3 }); const trainWin = glowM(0x2a3a4a, 0x88b8ff, 0.6);
+  for (let i = 0; i < 4; i++) { box(11, 2.6, 2.1, trainM, i * 11.6, metroTop + 1.4, 0, train); box(10, 0.8, 2.15, trainWin, i * 11.6, metroTop + 1.9, 0, train); box(11, 0.3, 2.15, FLAT.awning0!, i * 11.6, metroTop + 0.9, 0, train); }
+  train.position.z = Z_HWY - 0.45; const TRAIN_LEN = 4 * 11.6;
+
+  // ---- traffic: instanced car bodies + cabins (east-west lanes; positions from the shared lanes)
+  const nCars = GULF_LANES.reduce((a, l) => a + l.n, 0);
+  const carBody = new THREE.InstancedMesh(BOX(), mat({ color: 0xffffff, metalness: 0.6, roughness: 0.35 }), nCars); const carCab = new THREE.InstancedMesh(BOX(), mat({ color: 0x1a2028, metalness: 0.4, roughness: 0.2 }), nCars);
+  { const pal = [0xf4f4f2, 0x111318, 0xd8a83a, 0xb02a2a, 0x8a96a0, 0xf4f4f2, 0x1f3d6a, 0xe8dcc4]; const c = new THREE.Color(); for (let i = 0; i < nCars; i++) carBody.setColorAt(i, c.setHex(pal[i % pal.length]!)); }
+  carBody.castShadow = true; scene.add(carBody, carCab); disposables.push({ dispose: () => { carBody.dispose(); carCab.dispose(); } });
+  const mm = new THREE.Matrix4(); const carScale = new THREE.Vector3(CAR_L, 0.9, CAR_W), cabScale = new THREE.Vector3(CAR_L * 0.5, 0.7, CAR_W * 0.9);
+  const moveCars = (t: number) => { let k = 0; for (const l of GULF_LANES) for (let i = 0; i < l.n; i++, k++) { const x = carX(l, i, t); carBody.setMatrixAt(k, mm.compose(v1.set(x, 0.62, l.z), q0, carScale)); carCab.setMatrixAt(k, mm.compose(v1.set(x - l.dir * 0.3, 1.42, l.z), q0, cabScale)); } carBody.instanceMatrix.needsUpdate = carCab.instanceMatrix.needsUpdate = true; carBody.computeBoundingSphere(); carCab.computeBoundingSphere(); };
+  moveCars(0);
+
+  // ---- landmarks: each one drawn inside its own footprint (spot rect × spot height)
+  const spotGroups = new Map<string, THREE.Group>(); const fountainJets: THREE.Mesh[] = []; const boats: THREE.Group[] = [];
+  const yachtAt = (g: THREE.Group, x: number, z: number, L: number, rot = Math.PI / 2) => { const y = new THREE.Group(); y.position.set(x, 0.3, z); y.rotation.y = rot; g.add(y); box(L, 1.2, 2.2, white, 0, 0.6, 0, y); box(L * 0.55, 1, 1.8, white, -L * 0.1, 1.7, 0, y); box(L * 0.5, 0.15, 1.9, blue, -L * 0.1, 1.3, 0, y); yachts.push(y); return y; };
+  const dhowAt = (g: THREE.Group, x: number, z: number, L: number) => { const d = new THREE.Group(); d.position.set(x, 0.2, z); g.add(d); box(L, 1.3, 2.6, wood, 0, 0.5, 0, d); box(L * 0.3, 0.9, 2.4, wood, -L * 0.32, 1.5, 0, d); cyl(0.12, 4.8, wood, L * 0.1, 2.9, 0, d); const s = new THREE.Mesh(sg('gsail', () => new THREE.PlaneGeometry(1, 1)), sailCloth); s.scale.set(L * 0.55, 3.2, 1); s.position.set(L * 0.15, 3.0, 0.05); s.rotation.z = -0.25; d.add(s); boats.push(d); return d; };
   for (const s of GULF_SPOTS) {
-    const g = new THREE.Group(); g.position.set(s.x, 0, s.z); scene.add(g);
-    const hit = box(s.w, s.h, s.d, new THREE.MeshBasicMaterial({ visible: false }), 0, s.h / 2, 0, g); hit.userData.spot = s.id; hit.castShadow = false; pickables.push(hit);
+    const g = new THREE.Group(); g.position.set(s.x, 0, s.z); scene.add(g); spotGroups.set(s.id, g); const W = s.w / 2, D = s.d / 2;
+    if (s.id !== 'g-palm') hitBox(spotRect(s), s.h, s.id);
     let ly = s.h + 8;
     if (s.id === 'g-burj') {
-      // Burj Chudifa: a Y-plan of stepped, tapering wings around a core and a gold-tipped spire
-      const m = glassFor(3, 13); const tiers = 13;
-      for (let i = 0; i < tiers; i++) { const k = 1 - i / tiers; const y0 = i * 13; for (let wv = 0; wv < 3; wv++) { const a = wv * Math.PI * 2 / 3; const wing = box(4.2 * k + 1.4, 13, 9 * k + 2, m, Math.sin(a) * 3.2 * k, y0 + 6.5, Math.cos(a) * 3.2 * k, g); wing.rotation.y = a; } box(0.3, 0.6, 0.3, gold, 0, y0 + 13, 0, g); }
-      cyl(2.2, 12, m, 0, tiers * 13 + 6, 0, g, 3); cyl(0.6, 30, steel, 0, tiers * 13 + 27, 0, g, 1.6); cyl(0.25, 8, gold, 0, tiers * 13 + 46, 0, g, 0.6); box(0.6, 0.6, 0.6, navRed, 0, tiers * 13 + 50.5, 0, g);
-      for (let i = 0; i < 4; i++) cyl(14 - i * 2, 0.3, pool, 0, 0.2 + i * 0.02, 18, g); // fountain lake
-      ly = tiers * 13 + 60;
+      // Burj Chudifa: podium, a Y-plan of stepped wings around a core, a gold-tipped spire. At the Top deck at ~165 m.
+      box(24, 4, 24, cream, 0, 2, 0, g); box(24.4, 0.4, 24.4, gold, 0, 4.1, 0, g);
+      const m = glassFor(3, 12.5); const tiers = 13;
+      for (let i = 0; i < tiers; i++) { const k = 1 - i / tiers; const y0 = 4 + i * 12.5; for (let wv = 0; wv < 3; wv++) { const a = wv * Math.PI * 2 / 3; const wing = box(4.2 * k + 1.4, 12.5, 9 * k + 2, m, Math.sin(a) * 3.2 * k, y0 + 6.25, Math.cos(a) * 3.2 * k, g); wing.rotation.y = a; } box(0.3, 0.6, 0.3, gold, 0, y0 + 12.5, 0, g); }
+      const top = 4 + tiers * 12.5; cyl(2.2, 10, m, 0, top + 5, 0, g, 3); box(5, 0.5, 5, goldGlow, 0, top - 2, 0, g);
+      cyl(0.6, 28, steel, 0, top + 24, 0, g, 1.6); cyl(0.25, 7, gold, 0, top + 41.5, 0, g, 0.6); box(0.6, 0.6, 0.6, navRed, 0, top + 45.3, 0, g);
+      ly = top + 52;
+    } else if (s.id === 'g-fountain') {
+      box(s.w, 0.5, s.d, paving, 0, 0.25, 0, g); box(s.w - 3, 0.3, s.d - 3, pool, 0, 0.55, 0, g);
+      const jetM = glowM(0xe8f8ff, 0x9ad8ff, 1.4); for (let i = 0; i < 9; i++) { const j = cyl(0.18, 1, jetM, -12 + i * 3, 0.7, 0, g); j.castShadow = false; fountainJets.push(j); }
+    } else if (s.id === 'g-mall') {
+      box(s.w, 12, s.d, wallFor(2, 12), 0, 6, 0, g); box(s.w + 0.01, 1, s.d + 0.01, gold, 0, 12.5, 0, g); box(s.w - 4, 3, s.d - 6, glassMats[1]!, 0, 14.5, 0, g);
+      box(0.6, 7, 14, glassMats[3]!, -W + 0.31, 3.5, 0, g); box(1.2, 0.8, 16, goldGlow, -W + 0.6, 7.6, 0, g); // west entrance onto Souk Rd
     } else if (s.id === 'g-exchange') {
-      // twisted tower (each floor slab rotates a little) with gold bands
-      const m = glassFor(0, 3); const floors = 30;
-      for (let i = 0; i < floors; i++) { const sl = box(11, 3, 11, m, 0, 1.5 + i * 3, 0, g); sl.rotation.y = i * 0.045; if (i % 5 === 4) { const b = box(11.6, 0.4, 11.6, gold, 0, 3 + i * 3, 0, g); b.rotation.y = i * 0.045; } }
-      cyl(3, 4, gold, 0, floors * 3 + 2, 0, g, 5, 8); box(14, 6, 14, cream, 0, 3, 12, g); box(14.4, 0.6, 14.4, gold, 0, 6.2, 12, g);
-      ly = 104;
+      box(22, 5, 18.5, cream, 0, 2.5, 0, g); box(22.4, 0.5, 18.9, gold, 0, 5.2, 0, g);
+      const m = glassFor(0, 3); const floors = 28;
+      for (let i = 0; i < floors; i++) { const sl = box(11, 3, 11, m, 0, 5.5 + 1.5 + i * 3, 0, g); sl.rotation.y = i * 0.045; if (i % 5 === 4) { const b = box(11.6, 0.4, 11.6, gold, 0, 5.5 + 3 + i * 3, 0, g); b.rotation.y = i * 0.045; } }
+      cyl(3, 2.5, gold, 0, 5.5 + floors * 3 + 1.25, 0, g, 5, 8); ly = 100;
     } else if (s.id === 'g-souk') {
-      for (let i = 0; i < 5; i++) { const x = -12 + i * 6; box(5, 6, 16, cream, x, 3, 0, g); dome(2.4, gold, x, 6, 0, g); for (let a = 0; a < 3; a++) box(1.2, 3, 0.3, goldGlow, x, 1.6, -7.6 + a * 0.01, g); }
-      box(32, 0.4, 20, mat({ color: 0xc8a878, roughness: 1 }), 0, 0.2, 0, g); cyl(1.2, 14, cream, 14, 7, 8, g); dome(1.4, gold, 14, 14, 8, g);
+      box(s.w, 0.4, s.d, FLAT.stone!, 0, 0.2, 0, g);
+      for (let i = 0; i < 5; i++) { const x = -13 + i * 6.5; box(5.6, 6, 14, cream, x, 3.4, 0, g); dome(2.5, gold, x, 6.4, 0, g); for (let a = 0; a < 2; a++) box(1.4, 3, 0.2, goldGlow, x - 1 + a * 2, 1.9, -7.05, g); }
+      box(3, 9.2, 3, cream, 15, 5, 8.6, g); box(3, 0.3, 3, gold, 15, 9.75, 8.6, g); // wind tower
+    } else if (s.id === 'g-dhow') {
+      // timber wharf on the beach and three dhows moored in the creek mouth
+      box(s.w, 0.6, 6, wood, 0, 0.6, -D + 3, g); for (let x = -W + 1; x < W; x += 4) cyl(0.25, 2.4, wood, x, -0.3, -D + 5.6, g);
+      box(8, 3.2, 4, FLAT.stone!, -W + 5, 2.5, -D + 2.2, g); box(8.4, 0.3, 4.4, wood, -W + 5, 4.2, -D + 2.2, g); // boat-hire hut
+      dhowAt(g, -9, 2, 11); dhowAt(g, 4, 6, 12); dhowAt(g, 12, -1, 9);
     } else if (s.id === 'g-airport') {
-      box(70, 0.15, 10, mat({ color: 0x3a3a3e, roughness: 1 }), 0, 0.08, 4, g); for (let i = 0; i < 9; i++) box(4, 0.17, 0.5, white, -32 + i * 8, 0.1, 4, g);
-      // terminal: long glass hall under a curved gold roof
-      box(30, 7, 9, glassMats[1]!, -10, 3.5, -6, g); { const roof = new THREE.Mesh(sg('groof', () => new THREE.CylinderGeometry(1, 1, 1, 24, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2)), gold); roof.scale.set(32, 3, 6); roof.position.set(-10, 7, -6); roof.rotation.y = Math.PI / 2; roof.castShadow = true; g.add(roof); }
-      cyl(1, 14, cream, 20, 7, -6, g); cyl(2.6, 3, glassMats[2]!, 20, 15, -6, g, 1.8); cyl(2.8, 0.5, gold, 20, 16.7, -6, g); box(0.6, 0.6, 0.6, navRed, 20, 18, -6, g);
-      for (let i = 0; i < 18; i++) for (const ez of [-0.6, 8.6]) box(0.35, 0.35, 0.35, i % 6 === 0 ? navRed : lampHead, -34 + i * 4, 0.25, ez, g);
-      // a parked airliner in Chudbai Air livery
-      { const p = new THREE.Group(); p.position.set(14, 0, -15); g.add(p); cyl(1.6, 22, white, 0, 2.6, 0, p).rotation.x = Math.PI / 2; box(26, 0.4, 4, white, 0, 2.2, 1, p); box(0.4, 5, 3, gold, 0, 5, 10, p); box(8, 0.3, 2, white, 0, 3.6, 10, p); }
-      ly = 22;
+      box(s.w, 0.12, 6, FLAT.lot!, 0, 0.06, -D + 3, g); for (let i = 0; i < 9; i++) box(4, 0.13, 0.4, white, -W + 4 + i * 8, 0.07, -D + 3, g);
+      box(40, 5, 6, glassMats[1]!, -12, 2.5, D - 3, g); { const roof = new THREE.Mesh(sg('groof', () => new THREE.CylinderGeometry(1, 1, 1, 24, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2)), gold); roof.scale.set(3, 2.2, 42); roof.position.set(-12, 5, D - 3); roof.rotation.y = Math.PI / 2; roof.castShadow = true; g.add(roof); }
+      cyl(1, 13, cream, 30, 6.5, D - 3, g); cyl(2.4, 3, glassMats[2]!, 30, 14.5, D - 3, g, 1.8); cyl(2.6, 0.5, gold, 30, 16.25, D - 3, g); box(0.6, 0.6, 0.6, navRed, 30, 16.9, D - 3, g);
+      { const p = new THREE.Group(); p.position.set(18, 0, -1); g.add(p); const f = cyl(1.3, 16, white, 0, 2.4, 0, p); f.rotation.z = Math.PI / 2; box(3.4, 0.35, 15, white, 0.5, 2, 0, p); box(2.4, 4, 0.35, gold, -7, 4.6, 0, p); box(1.6, 0.25, 6, white, -7, 3, 0, p); } // a Chudbai Air jet on the apron
+      ly = 26;
     } else if (s.id === 'g-plant') {
       box(s.w, 0.3, s.d, conc, 0, 0.15, 0, g);
-      box(s.w - 6, 0.6, 2, steel, 0, 7, 0, g); for (let x = -s.w / 2 + 4; x < s.w / 2 - 2; x += 6) box(0.4, 7, 2, dark, x, 3.5, 0, g); // pipe rack spine
-      cyl(0.8, 30, steel, s.w / 2 - 4, 15, -s.d / 2 + 4, g); box(0.5, 0.5, 0.5, navRed, s.w / 2 - 4, 30.4, -s.d / 2 + 4, g);
-      const fl = new THREE.Mesh(sg('gcone', () => new THREE.ConeGeometry(0.6, 1, 10)), flameM); fl.scale.set(1.4, 4, 1.4); fl.position.set(s.w / 2 - 4, 32.4, -s.d / 2 + 4); g.add(fl); flames.push(fl);
-      ly = 40;
+      { const rk = PLANT_RACK; box(rw(rk), 0.6, rd(rk), steel, cx(rk) - s.x, 6.7, cz(rk) - s.z, g); for (let x = rk.x0 + 2; x < rk.x1; x += 8) box(0.4, 6.4, rd(rk), dark, x - s.x, 3.2, cz(rk) - s.z, g); }
+      { const f = PLANT_FLARE; cyl(0.9, 21, steel, cx(f) - s.x, 10.5, cz(f) - s.z, g); box(0.5, 0.5, 0.5, navRed, cx(f) - s.x, 21.3, cz(f) - s.z, g); const fl = new THREE.Mesh(sg('gcone', () => new THREE.ConeGeometry(0.6, 1, 10)), flameM); fl.scale.set(1.4, 3.6, 1.4); fl.position.set(cx(f) - s.x, 23.4, cz(f) - s.z); g.add(fl); flames.push(fl); }
+      ly = 36;
     } else if (s.id === 'g-marina') {
-      for (let i = 0; i < 5; i++) box(2, 0.5, 22, white, -20 + i * 10, 0.4, 2, g);
-      box(s.w, 0.6, 3, cream, 0, 0.4, -10, g);
-      for (let i = 0; i < 9; i++) { const yacht = new THREE.Group(); const L = 6 + r() * 8; yacht.position.set(-24 + i * 5.6, 0.3, 6 + (i % 2) * 7); yacht.rotation.y = Math.PI / 2; g.add(yacht); box(L, 1.4, 2.2, white, 0, 0.7, 0, yacht); box(L * 0.55, 1.1, 1.8, white, -L * 0.1, 1.9, 0, yacht); box(L * 0.5, 0.15, 1.9, blue, -L * 0.1, 1.5, 0, yacht); if (i % 3 === 0) box(L * 0.3, 0.8, 1.4, white, -L * 0.15, 2.9, 0, yacht); yachts.push(yacht); }
-      // marina towers behind the quay
-      for (let i = 0; i < 4; i++) tower(s.x - 24 + i * 14, s.z - 26, 8, 8, 60 + i * 12, i + 1);
-      ly = 16;
+      box(s.w, 0.6, 3, cream, 0, 0.4, -D + 1.5, g);
+      for (let i = 0; i < 5; i++) box(1.6, 0.4, 22, white, -W + 6 + i * 12, 0.3, -D + 14, g);
+      for (let i = 0; i < 10; i++) yachtAt(g, -W + 3.2 + (i >> 1) * 12 + (i % 2) * 5.6, -D + 12 + (i % 3) * 4, 7 + (i % 4) * 1.5);
+    } else if (s.id === 'g-sail') {
+      cyl(10.5, 1.2, sandM, 0, 0.1, 0, g, 10.5, 32); box(9, 2.4, 6, white, 0, 1.9, 4, g);
+      const sailM = mat({ color: 0xf6f4ee, roughness: 0.35, metalness: 0.1, side: THREE.DoubleSide, emissive: 0x302820, emissiveIntensity: 0.3 });
+      const sail = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.4, 9, 46, 24, 1, false, 0, Math.PI)), sailM); sail.position.set(0, 23.7, 0); sail.rotation.y = Math.PI * 0.25; sail.scale.z = 0.7; sail.castShadow = true; g.add(sail);
+      cyl(0.6, 50, white, -3, 25.7, -3, g); box(8, 0.6, 8, gold, -2, 40, -2, g); ly = 60;
+    } else if (s.id === 'g-port') {
+      // Jebel Chud container port: apron to the quay wall, stacks, three gantry cranes and a ship at the berth
+      const quayZ = GULF_SHORE_Z + 2 - s.z; box(s.w, 0.8, quayZ + D, conc, 0, 0.4, (quayZ - D) / 2, g);
+      const cols = [0xc0392b, 0x2a6a9a, 0xd8a040, 0x3a8a4a, 0x8a96a0, 0xe8e4d8]; const cm = cols.map((c) => mat({ color: c, roughness: 0.7 }));
+      for (let row = 0; row < 6; row++) for (let c = 0; c < 4; c++) { const n = 1 + ((row * 7 + c * 3) % 3); for (let k = 0; k < n; k++) put('box', cm[(row + c + k) % cm.length]!, s.x - W + 9 + c * 12, 0.8 + 1.3 + k * 2.6, s.z - D + 10 + row * 10, 10, 2.5, 3.4); }
+      for (let i = 0; i < 3; i++) { const x = -W + 10 + i * 18; for (const sx of [-3, 3]) box(0.8, 24, 0.8, FLAT.awning0!, x + sx, 12.8, quayZ - 4, g); box(7.6, 1.2, 16, FLAT.awning0!, x, 25, quayZ + 2, g); box(3, 2, 3, white, x, 23, quayZ - 4, g); }
+      { const sh = new THREE.Group(); sh.position.set(0, 0, quayZ + 6); g.add(sh); box(50, 3.4, 8, dark, 0, 0.9, 0, sh); box(50, 0.6, 8.1, FLAT.awning0!, 0, 0.2, 0, sh); box(7, 6, 7, white, 20, 5.6, 0, sh); for (let i = 0; i < 6; i++) box(5.6, 2.5, 7, cm[i % cm.length]!, -18 + i * 6.2, 3.85, 0, sh); boats.push(sh); }
+      ly = 36;
     } else if (s.id === 'g-palm') {
-      // Palm Chudeirah: trunk from the beach, 16 fronds, a crescent breakwater, villas, palms and the gold-arched hotel
-      const top = 0.25; const pg = g;
-      box(10, 0.5, 34, sandM, 0, top, -18, pg); box(4, 0.6, 34, asphalt, 0, top + 0.1, -18, pg);
-      const spineZ0 = -2, spineZ1 = 26; box(14, 0.5, spineZ1 - spineZ0 + 6, sandM, 0, top, (spineZ0 + spineZ1) / 2, pg);
-      for (let i = 0; i < 8; i++) for (const side of [-1, 1]) {
-        const zf = spineZ0 + i * ((spineZ1 - spineZ0) / 7); const L = 40 - Math.abs(i - 3.5) * 3.4; const ang = side * (0.25 + i * 0.09);
-        const fr = new THREE.Group(); fr.position.set(side * 6, 0, zf); fr.rotation.y = side * (Math.PI / 2 - 0.22 - ang * 0.05); pg.add(fr);
-        box(2.6, 0.5, L, sandM, 0, top, L / 2, fr); box(1.2, 0.3, L - 2, lawn, 0, top + 0.2, L / 2, fr);
-        for (let v = 6; v < L - 2; v += 7) { const vs = (v % 14 === 6 ? 1 : -1); box(1.8, 2, 1.8, white, vs * 0.9, top + 1.2, v, fr); box(0.8, 0.1, 1.2, pool, -vs * 0.9, top + 0.3, v, fr); }
-      }
-      const cr = new THREE.Mesh(geo(new THREE.TorusGeometry(56, 2.2, 6, 72, Math.PI * 1.15)), sandM); cr.position.set(0, 0.2, 12); cr.scale.z = 0.25; cr.receiveShadow = true; pg.add(cr);
-      cr.rotation.set(-Math.PI / 2, 0, Math.PI * 1.5 - Math.PI * 1.15 / 2); // arc centred on the south side, open towards the beach
-      // golden arch hotel at the crescent apex
-      { const hg = new THREE.Group(); hg.position.set(0, 0, 68); hg.scale.setScalar(0.6); pg.add(hg); for (const sx of [-1, 1]) box(7, 34, 9, glassMats[4]!, sx * 7, 17, 0, hg); box(21, 6, 9, gold, 0, 31, 0, hg); box(8, 10, 9, cream, 0, 3, 0, hg); dome(3, gold, 0, 34, 0, hg); }
-      for (let i = 0; i < 40; i++) { const a = Math.PI * (0.05 + i / 40 * 0.9); const px = Math.cos(a) * 56, pz = 12 + Math.sin(a) * 56; if (i % 4 === 0) palm(s.x + px, s.z + pz, 0.8); }
-      ly = 14;
+      // Palm Chudeirah: spine, sixteen fronds, the crescent breakwater, frond villas, two Signature Villas and the crescent hotel
+      const top = 0.5; const rel = (rr: Rect) => ({ x0: rr.x0 - s.x, z0: rr.z0 - s.z, x1: rr.x1 - s.x, z1: rr.z1 - s.z });
+      const land = (rr: Rect, id: string) => { const o = slab(rel(rr), -1.5, top, sandM, g); o.userData.spot = id; pickables.push(o); slab(rel({ x0: rr.x0 + 0.6, z0: rr.z0 + 0.6, x1: rr.x1 - 0.6, z1: rr.z1 - 0.6 }), top, top + 0.05, lawn, g); };
+      land(PALM_SPINE, 'g-palm'); for (const f of PALM_FRONDS) land(f.r, 'g-palm');
+      const segs = 36; const C = PALM_CRESCENT;
+      for (let i = 0; i < segs; i++) { const a = C.a0 + (C.a1 - C.a0) * (i + 0.5) / segs; const len = C.r * (C.a1 - C.a0) / segs + 0.4; const o = box(len, 2, C.width, sandM, C.x - s.x + Math.cos(a) * C.r, -0.5, C.z - s.z + Math.sin(a) * C.r, g); o.rotation.y = -(a + Math.PI / 2); o.userData.spot = 'g-palm'; pickables.push(o); }
+      for (const v of PALM_VILLAS) { const rr = rel(v.r); if (v.deed) { slab(rr, top, top + 4, white, g); slab({ x0: rr.x0 + 0.5, z0: rr.z0 + 0.5, x1: rr.x1 - 0.5, z1: rr.z1 - 0.5 }, top + 4, top + 4.4, gold, g); hitBox(v.r, 8, v.deed); } else { slab(rr, top, top + 2.6, white, g); } }
+      { const hr = rel(PALM_HOTEL); slab(hr, top, top + 4, cream, g); for (const sx of [-1, 1]) slab({ x0: cx(hr) + sx * 5.5 - 2, z0: hr.z0 + 0.3, x1: cx(hr) + sx * 5.5 + 2, z1: hr.z1 - 0.3 }, top + 4, 19, glassMats[4]!, g); slab({ x0: hr.x0 + 1, z0: hr.z0 + 0.4, x1: hr.x1 - 1, z1: hr.z1 - 0.4 }, 17, 20, gold, g); dome(1.8, gold, cx(hr), 20, cz(hr), g); }
+      for (const f of PALM_FRONDS) for (let x = f.r.x0 + 2.5; x < f.r.x1 - 2; x += 6) if (!PALM_VILLAS.some((v) => inRect(x, cz(f.r), v.r, 1.6))) palm(x, cz(f.r), f.signature ? 0.55 : 0.45);
+      ly = 30;
     }
-    const lab = label(`${s.icon} ${s.label}`, undefined, s.id === 'g-exchange' ? '#f2c84a' : '#e8c46a', s.x, ly, s.z); lab.userData.spot = s.id;
+    const lab = label(`${s.icon} ${s.label}`, undefined, s.id === 'g-exchange' ? '#f2c84a' : '#e8c46a', s.x, ly, s.z, s.id === 'g-burj' ? 1.1 : 0.85); lab.userData.spot = s.id;
   }
-  // Burj al Chud: sail-shaped hotel on its own islet off the Corniche
-  { const sailM = mat({ color: 0xf6f4ee, roughness: 0.35, metalness: 0.1, side: THREE.DoubleSide, emissive: 0x302820, emissiveIntensity: 0.3 }); const g = new THREE.Group(); g.position.set(55, 0, 92); scene.add(g); cyl(9, 1, sandM, 0, 0.2, 0, g); const sail = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.4, 10, 48, 24, 1, false, 0, Math.PI)), sailM); sail.position.set(0, 24, 0); sail.rotation.y = Math.PI * 0.25; sail.scale.z = 0.7; sail.castShadow = true; g.add(sail); cyl(0.6, 52, white, -3, 26, -3, g); box(9, 0.6, 9, gold, -2, 40, -2, g); box(10, 2, 8, white, 0, 1, 4, g); box(2.5, 0.4, 16, cream, 0, 0.6, -14, g); label('⛵ Burj al Chud', 'seven-and-a-half stars', '#e8c46a', 55, 58, 92, 0.8); }
+  // district names, floating over each district
+  for (const d of DISTRICT_LABELS) label(DISTRICTS[d.d].label, undefined, '#f4e4c0', d.x, 34, d.z, 1);
+  // deed labels (penthouses and villas for sale)
+  for (const d of CHUDBAI_DEEDS) { const l = label(`${d.type === 'penthouse' ? '🏙' : '🏡'} ${d.label}`, undefined, '#ffd86a', cx(d.r), d.h + 6, cz(d.r), 0.55); l.userData.spot = d.id; }
+  flushBatches();
 
   // ---- oil blocks
   const padM = mat({ color: 0xc8a878, roughness: 1 }); const offPadM = mat({ color: 0x1a6a8a, transparent: true, opacity: 0.22, depthWrite: false }); const buoyM = mat({ color: 0xf2c84a, roughness: 0.5 }); const pads = new Map<number, THREE.Mesh>();
   const blockLabels = new Map<number, THREE.Sprite>();
   for (let n = 1; n <= G_TRACTS; n++) {
-    const t = gTractInfo(n);
+    const t = gTractInfo(n); const pr = padRect(n);
     if (t.offshore) {
       const p = box(TW, 0.4, TD, offPadM, t.x, 0.2, t.z); p.castShadow = false; p.userData.tract = n; pickables.push(p); pads.set(n, p);
-      for (const [bx, bz] of [[-TW / 2, -TD / 2], [TW / 2, -TD / 2], [-TW / 2, TD / 2], [TW / 2, TD / 2]] as const) cyl(0.5, 1.6, buoyM, t.x + bx, 0.4, t.z + bz); // corner buoys
-    } else {
-      const p = box(TW, 0.3, TD, padM, t.x, 0.15, t.z); p.userData.tract = n; pickables.push(p); pads.set(n, p);
-    }
-    blockLabels.set(n, label(`${t.offshore ? '🌊' : '🏜'} Block ${n}`, t.name, '#d8b070', t.x, t.offshore ? 22 : 16, t.z, 0.75));
+      for (const [bx, bz] of [[pr.x0 + 0.5, pr.z0 + 0.5], [pr.x1 - 0.5, pr.z0 + 0.5], [pr.x0 + 0.5, pr.z1 - 0.5], [pr.x1 - 0.5, pr.z1 - 0.5]] as const) cyl(0.5, 1.6, buoyM, bx, 0.4, bz);
+    } else { const p = box(TW, 0.3, TD, padM, t.x, 0.15, t.z); p.userData.tract = n; pickables.push(p); pads.set(n, p); }
+    blockLabels.set(n, label(`${t.offshore ? '🌊' : '🏜'} Block ${n}`, t.name, '#d8b070', t.x, t.offshore ? 24 : 16, t.z, 0.75));
   }
+  // trunk gathering line along its corridor into the plant (on sleepers)
+  { const pc = PIPE_CORRIDOR; for (const dz of [-0.9, 0.9]) { const p = new THREE.Mesh(sg('gpipe', () => new THREE.CylinderGeometry(0.5, 0.5, 1, 8).rotateZ(Math.PI / 2)), steel); p.scale.set(rw(pc), 1.1, 1.1); p.position.set(cx(pc), 0.9, cz(pc) + dz); scene.add(p); } for (let x = pc.x0 + 2; x < pc.x1; x += 6) box(0.4, 0.4, rd(pc) - 0.4, conc, x, 0.2, cz(pc)); }
 
-  // ---- dynamic: wells, pipelines, plant units
-  const dyn = new THREE.Group(); scene.add(dyn); const dynFlames: THREE.Mesh[] = []; const heads2: THREE.Object3D[] = [];
+  // ---- dynamic: wells (in their slots), pipe stubs and risers, plant units (in their slots)
+  const dyn = new THREE.Group(); scene.add(dyn); const dynFlames: THREE.Mesh[] = [];
   const mastM = mat({ color: 0xd8d0c0, metalness: 0.4, roughness: 0.6 }), mastBad = mat({ color: 0x7a5a4a, metalness: 0.4, roughness: 0.6 });
   const legM = mat({ color: 0xf2c84a, roughness: 0.6 }), craneM = mat({ color: 0xf2b630 }), heliM = mat({ color: 0x2a6a3a, roughness: 0.8 }), espGlow = glowM(0x60c0ff, 0x2080ff, 2);
   const pipeM = [mat({ color: 0x9aa2aa, metalness: 0.6, roughness: 0.4 }), mat({ color: 0xd8a83a, metalness: 0.6, roughness: 0.4 })];
   const ownerMats = new Map<string, THREE.MeshStandardMaterial>(); const ownerM = (c: string) => { let m = ownerMats.get(c); if (!m) { m = mat({ color: new THREE.Color(c), emissive: new THREE.Color(c), emissiveIntensity: 0.4 }); ownerMats.set(c, m); } return m; };
   const lineMats = new Map<string, THREE.LineBasicMaterial>(); const lineM = (c: string) => { let m = lineMats.get(c); if (!m) { m = new THREE.LineBasicMaterial({ color: new THREE.Color(c) }); disposables.push(m); lineMats.set(c, m); } return m; };
   const fenceG = geo(new THREE.EdgesGeometry(new THREE.BoxGeometry(TW, 1.2, TD)));
-  const derrick = (g: THREE.Group, x: number, z: number, esp: boolean, cond: number, col: string) => {
+  /** Onshore well in its 5 × 3 slot: pad, wellhead, tapered mast, optional ESP skid. */
+  const derrick = (g: THREE.Object3D, x: number, z: number, esp: boolean, cond: number, col: string) => {
     const w = new THREE.Group(); w.position.set(x, 0, z); g.add(w);
     box(3, 0.4, 3, conc, 0, 0.2, 0, w); cyl(0.35, 2.4, red, 0, 1.4, 0, w); for (const y of [0.8, 1.6, 2.2]) cyl(0.6, 0.18, steel, 0, y, 0, w);
-    // slim lattice mast (tapered)
-    cyl(0.25, 10, cond < 15 ? mastBad : mastM, 1.2, 5, 1.2, w, 1.2, 4);
-    if (esp) { box(1.4, 1.8, 0.8, blue, -1.6, 0.9, 0, w); box(0.3, 0.3, 0.3, espGlow, -1.6, 1.9, 0.4, w); }
-    box(0.6, 0.6, 0.6, ownerM(col), 1.2, 10.4, 1.2, w);
-    heads2.push(w);
+    cyl(0.25, 10, cond < 15 ? mastBad : mastM, 1.2, 5, 0, w, 1.2, 4);
+    if (esp) { box(1.2, 1.8, 0.8, blue, -1.8, 0.9, 0, w); box(0.3, 0.3, 0.3, espGlow, -1.8, 1.9, 0.3, w); }
+    box(0.6, 0.6, 0.6, ownerM(col), 1.2, 10.3, 0, w);
   };
-  const platform = (g: THREE.Group, x: number, z: number, esp: boolean, col: string) => {
+  /** Offshore platform in its 9 × 9 slot. */
+  const platform = (g: THREE.Object3D, x: number, z: number, esp: boolean, col: string) => {
     const p = new THREE.Group(); p.position.set(x, 0, z); g.add(p);
     for (const [lx, lz] of [[-3, -3], [3, -3], [-3, 3], [3, 3]] as const) cyl(0.5, 10, legM, lx, 3, lz, p);
-    box(9, 1, 9, steel, 0, 8, 0, p); box(7, 3, 4, white, -1, 10, -2, p); cyl(2.2, 0.3, heliM, 2.2, 9.6, 2.4, p); // helipad
-    cyl(0.4, 9, red, 3, 13, -3, p); const fl = new THREE.Mesh(sg('gcone', () => new THREE.ConeGeometry(0.6, 1, 10)), flameM); fl.scale.set(0.9, 2.6, 0.9); fl.position.set(3, 18.6, -3); p.add(fl); dynFlames.push(fl);
-    const crane = box(0.4, 0.4, 8, craneM, -3.5, 12, 1, p); crane.rotation.x = -0.5;
-    if (esp) box(1.6, 1.6, 1.6, blue, 3, 9.3, -0.5, p);
-    box(1, 1, 1, ownerM(col), -3.5, 12.4, -3.5, p);
+    box(9, 1, 9, steel, 0, 8, 0, p); box(6, 3, 3.6, white, -1.2, 10, -2, p); cyl(2, 0.3, heliM, 2, 9.6, 2.2, p);
+    cyl(0.4, 9, red, 3.4, 13, -3.4, p); const fl = new THREE.Mesh(sg('gcone', () => new THREE.ConeGeometry(0.6, 1, 10)), flameM); fl.scale.set(0.9, 2.6, 0.9); fl.position.set(3.4, 18.6, -3.4); p.add(fl); dynFlames.push(fl);
+    const crane = box(0.4, 0.4, 6, craneM, -3.6, 12, 0.6, p); crane.rotation.x = -0.5;
+    if (esp) box(1.6, 1.6, 1.6, blue, 3, 9.3, -0.4, p);
+    box(1, 1, 1, ownerM(col), -3.6, 12.4, -3.6, p);
   };
-  const unitModel = (k: GUnitKind, g: THREE.Group) => {
-    box(10, 0.3, 9, conc, 0, 0.15, 0, g);
+  /** A process unit drawn inside its slot (local coords, slot centred). */
+  const unitModel = (k: GUnitKind, g: THREE.Group, sw: number, sd: number) => {
+    box(sw, 0.3, sd, conc, 0, 0.15, 0, g);
     const col = (x: number, zz: number, r0: number, h0: number, m: THREE.Material = steel) => { cyl(r0, h0, m, x, h0 / 2, zz, g); for (let y = 3; y < h0; y += 4) cyl(r0 + 0.2, 0.2, gold, x, y, zz, g); box(0.3, 0.3, 0.3, navRed, x, h0 + 0.2, zz, g); };
-    if (k === 'stabilizer') { for (const x of [-2.5, 0.5]) { const v = cyl(1.1, 6, white, x, 1.6, 0, g); v.rotation.z = Math.PI / 2; } col(3.2, -2, 0.7, 7); box(3, 1.6, 2, steel, 2.5, 0.8, 2.5, g); }
-    else if (k === 'lng') { for (const x of [-2.6, 2.6]) { sph(2.6, white, x, 3.4, -1, g); cyl(2.8, 1.2, steel, x, 0.6, -1, g, 2.8, 12); } box(8, 2, 2.4, steel, 0, 1, 3, g); col(0, 3, 0.5, 9, white); }
+    if (k === 'stabilizer') { for (const zz of [-2.6, 0]) { const v = cyl(1.1, 6, white, -1, 1.6, zz, g); v.rotation.z = Math.PI / 2; } col(3.4, -2.6, 0.7, 7); box(3, 1.6, 2, steel, 2.8, 0.8, 2.8, g); }
+    else if (k === 'lng') { for (const x of [-2.6, 2.6]) { sph(2.2, white, x, 3.2, -1.4, g); cyl(2.3, 1.2, steel, x, 0.6, -1.4, g, 2.3, 12); } box(8, 2, 2.4, steel, 0, 1, 3, g); col(4.2, 3.4, 0.4, 9, white); }
     else if (k === 'refinery') { col(-2.6, -1.5, 1.3, 16); col(0.4, -2.4, 0.8, 11); col(2.6, -1.2, 0.6, 8); box(4, 3, 3, red, 1.6, 1.5, 2.4, g); cyl(0.3, 5, dark, 1.6, 5.5, 2.4, g); }
     else if (k === 'aromatics') { for (let i = 0; i < 3; i++) col(-3 + i * 3, -1.8, 0.7, 9 + i * 2, white); box(8, 2.6, 2.6, gold, 0, 1.3, 2.5, g); }
-    else if (k === 'solar') { g.children[0]!.scale.set(14, 0.3, 11); for (let rr = 0; rr < 4; rr++) for (let c = 0; c < 3; c++) { const pnl = box(4, 0.15, 2, blue, -4.5 + c * 4.5, 1.1, -3.6 + rr * 2.5, g); pnl.rotation.x = -0.45; box(0.15, 1, 0.15, steel, -4.5 + c * 4.5, 0.5, -3.6 + rr * 2.5, g); } }
-    else if (k === 'tank') { cyl(3.6, 4.5, white, 0, 2.25, 0, g, 3.6, 20); cyl(3.7, 0.3, gold, 0, 4.6, 0, g, 3.7, 20); }
-  };
-  const PLANT = GULF_SPOTS.find((x) => x.id === 'g-plant')!;
-  const slotPos = (k: GUnitKind, i: number): [number, number] => {
-    if (k === 'solar') return [PLANT.x - 62 + (i % 2) * 16, PLANT.z - 14 + Math.floor(i / 2) * 13];
-    if (k === 'tank') return [PLANT.x + 46 + (i % 2) * 9, PLANT.z - 16 + Math.floor(i / 2) * 8];
-    const row = ({ stabilizer: -12, lng: 12, refinery: -12, aromatics: 12 } as Record<string, number>)[k]!;
-    const base = ({ stabilizer: -30, lng: -30, refinery: 6, aromatics: 6 } as Record<string, number>)[k]!;
-    return [PLANT.x + base + (i % 3) * 11, PLANT.z + row + Math.floor(i / 3) * (row < 0 ? -0.01 : 0.01)];
+    else if (k === 'solar') { for (let rr = 0; rr < 4; rr++) for (let c = 0; c < 3; c++) { const pnl = box(4, 0.15, 2, blue, -4.5 + c * 4.5, 1.1, -3.6 + rr * 2.5, g); pnl.rotation.x = -0.45; box(0.15, 1, 0.15, steel, -4.5 + c * 4.5, 0.5, -3.6 + rr * 2.5, g); } }
+    else if (k === 'tank') { cyl(3.5, 4.5, white, 0, 2.25, 0, g, 3.5, 20); cyl(3.6, 0.3, gold, 0, 4.6, 0, g, 3.6, 20); }
   };
   let lastGulf: GulfState | null = null; let lastSite: GulfSite | null = null;
   const redraw = () => {
-    for (const c of [...dyn.children]) dyn.remove(c); heads2.length = 0; dynFlames.length = 0;
+    for (const c of [...dyn.children]) dyn.remove(c); dynFlames.length = 0;
     const counts = new Map<GUnitKind, number>();
-    for (const u of lastGulf?.units ?? []) { const i = counts.get(u.k) ?? 0; counts.set(u.k, i + 1); if ((u.k === 'tank' && i >= 10) || i >= 8) continue; const g = new THREE.Group(); const [x, z] = slotPos(u.k, i); g.position.set(x, 0, z); dyn.add(g); unitModel(u.k, g); if (!u.on) g.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = conc; }); }
+    for (const u of lastGulf?.units ?? []) {
+      const i = counts.get(u.k) ?? 0; counts.set(u.k, i + 1); let sl: Rect; try { sl = unitSlot(u.k, i); } catch { continue; } if (!inRect(cx(sl), cz(sl), spotRect(gulfSpot('g-plant')))) continue;
+      const g = new THREE.Group(); g.position.set(cx(sl), 0, cz(sl)); dyn.add(g); unitModel(u.k, g, rw(sl), rd(sl)); if (!u.on) g.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = conc; });
+    }
     for (let n = 1; n <= G_TRACTS; n++) {
       const t = gTractInfo(n); const view = lastSite?.tracts.find((x) => x.n === n); const L = lastSite?.leases[String(n)];
       const mine = lastGulf?.tracts[String(n)]; const wells = view?.wells.length ? view.wells : (mine?.wells ?? []).map((w) => ({ ownerKey: 'me', esp: w.esp, cond: w.cond }));
       const pipe = view?.pipe ?? mine?.pipe ?? 0; const col = L ? ownerColor(L.key) : '#e8c46a';
-      const g = new THREE.Group(); g.position.set(t.x, 0, t.z); dyn.add(g);
-      if (L) { const fence = new THREE.LineSegments(fenceG, lineM(col)); fence.position.y = 0.8; g.add(fence); }
-      wells.forEach((w, i) => { const wx = -TW / 2 + 6 + (i % 2) * (TW - 12), wz = -TD / 2 + 6 + Math.floor(i / 2) * (TD - 12); if (t.offshore) platform(g, wx * 0.7, wz * 0.7, w.esp, col); else derrick(g, wx, wz, w.esp, w.cond, col); });
-      if (pipe > 0 && t.offshore) { const riser = cyl(pipe > 1 ? 0.7 : 0.45, 10, pipeM[pipe > 1 ? 1 : 0]!, 0, 2, 0, g); riser.position.y = 3; }
-      if (pipe > 0 && !t.offshore) { // gathering pipeline on sleepers to the plant (offshore blocks use subsea lines, not drawn)
-        const tx = t.offshore ? t.x * 0.6 : PLANT.x - PLANT.w / 2, tz = t.offshore ? GULF_SHORE_Z - 4 : PLANT.z;
-        const dx = tx - t.x, dz = tz - t.z; const len = Math.hypot(dx, dz); const pm = pipeM[pipe > 1 ? 1 : 0]!;
-        const p = new THREE.Mesh(sg('gpipe', () => new THREE.CylinderGeometry(0.5, 0.5, 1, 8).rotateX(Math.PI / 2)), pm); p.scale.set(pipe > 1 ? 1.4 : 0.9, pipe > 1 ? 1.4 : 0.9, len); p.position.set(dx / 2, t.offshore ? -0.1 : 0.9, dz / 2); p.rotation.y = Math.atan2(dx, dz); g.add(p);
-      }
+      if (L) { const fence = new THREE.LineSegments(fenceG, lineM(col)); fence.position.set(t.x, 0.8, t.z); dyn.add(fence); }
+      wells.forEach((w, i) => { const sl = wellSlot(n, i); if (t.offshore) platform(dyn, cx(sl), cz(sl), w.esp, col); else derrick(dyn, cx(sl), cz(sl), w.esp, w.cond, col); });
+      if (pipe > 0 && t.offshore) { const riser = cyl(pipe > 1 ? 0.7 : 0.45, 9, pipeM[pipe > 1 ? 1 : 0]!, t.x, 2.5, t.z, dyn); void riser; }
+      const stub = pipeStub(n); if (pipe > 0 && stub) { const p = new THREE.Mesh(sg('gpipeZ', () => new THREE.CylinderGeometry(0.5, 0.5, 1, 8).rotateX(Math.PI / 2)), pipeM[pipe > 1 ? 1 : 0]!); p.scale.set(pipe > 1 ? 1.4 : 0.9, pipe > 1 ? 1.4 : 0.9, rd(stub)); p.position.set(cx(stub), 0.9, cz(stub)); dyn.add(p); }
     }
   };
   const setGulf = (s: GulfState | null) => { lastGulf = s; redraw(); };
@@ -346,12 +409,18 @@ export function createChudbai(canvas: HTMLCanvasElement, h: Handlers) {
     const gk = 0.15 + 0.85 * k.lights; for (const m of glowMats) m.emissiveIntensity = (m.userData.ei as number) * gk;
   };
   applySky(); let skyT = 0;
+  let deckOn = false; const BURJ = gulfSpot('g-burj'); const deckPos = new THREE.Vector3(BURJ.x + 5, 164, BURJ.z + 5); const deckTgt = new THREE.Vector3(BURJ.x + 90, 60, BURJ.z + 160);
   const clock = new THREE.Clock(); let raf = 0; let running = true; let time = 0; const tmp = new THREE.Vector3();
   const frame = () => {
     raf = requestAnimationFrame(frame); if (!running) return; const dt = Math.min(clock.getDelta(), 0.05); time += dt;
     skyT += dt; if (skyT > 1) { skyT = 0; applySky(); } gulf.mat.uniforms.uTime.value = time;
     for (const f of [...flames, ...dynFlames]) f.scale.x = f.scale.z = (f.userData.s0 ??= f.scale.x) * (1 + Math.sin(time * 9 + f.id) * 0.12);
     yachts.forEach((y, i) => { y.position.y = 0.3 + Math.sin(time * 1.2 + i) * 0.12; y.rotation.z = Math.sin(time * 0.9 + i) * 0.03; });
+    boats.forEach((b, i) => { b.position.y = 0.2 + Math.sin(time * 0.8 + i * 2) * 0.1; });
+    fountainJets.forEach((j, i) => { const hgt = 1.2 + Math.abs(Math.sin(time * 1.6 + i * 0.7)) * 0.9; j.scale.y = hgt; j.position.y = 0.7 + hgt / 2; });
+    moveCars(time);
+    { const L = METRO_X1 - METRO_X0 - TRAIN_LEN; const u = (time * 14) % (2 * L); const x = u < L ? METRO_X0 + u : METRO_X0 + 2 * L - u; train.position.x = x; }
+    if (deckOn) { camera.position.lerp(deckPos, 0.06); controls.target.lerp(deckTgt, 0.06); }
     controls.update(); clampPan();
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const s of signs) { const k = labelScale(camera.position.distanceTo(s.getWorldPosition(tmp)), portrait) * (s.userData.k as number); fitLabel(s, k); }
@@ -362,6 +431,13 @@ export function createChudbai(canvas: HTMLCanvasElement, h: Handlers) {
   return {
     scene, camera, controls, setGulf, setSite,
     setRunning(v: boolean) { running = v; clock.getDelta(); },
+    /** At the Top: glide the camera up to the Burj deck (false = back to the overview). */
+    deck(on = true) { deckOn = on; controls.minDistance = on ? 5 : 30; if (!on) { camera.position.copy(home); controls.target.copy(homeT); } },
+    /** QA: every landmark group must stay inside its footprint (rect × height). Returns the offenders. */
+    qa() { const out: string[] = []; const b = new THREE.Box3(); const bb = new THREE.Box3();
+      for (const [id, g] of spotGroups) { const s = GULF_SPOTS.find((x) => x.id === id)!; b.makeEmpty(); g.updateMatrixWorld(true); g.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh || m.material === hitM || (o as THREE.Sprite).isSprite) return; m.geometry.computeBoundingBox(); bb.copy(m.geometry.boundingBox!).applyMatrix4(m.matrixWorld); b.union(bb); });
+        const r = spotRect(s); const e = 0.06; if (b.min.x < r.x0 - e || b.max.x > r.x1 + e || b.min.z < r.z0 - e || b.max.z > r.z1 + e || b.max.y > s.h + e) out.push(`${id}: x ${b.min.x.toFixed(2)}..${b.max.x.toFixed(2)} (${r.x0}..${r.x1}) z ${b.min.z.toFixed(2)}..${b.max.z.toFixed(2)} (${r.z0}..${r.z1}) top ${b.max.y.toFixed(2)} (${s.h})`); }
+      return out; },
     reset() { camera.position.copy(home); controls.target.copy(homeT); },
     view(cam: [number, number, number], tgt: [number, number, number]) { camera.position.set(...cam); controls.target.set(...tgt); controls.update(); },
     dispose() { cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },

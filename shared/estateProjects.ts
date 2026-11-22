@@ -219,7 +219,7 @@ export const DEMOLISH_BLOCKED_TYPES = new Set([
 
 export const DEMOLISH_RULES = [
   'You can only demolish a building or farm you own.',
-  'Landmarks, civic buildings, the stadium, the harbour, the jail, sky penthouses and island estates cannot be demolished.',
+  'Landmarks, civic buildings, the stadium, the harbour, the jail, sky penthouses, island estates and Chudbai homes cannot be demolished.',
   'Furniture in a demolished home returns to your furniture locker.',
   'Stored kitchen, pantry and warehouse items stay in those inventories. They are not deleted.',
   'Crops still growing are returned as seeds. Ripe crops go to your warehouse.',
@@ -229,7 +229,7 @@ export const DEMOLISH_RULES = [
 
 export function canDemolish(p: { id: string; kind: string; type: string; map?: string } | null | undefined): { ok: boolean; reason?: string } {
   if (!p) return { ok: false, reason: 'That property is not on the map.' };
-  if (p.map === 'resort' || p.map === 'island') return { ok: false, reason: 'Resort and island properties cannot be demolished.' };
+  if (p.map === 'resort' || p.map === 'island' || p.map === 'chudbai') return { ok: false, reason: 'Resort, island and Chudbai properties cannot be demolished.' };
   if (p.id.startsWith('sky:') || p.id.startsWith('isl:') || p.id.startsWith('lm:')) {
     return { ok: false, reason: 'Landmarks and civic buildings cannot be demolished.' };
   }

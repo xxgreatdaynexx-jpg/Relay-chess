@@ -6,6 +6,7 @@
  * Every action needs the player to be AT Chudbai (selling too: the exchange buys in person only).
  */
 import pg from 'pg';
+import { randomInt } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
@@ -14,7 +15,7 @@ import { cityTicketPrice } from './city-rates.js';
 import { requireChudbai, TravelError } from './travel.js';
 import { playerKey } from './skins.js';
 import {
-  CHUDBAI_TICKET_BASE, ESP_COST, G_PIPES, G_PRODUCTS, G_SURVEY_COST, G_TRACTS, G_UNITS, G_WELLS_PER_TRACT,
+  CHUDBAI_TICKET_BASE, DECK_TICKET_BASE, GOLD_BAR_BASE, GOLD_MAX_BARS, GOLD_SELL_PER_DAY, goldAsk, goldBid, goldNextF, ESP_COST, G_PIPES, G_PRODUCTS, G_SURVEY_COST, G_TRACTS, G_UNITS, G_WELLS_PER_TRACT,
   buildGulfSite, exchangeGross, gPowerDemand, gSettle, gTankCap, gTractInfo, gUnitCount, gWhole, gulfWorth, isGProduct, isGTract, isGUnitKind,
   newGulf, repairCost, sellPayout, wellCost, type GProduct, type GulfSite, type GulfState,
 } from '../shared/chudbai.js';
@@ -23,7 +24,8 @@ export class GulfError extends Error {}
 export const CHUDBAI_MIGRATION = `
 CREATE TABLE IF NOT EXISTS chudbai_state (player_key TEXT PRIMARY KEY, name TEXT NOT NULL, state TEXT NOT NULL, updated_at BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS chudbai_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
-CREATE TABLE IF NOT EXISTS chudbai_leases (tract SMALLINT PRIMARY KEY CHECK (tract >= 1 AND tract <= 10), player_key TEXT NOT NULL, name TEXT NOT NULL, leased_at BIGINT NOT NULL);`;
+CREATE TABLE IF NOT EXISTS chudbai_leases (tract SMALLINT PRIMARY KEY CHECK (tract >= 1 AND tract <= 10), player_key TEXT NOT NULL, name TEXT NOT NULL, leased_at BIGINT NOT NULL);
+CREATE TABLE IF NOT EXISTS chudbai_gold_px (day TEXT PRIMARY KEY, f REAL NOT NULL, set_at BIGINT NOT NULL);`;
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
 type PoolLike = Q & { connect: () => Promise<Q & { release: () => void }> };
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -39,8 +41,22 @@ export class Chudbai {
   private seq = 0;
   private io: Server | null = null;
   private loaded = false;
+  private gold: { day: string; f: number } | null = null;
   constructor(private readonly pool: PoolLike | null, private readonly clock = () => Date.now(),
-    private readonly gate: (name: string) => Promise<void> = (n) => requireChudbai(n, GulfError)) {}
+    private readonly gate: (name: string) => Promise<void> = (n) => requireChudbai(n, GulfError),
+    private readonly rand: () => number = () => randomInt(0, 1_000_000) / 1_000_000) {}
+  /** The day's gold price factor: drawn once per UTC day (first caller wins, stored), never known in advance. */
+  async goldF(): Promise<number> {
+    const day = utcDay(this.clock()); if (this.gold?.day === day) return this.gold.f;
+    if (!this.pool) { const f = goldNextF(this.gold?.f ?? 1, this.rand()); this.gold = { day, f }; return f; }
+    let row = (await this.pool.query('SELECT f FROM chudbai_gold_px WHERE day = $1', [day])).rows[0];
+    if (!row) {
+      const last = (await this.pool.query('SELECT f FROM chudbai_gold_px WHERE day < $1 ORDER BY day DESC LIMIT 1', [day])).rows[0];
+      await this.pool.query('INSERT INTO chudbai_gold_px (day, f, set_at) VALUES ($1,$2,$3) ON CONFLICT (day) DO NOTHING', [day, goldNextF(last ? Number(last.f) : 1, this.rand()), this.clock()]);
+      row = (await this.pool.query('SELECT f FROM chudbai_gold_px WHERE day = $1', [day])).rows[0];
+    }
+    const f = Number(row?.f ?? 1); this.gold = { day, f }; return f;
+  }
   attachIo(io: Server) { this.io = io; }
   async init() {
     if (!this.pool) { this.loaded = true; return; }
@@ -101,16 +117,19 @@ export class Chudbai {
 
   async view(name: string | null) {
     const s = name ? await this.load(name) : newGulf(this.clock()); const t = name ? await this.today(name) : { gross: 0, paid: 0 };
-    return { gulf: s, now: this.clock(), index: priceIndex(), today: { gross: t.gross, paid: t.paid }, ticket: cityTicketPrice(px(CHUDBAI_TICKET_BASE)), cap: gTankCap(s), demand: gPowerDemand(s), value: px(gulfWorth(s)), site: this.snapshot(name), meKey: name ? playerKey(name) : null };
+    const f = await this.goldF(); const base = px(GOLD_BAR_BASE); const day = utcDay(this.clock());
+    const gold = { f, ask: goldAsk(base, f), bid: goldBid(base, f), bars: s.gold ?? 0, soldToday: s.goldDay?.day === day ? s.goldDay.sold : 0, max: GOLD_MAX_BARS, perDay: GOLD_SELL_PER_DAY };
+    const deck = { ticket: px(DECK_TICKET_BASE), visits: s.deck ?? 0 };
+    return { gold, deck, gulf: s, now: this.clock(), index: priceIndex(), today: { gross: t.gross, paid: t.paid }, ticket: cityTicketPrice(px(CHUDBAI_TICKET_BASE)), cap: gTankCap(s), demand: gPowerDemand(s), value: px(gulfWorth(s)), site: this.snapshot(name), meKey: name ? playerKey(name) : null };
   }
   async valueOf(name: string): Promise<number> {
     const k = playerKey(name); let s = this.states.get(k);
     if (!s && this.pool) { const r = (await this.pool.query('SELECT state FROM chudbai_state WHERE player_key = $1', [k])).rows[0]; if (r) { s = JSON.parse(String(r.state)) as GulfState; this.states.set(k, s); } }
-    if (!s) return 0; gSettle(s, this.clock()); return Math.round(px(gulfWorth(s)));
+    if (!s) return 0; gSettle(s, this.clock()); return Math.round(px(gulfWorth(s)) + (s.gold ?? 0) * goldBid(px(GOLD_BAR_BASE), await this.goldF()));
   }
   async values(): Promise<number> {
-    const now = this.clock(); let tot = 0;
-    for (const [k, s] of this.states) { if (k.startsWith('qa-')) continue; gSettle(s, now); tot += px(gulfWorth(s)); }
+    const now = this.clock(); let tot = 0; const bid = goldBid(px(GOLD_BAR_BASE), await this.goldF());
+    for (const [k, s] of this.states) { if (k.startsWith('qa-')) continue; gSettle(s, now); tot += px(gulfWorth(s)) + (s.gold ?? 0) * bid; }
     return Math.round(tot);
   }
 
@@ -166,9 +185,25 @@ export class Chudbai {
           cost = px(cost); if (cost <= 0) throw new GulfError('Nothing needs repairs.'); await this.commit(name, s, -cost, 'chudbai_upkeep', 'Chudbai maintenance crew'); break;
         }
         case 'sell': result = await this.sell(name, s, b); break;
+        case 'gold_buy': case 'gold_sell': {
+          const qty = Math.floor(Number(b.qty)); if (!(qty >= 1 && qty <= GOLD_MAX_BARS)) throw new GulfError('Pick how many bars.');
+          const f = await this.goldF(); const base = px(GOLD_BAR_BASE); const have = s.gold ?? 0; const day = utcDay(this.clock());
+          if (op === 'gold_buy') {
+            if (have + qty > GOLD_MAX_BARS) throw new GulfError(`The souk sells at most ${GOLD_MAX_BARS} bars to one customer. You hold ${have}.`);
+            s.gold = have + qty; const cost = qty * goldAsk(base, f);
+            await this.commit(name, s, -cost, 'chudbai_gold', `Gold Souk: bought ${qty} × 10-tola bar @ ${fmt(goldAsk(base, f))}`); result = { bars: s.gold, paid: cost };
+          } else {
+            if (qty > have) throw new GulfError(`You only hold ${have} bar${have === 1 ? '' : 's'}.`);
+            const sold = s.goldDay?.day === day ? s.goldDay.sold : 0; if (sold + qty > GOLD_SELL_PER_DAY) throw new GulfError(`The souk buys back at most ${GOLD_SELL_PER_DAY} bars a day from you (${GOLD_SELL_PER_DAY - sold} left today, resets 00:00 UTC).`);
+            s.gold = have - qty; s.goldDay = { day, sold: sold + qty }; const pay = qty * goldBid(base, f);
+            await this.commit(name, s, pay, 'chudbai_gold', `Gold Souk: sold ${qty} × 10-tola bar @ ${fmt(goldBid(base, f))}`); result = { bars: s.gold, paid: pay };
+          }
+          break;
+        }
+        case 'deck': { s.deck = (s.deck ?? 0) + 1; const t = px(DECK_TICKET_BASE); await this.commit(name, s, -t, 'chudbai_deck', 'At the Top · Burj Chudifa observation deck'); result = { visits: s.deck, paid: t }; break; }
         default: throw new GulfError('Unknown action.');
       }
-      if (op !== 'sell' && op !== 'toggle') this.emitSite();
+      if (op !== 'sell' && op !== 'toggle' && !op.startsWith('gold') && op !== 'deck') this.emitSite();
       return result;
     });
     return land ? this.lock('__site__', run) : run();

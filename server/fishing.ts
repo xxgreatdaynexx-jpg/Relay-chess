@@ -32,7 +32,7 @@ import { cookPayout, cookSellValue, FISH_DISH_RECIPES } from '../shared/cooking.
 import { FISH_SPOTS, isFishSpot, type FishSpot } from '../shared/fishing.js';
 import { fishingLoc, WAREHOUSE, FACTORY, isPool } from '../shared/inventoryLocations.js';
 import { FLEET_MAX_CUT } from '../shared/coop3.js';
-import { isAtIsland, isAtResort, awayFromFishmonger } from './travel.js';
+import { isAtChudbai, isAtIsland, isAtResort, awayFromFishmonger } from './travel.js';
 import { isMillionairePrelaunch } from '../shared/millionairePrelaunch.js';
 import { baitLuckRoll, gearDef } from '../shared/fishGear.js';
 import { eventCredit, eventTrade } from './weeklyEvent.js';
@@ -120,7 +120,7 @@ export class Fishing {
     const best = (await this.pool.query("SELECT species, weight_g FROM fish_catches WHERE player_key = $1 AND COALESCE(hired, FALSE) = FALSE ORDER BY weight_g DESC, caught_at ASC, id ASC LIMIT 1", [key])).rows[0];
     const n = (await this.pool.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1', [key])).rows[0];
     const auto = (await this.pool.query('SELECT process FROM fish_auto WHERE player_key = $1', [key])).rows[0] as { process?: boolean } | undefined;
-    return { cooler: await this.cooler(key), today: await this.today(key), todayBySpot: { lake: await this.today(key, 'lake'), reef: await this.today(key, 'reef'), deep: await this.today(key, 'deep'), lagoon: await this.today(key, 'lagoon') }, index: priceIndex(), capIndex: houseCapIndexOrFloor(), best: best ? { fish: String(best.species), grams: Number(best.weight_g) } : null, totals: { caught: Number(n?.n ?? 0) }, autoProcess: auto?.process === true };
+    return { cooler: await this.cooler(key), today: await this.today(key), todayBySpot: { lake: await this.today(key, 'lake'), reef: await this.today(key, 'reef'), deep: await this.today(key, 'deep'), lagoon: await this.today(key, 'lagoon'), dhow: await this.today(key, 'dhow') }, index: priceIndex(), capIndex: houseCapIndexOrFloor(), best: best ? { fish: String(best.species), grams: Number(best.weight_g) } : null, totals: { caught: Number(n?.n ?? 0) }, autoProcess: auto?.process === true };
   }
 
   /** Opt-in per player: background sweep moves city cooler fish into factory storage (same conversion as manual Bring-in). */
@@ -134,9 +134,10 @@ export class Fishing {
   }
 
   /** Throw a line. The fish (and when it bites) is decided now and stays server-side. */
-  async cast(name: string, spotIn: unknown = 'lake', atResort: (n: string) => boolean = isAtResort, atIsland: (n: string) => boolean = isAtIsland): Promise<{ biteIn: number; coop?: boolean }> {
+  async cast(name: string, spotIn: unknown = 'lake', atResort: (n: string) => boolean = isAtResort, atIsland: (n: string) => boolean = isAtIsland, atChudbai: (n: string) => boolean = isAtChudbai): Promise<{ biteIn: number; coop?: boolean }> {
     const key = keyOf(name); const now = this.clock();
     const spot: FishSpot = isFishSpot(spotIn) ? spotIn : 'lake';
+    if (spot === 'dhow' && !atChudbai(name)) throw new FishError('The dhows sail from the Creek Dhow Wharf in Chudbai. Fly there first.');
     if (spot === 'lagoon' && !atIsland(name)) throw new FishError('Pearl Lagoon is on the Private Island. Sail or fly there first.');
     if (spot === 'reef' && !atResort(name)) throw new FishError('The Reef Pier is at Chud Resort. Fly there first.');
     if (spot === 'deep' && !atResort(name)) throw new FishError('Deep-sea trips leave from the Chud Resort Marina. Fly there first.');
