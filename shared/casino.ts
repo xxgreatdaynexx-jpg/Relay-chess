@@ -1,4 +1,5 @@
 /** Shared casino types (play money only). */
+import { CASINO_MAX_BET } from './casino-bet.js';
 export type Suit = 'S' | 'H' | 'D' | 'C';
 export interface CasinoCard {
   id: string;
@@ -124,7 +125,7 @@ export function validateRouletteBet(bet: unknown, maxChip = MAX_ROULETTE_STAKE):
   const b = bet as Record<string, unknown>;
   const kind = b.kind as RouletteKind;
   const amount = b.amount;
-  if (typeof amount !== 'number' || !Number.isInteger(amount) || amount <= 0 || amount > maxChip) return null;
+  if (typeof amount !== 'number' || !Number.isInteger(amount) || amount <= 0 || amount > Math.min(maxChip, CASINO_MAX_BET)) return null;
   if (!Array.isArray(b.numbers) || b.numbers.some((n) => typeof n !== 'number' || !Number.isInteger(n))) return null;
   const nums = [...new Set(b.numbers as number[])].sort((x, y) => x - y);
   const size = INSIDE_SIZE[kind];

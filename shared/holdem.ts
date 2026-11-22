@@ -10,7 +10,7 @@ export const HE_TURN_MS = 25000;
 
 /** Table tiers. Blinds keep the classic ratio: big blind = max buy-in / 100, small blind = big / 2. */
 export interface HEStakes { id: HEStakesId; label: string; small: number; big: number; minBuyIn: number; maxBuyIn: number }
-export type HEStakesId = 'classic' | '5k' | '10k' | '25k' | '100k' | '500k' | '1m';
+export type HEStakesId = 'classic' | '5k' | '10k' | '25k' | '100k' | '500k' | '1m' | '10m';
 const tier = (id: HEStakesId, label: string, buyIn: number): HEStakes => ({ id, label, small: buyIn / 200, big: buyIn / 100, minBuyIn: buyIn, maxBuyIn: buyIn });
 export const HE_STAKES: readonly HEStakes[] = [
   { id: 'classic', label: 'Classic', small: HE_SMALL, big: HE_BIG, minBuyIn: HE_MIN_BUYIN, maxBuyIn: HE_MAX_BUYIN },
@@ -20,6 +20,7 @@ export const HE_STAKES: readonly HEStakes[] = [
   tier('100k', 'High Roller 100K', 100_000),
   tier('500k', 'Billionaire 500K', 500_000),
   tier('1m', 'Billionaire 1M', 1_000_000),
+  tier('10m', 'Billionaire 10M', 10_000_000),
 ];
 export const heStakes = (id: unknown): HEStakes => HE_STAKES.find((x) => x.id === id) ?? HE_STAKES[0]!;
 export const HE_NEXT_HAND_MS = 4000;

@@ -79,7 +79,7 @@ describe('video slots server', () => {
   it('rejects bad machines/bets without touching chips, and settles the full round atomically', () => {
     const bank = new CasinoBank();
     const start = bank.account('Ann').chips;
-    for (const bet of [0, 1, 19, 21, 1000, 1.5, NaN]) expect(() => spinVideoSlot(bank, 'Ann', 'dragon', bet)).toThrow();
+    for (const bet of [0, 1, 19, 10_000_001, 1.5, NaN, '20']) expect(() => spinVideoSlot(bank, 'Ann', 'dragon', bet as number)).toThrow();
     expect(() => spinVideoSlot(bank, 'Ann', 'nope', 20)).toThrow();
     expect(bank.account('Ann').chips).toBe(start);
     let chips = start;
@@ -133,7 +133,7 @@ describe('buy bonus', () => {
     const a = bank.account('Cy');
     const start = a.chips;
     expect(() => buyVideoBonus(bank, 'Cy', 'nope', 20)).toThrow();
-    for (const bet of [0, 19, 1000, NaN]) expect(() => buyVideoBonus(bank, 'Cy', 'dragon', bet)).toThrow();
+    for (const bet of [0, 19, 10_000_001, NaN]) expect(() => buyVideoBonus(bank, 'Cy', 'dragon', bet)).toThrow();
     expect(a.chips).toBe(start);
     for (const m of MACHINE_IDS) {
       a.chips = 100_000;

@@ -1,3 +1,4 @@
+import { BetAmountInput } from '@/components/CasinoCommon';
 import { CigaretteBar } from '@/components/CigaretteBar';
 import { Fragment, useEffect, useState } from 'react';
 import { TurnTimerBar } from './TurnTimerBar';
@@ -11,7 +12,11 @@ import { heStakes, HE_SEATS, HE_SPECTATE_DELAY_MS, HE_STAKES, type HEStakes, typ
 
 interface TableInfo { id: string; stakes?: HEStakesId; seated: number; phase: string; watchers: number }
 
-const k = (n: number) => (n >= 1000 && n % 1000 === 0 ? `${n / 1000}K` : n.toLocaleString());
+const k = (n: number) => {
+  if (n >= 1_000_000 && n % 1_000_000 === 0) return `${n / 1_000_000}M`;
+  if (n >= 1000 && n % 1000 === 0) return `${n / 1000}K`;
+  return n.toLocaleString();
+};
 /** Lobby label for a tier, e.g. "High Stakes 5K · blinds 25/50 · buy-in 5K". */
 export const stakesLabel = (t: HEStakes) => `${t.label} · blinds ${t.small}/${t.big} · buy-in ${t.minBuyIn === t.maxBuyIn ? k(t.minBuyIn) : `${k(t.minBuyIn)}–${k(t.maxBuyIn)}`}`;
 
@@ -113,8 +118,9 @@ export function HoldemTableView({ name }: { name: string }) {
           {o.raise && (
             <>
               <input type="range" min={o.minRaiseTo} max={o.maxRaiseTo} step={heStakes(v?.stakes).small} value={raise} onChange={(e) => setRaise(Number(e.target.value))} aria-label="Raise to" />
+              <BetAmountInput value={raise} min={o.minRaiseTo} max={o.maxRaiseTo} onChange={setRaise} testId="he-custom-bet" label="Raise to" />
               <button type="button" className="bj-deal" onClick={() => void send('he_action', raise >= o.maxRaiseTo ? { action: 'allin' } : { action: 'raise', amount: raise })} data-testid="he-raise">
-                {raise >= o.maxRaiseTo ? `All-in ${o.maxRaiseTo}` : `${v!.currentBet ? 'Raise to' : 'Bet'} ${raise}`}
+                {raise >= o.maxRaiseTo ? `All-in ${o.maxRaiseTo.toLocaleString()}` : `${v!.currentBet ? 'Raise to' : 'Bet'} ${raise.toLocaleString()}`}
               </button>
             </>
           )}
@@ -133,7 +139,7 @@ export function HoldemTableView({ name }: { name: string }) {
                   </button>
                 ))}
               </div>
-              {cur.minBuyIn !== cur.maxBuyIn && <label className="bj-label">Buy-in <input type="number" min={cur.minBuyIn} max={cur.maxBuyIn} step={50} value={buyIn} onChange={(e) => setBuyIn(Number(e.target.value))} className="he-buyin" /></label>}
+              {cur.minBuyIn !== cur.maxBuyIn && <BetAmountInput value={buyIn} min={cur.minBuyIn} max={cur.maxBuyIn} onChange={setBuyIn} testId="he-buyin" label="Buy-in" />}
               <button type="button" className="bj-deal" onClick={() => void send('he_sit', { buyIn: cur.minBuyIn === cur.maxBuyIn ? cur.minBuyIn : buyIn, stakes: cur.id })} data-testid="he-sit">Sit down · {cur.label}</button>
             </>
           )}

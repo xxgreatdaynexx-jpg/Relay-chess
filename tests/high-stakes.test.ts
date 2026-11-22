@@ -50,7 +50,7 @@ describe('high-stakes tables', () => {
   });
 
   it('adds Billionaire Hold\'em 500K and 1M at the classic blind ratio', () => {
-    expect(HE_STAKES.map((t) => t.id)).toEqual(['classic', '5k', '10k', '25k', '100k', '500k', '1m']);
+    expect(HE_STAKES.map((t) => t.id)).toEqual(['classic', '5k', '10k', '25k', '100k', '500k', '1m', '10m']);
     const bank = new CasinoBank(); bank.account('Eli').chips = 2_000_000; bank.account('Fay').chips = 2_000_000;
     const room = new HoldemRoom(bank);
     const t = room.sit('Eli', 500_000, 0, '500k');

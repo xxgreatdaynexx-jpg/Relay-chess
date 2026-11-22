@@ -2,13 +2,15 @@ import { payCigaretteBonus } from './cigarettes.js';
 // Modern 5x3 video slots (Dragon Queen / Warzone / Gold Rush) on casino chips. Server decides; client only animates.
 import type { CasinoBank } from './casino-store.js';
 import { secureRand } from './video-poker.js';
-import { buyBonusPrice, isMachineId, playBuyBonus, playRound, VS_BETS, type MachineId, type RoundResult } from '../shared/video-slots.js';
+import { buyBonusPrice, isMachineId, playBuyBonus, playRound, VS_MAX_BET, VS_MIN_BET, type MachineId, type RoundResult } from '../shared/video-slots.js';
+import { validateCasinoBet } from '../shared/casino-bet.js';
 
 export interface VideoSpinResult { round: RoundResult; returned: number; net: number; chips: number; cost: number }
 
 function checkBet(machine: unknown, bet: number): asserts machine is MachineId {
   if (!isMachineId(machine)) throw new Error('Unknown machine.');
-  if (!(VS_BETS as readonly number[]).includes(bet)) throw new Error(`Bet one of ${VS_BETS.join(', ')} chips.`);
+  const v = validateCasinoBet(bet, { min: VS_MIN_BET, max: VS_MAX_BET });
+  if (!v.ok) throw new Error(v.error);
 }
 
 /**

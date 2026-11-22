@@ -39,9 +39,9 @@ describe('VideoPoker', () => {
   it('validates bets and balance', () => {
     const bank = new CasinoBank();
     const vp = new VideoPoker(bank);
-    expect(() => vp.deal('Bo', 0)).toThrow(/Bet/);
-    expect(() => vp.deal('Bo', 1.5)).toThrow(/Bet/);
-    expect(() => vp.deal('Bo', 501)).toThrow(/Bet/);
+    expect(() => vp.deal('Bo', 0)).toThrow(/Minimum bet is 1/);
+    expect(() => vp.deal('Bo', 1.5)).toThrow(/whole number/);
+    expect(() => vp.deal('Bo', 501)).toThrow(/Maximum bet is 500/);
     bank.debit('Bo', 999);
     expect(() => vp.deal('Bo', 5)).toThrow(/Not enough/);
   });

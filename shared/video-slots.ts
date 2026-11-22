@@ -1,3 +1,5 @@
+import { CASINO_MAX_BET } from './casino-bet.js';
+
 /**
  * Modern 5x3 video slots: one shared reel engine + payline evaluator, per-machine configs and feature hooks.
  * Pure + deterministic given `rand`, so the server decides every outcome (base game, free spins, bonuses,
@@ -9,7 +11,7 @@ export const VS_ROWS = 3;
 export const VS_LINES = 20;
 export const VS_BETS = [20, 40, 60, 100, 200] as const;
 export const VS_MIN_BET = 20;
-export const VS_MAX_BET = 200;
+export const VS_MAX_BET = CASINO_MAX_BET;
 
 /** 20 paylines, row index (0 top .. 2 bottom) per reel. */
 export const PAYLINES: number[][] = [
@@ -306,7 +308,7 @@ export function evaluateLines(cfg: MachineConfig, grid: Grid, bet: number): Line
     if (wildPay > 0 && (!best || wildPay > best.pay)) best = { sym: wildSym.id, count: wildRun, pay: wildPay };
     if (target === null && count >= 3 && !best && wildPay === 0) best = null;
     if (best) {
-      wins.push({ line, sym: best.sym, count: best.count, amount: best.pay * lineBet,
+      wins.push({ line, sym: best.sym, count: best.count, amount: Math.floor(best.pay * lineBet),
         cells: rows.slice(0, best.count).map((row, reel) => [reel, row] as [number, number]) });
     }
   });

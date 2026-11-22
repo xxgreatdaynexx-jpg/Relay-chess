@@ -2,7 +2,8 @@ import { useDoing } from '@/lib/doing';
 import { useTrip } from '@/lib/travel';
 import { TopTab } from '@/components/TopTabs';
 import { useEffect, useRef, useState } from 'react';
-import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
+import { BetAmountInput, NamePrompt, OutOfChips } from '@/components/CasinoCommon';
+import { formatChip } from '../../../shared/casino-bet';
 import { CigaretteBar } from '@/components/CigaretteBar';
 import { CoinArt, SlotSymbol } from '@/components/SlotArt';
 import { useWalletChips } from '@/lib/wallet';
@@ -10,7 +11,7 @@ import { emitCasino, useSavedName } from '@/lib/casino';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { playBallLand, playCardFlick, playRouletteSpin, playSolitaireWin } from '@/lib/sounds';
 import {
-  BUY_BONUS_LABEL, buyBonusPrice, MACHINE_IDS, RESORT_MACHINE_IDS, ALL_MACHINE_IDS, isResortMachine, MACHINES, PAYLINES, VS_BETS, VS_REELS, VS_ROWS,
+  BUY_BONUS_LABEL, buyBonusPrice, MACHINE_IDS, RESORT_MACHINE_IDS, ALL_MACHINE_IDS, isResortMachine, MACHINES, PAYLINES, VS_BETS, VS_MIN_BET, VS_MAX_BET, VS_REELS, VS_ROWS,
   type CoinValue, type Grid, type MachineId, type RoundResult, type SpinStep,
 } from '../../../shared/video-slots';
 
@@ -353,10 +354,11 @@ export function SlotsPanel() {
               </div>
               <div className="bj-status vs-msg" data-testid="sl-status">{msg}</div>
               <div className="bj-controls vs-controls">
-                {VS_BETS.map((b) => <button type="button" key={b} className={bet === b ? 'bj-chip-on' : ''} disabled={busy} onClick={() => setBet(b)}>{b}</button>)}
+                {VS_BETS.map((b) => <button type="button" key={b} className={bet === b ? 'bj-chip-on' : ''} disabled={busy} onClick={() => setBet(b)}>{formatChip(b)}</button>)}
+                <BetAmountInput value={bet} min={VS_MIN_BET} max={VS_MAX_BET} balance={chips ?? undefined} disabled={busy} onChange={setBet} testId="sl-custom-bet" />
                 {busy
                   ? <button type="button" className="bj-deal" onClick={() => { skip.current = true; }}>Skip</button>
-                  : <button type="button" className="bj-deal" onClick={() => void spin()} data-testid="sl-spin">Spin {bet}</button>}
+                  : <button type="button" className="bj-deal" onClick={() => void spin()} data-testid="sl-spin">Spin {bet.toLocaleString()}</button>}
                 {!busy && (
                   <button type="button" className="vs-buy" disabled={!canBuy} onClick={() => setConfirmBuy(true)} data-testid="vs-buy"
                     title={canBuy ? `Buy ${BUY_BONUS_LABEL[machine]} for ${buyPrice} chips` : `Need ${buyPrice} chips`}>

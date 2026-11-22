@@ -3,7 +3,8 @@ import { TopTab } from '@/components/TopTabs';
 import { TurnTimerBar } from './TurnTimerBar';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
+import { BetAmountInput, NamePrompt, OutOfChips } from '@/components/CasinoCommon';
+import { compactChipLabel, formatChip } from '../../../shared/casino-bet';
 import { CigaretteBar } from '@/components/CigaretteBar';
 import { betKey, CHIP_VALUES, payoutOdds, RED, WHEEL, type RouletteBet, type RouletteKind, type RouletteView } from '../../../shared/casino';
 import { RL_STAKES, rlStakes, type RlStakesId } from '../../../shared/highStakes';
@@ -185,8 +186,8 @@ export function RoulettePanel() {
     if (!t) return null;
     return (
       <>
-        {t.me > 0 && <span className="rl-chip rl-chip-me">{t.me >= 1000 ? `${Math.round(t.me / 100) / 10}k` : t.me}</span>}
-        {t.others > 0 && <span className="rl-chip rl-chip-other" title="Other players">{t.others >= 1000 ? `${Math.round(t.others / 100) / 10}k` : t.others}</span>}
+        {t.me > 0 && <span className="rl-chip rl-chip-me">{compactChipLabel(t.me)}</span>}
+        {t.others > 0 && <span className="rl-chip rl-chip-other" title="Other players">{compactChipLabel(t.others)}</span>}
       </>
     );
   };
@@ -266,8 +267,9 @@ export function RoulettePanel() {
                     ) : (
                       <>
                         <div className="flex flex-wrap gap-1">
-                          {(v?.chips ?? rlStakes(pick).chips).map((c) => <button type="button" key={c} className={chip === c ? 'bj-chip-on' : ''} onClick={() => setChip(c)}>{c}</button>)}
+                          {(v?.chips ?? rlStakes(pick).chips).map((c) => <button type="button" key={c} className={chip === c ? 'bj-chip-on' : ''} onClick={() => setChip(c)}>{formatChip(c)}</button>)}
                         </div>
+                        <BetAmountInput value={chip} min={1} max={Math.min(v?.maxChip ?? rlStakes(pick).maxChip, Math.max(1, (v?.maxSpin ?? rlStakes(pick).maxSpin) - (mine?.total ?? 0)))} balance={chips} onChange={setChip} testId="rl-custom-bet" label="Chip" />
                         <div className="flex gap-1">
                           <button type="button" disabled={!betting || !mine} onClick={() => void cmd('roulette_clear')}>Clear</button>
                           <button type="button" disabled={!betting} onClick={() => void cmd('roulette_rebet')}>Rebet</button>

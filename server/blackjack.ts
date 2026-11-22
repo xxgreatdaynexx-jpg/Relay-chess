@@ -2,6 +2,7 @@ import { payCigaretteBonus } from './cigarettes.js';
 /** Server-authoritative multiplayer blackjack (play money). 6-deck shoe, dealer stands on soft 17, blackjack pays 3:2. */
 import { handValue, isBlackjack, type BJHandView, type BJOutcome, type BJTableView, type CasinoCard, type Suit } from '../shared/casino.js';
 import { bjStakes, type BjStakes, type BjStakesId } from '../shared/highStakes.js';
+import { validateCasinoBet } from '../shared/casino-bet.js';
 import type { CasinoBank } from './casino-store.js';
 
 export const MAX_SEATS = 5;
@@ -134,7 +135,8 @@ export class BlackjackTable {
     const i = this.seatOf(name);
     if (i === null) throw new Error('Take a seat first.');
     const s = this.seats[i]!;
-    if (!Number.isInteger(amount) || amount < this.tier.min || amount > this.tier.max) throw new Error(`Bets are ${this.tier.min.toLocaleString()}–${this.tier.max.toLocaleString()}.`);
+    const v = validateCasinoBet(amount, { min: this.tier.min, max: this.tier.max });
+    if (!v.ok) throw new Error(v.error);
     // Changing the bet: refund old, take new.
     if (s.bet > 0) this.bank.refund(s.name, s.bet, 'blackjack');
     s.bet = 0;

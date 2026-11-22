@@ -4,7 +4,8 @@ import { TurnTimerBar } from './TurnTimerBar';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { CardFace } from '@/components/SolitairePanel';
-import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
+import { BetAmountInput, NamePrompt, OutOfChips } from '@/components/CasinoCommon';
+import { formatChip } from '../../../shared/casino-bet';
 import { CigaretteBar } from '@/components/CigaretteBar';
 import { BLACKJACK_BETS, handValue, type BJSeatView, type BJTableView } from '../../../shared/casino';
 import { BJ_STAKES, bjStakes, type BjStakesId } from '../../../shared/highStakes';
@@ -190,9 +191,10 @@ export function BlackjackPanel() {
                   ) : (
                     <>
                       <div className="flex flex-wrap gap-1">
-                        {(t?.bets ?? bjStakes(pick).bets).map((b) => <button type="button" key={b} className={bet === b ? 'bj-chip-on' : ''} disabled={b > chips} onClick={() => setBet(b)}>{b}</button>)}
+                        {(t?.bets ?? bjStakes(pick).bets).map((b) => <button type="button" key={b} className={bet === b ? 'bj-chip-on' : ''} disabled={b > chips} onClick={() => setBet(b)}>{formatChip(b)}</button>)}
                       </div>
-                      <button type="button" className="bj-deal" onClick={() => void send('bj_bet', { amount: Math.min(bet, chips) })} data-testid="bj-bet">Bet {Math.min(bet, chips)}</button>
+                      <BetAmountInput value={bet} min={t?.minBet ?? bjStakes(pick).min} max={t?.maxBet ?? bjStakes(pick).max} balance={chips} onChange={setBet} testId="bj-custom-bet" />
+                      <button type="button" className="bj-deal" onClick={() => void send('bj_bet', { amount: Math.min(bet, chips) })} data-testid="bj-bet">Bet {Math.min(bet, chips).toLocaleString()}</button>
                     </>
                   )
                 ) : (

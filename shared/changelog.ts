@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-22T13:10:00-06:00", "title": "Casino max bet is 10 million, and you can type any amount", "bullets": [
+    "You can now bet up to 10,000,000 chips on the slots (city and resort), whale blackjack, high-limit roulette and high-stakes Jacks or Better. Hold'em has a new 10 million buy-in table. House odds and payout rates are unchanged.",
+    "Next to the usual bet chips, you can type a custom amount. Commas are fine. The bet is kept between that game's minimum, the 10 million maximum, and your chip balance, with a clear message if it has to be adjusted.",
+    "Classic table limits are unchanged: blackjack 5,000, roulette 10,000 per chip and 20,000 per spin, and video poker 500.",
+  ]},
   {"commit": "", "at": "2026-11-22T13:02:00-06:00", "title": "Building quotes now match what you actually pay", "bullets": [
     "The Data Center, Bitcoin Farm, monument, mansion, highrise and Power Plant were quoting their base catalog total, before today's price index. The Bitcoin Farm said 1,317,280 when paying in chips actually costs about 2.3 million at today's index. The quote now uses the same index as the charge, with a chips and materials breakdown.",
     "Hyper farm glasshouse and offshore rig quotes had the same miss on chip amounts, and the rig also showed material prices before the index. Those now match the charge too. Warehouse stock is still used first. Actual prices and what you are charged are unchanged.",

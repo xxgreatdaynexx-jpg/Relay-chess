@@ -1,7 +1,8 @@
 import { useDoing } from '@/lib/doing';
 import { TopTab } from '@/components/TopTabs';
 import { useEffect, useRef, useState } from 'react';
-import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
+import { BetAmountInput, NamePrompt, OutOfChips } from '@/components/CasinoCommon';
+import { formatChip } from '../../../shared/casino-bet';
 import { CigaretteBar } from '@/components/CigaretteBar';
 import { CardFace } from '@/components/SolitairePanel';
 import { useWalletChips } from '@/lib/wallet';
@@ -87,14 +88,15 @@ export function PokerPanel() {
                 {!v?.cards.length && <div className="bj-label">Five cards, one draw. Pair of jacks or better wins.</div>}
               </div>
               <div className="bj-controls">
-                {!dealt && vpStakes(vpPick).bets.map((b) => <button type="button" key={b} className={bet === b ? 'bj-chip-on' : ''} onClick={() => setBet(b)}>{b}</button>)}
+                {!dealt && vpStakes(vpPick).bets.map((b) => <button type="button" key={b} className={bet === b ? 'bj-chip-on' : ''} onClick={() => setBet(b)}>{formatChip(b)}</button>)}
+                {!dealt && <BetAmountInput value={bet} min={vpStakes(vpPick).min} max={vpStakes(vpPick).max} balance={wallet ?? v?.chips ?? undefined} disabled={busy} onChange={setBet} testId="vp-custom-bet" />}
                 {dealt
                   ? <button type="button" className="bj-deal" disabled={busy} onClick={() => void act('vp_draw', { hold })} data-testid="vp-draw">Draw</button>
-                  : <button type="button" className="bj-deal" disabled={busy} onClick={() => void act('vp_deal', { bet, stakes: vpPick })} data-testid="vp-deal">Deal {bet}</button>}
+                  : <button type="button" className="bj-deal" disabled={busy} onClick={() => void act('vp_deal', { bet, stakes: vpPick })} data-testid="vp-deal">Deal {bet.toLocaleString()}</button>}
               </div>
               <div className="bj-label">Chips: {(wallet ?? v?.chips)?.toLocaleString() ?? '…'} {err && <span className="account-error">· {err}</span>}</div>
               <CigaretteBar open={open && tab === 'play'} />
-              {v && v.chips < 5 && !dealt && <OutOfChips />}
+              {v && v.chips < vpStakes(vpPick).min && !dealt && <OutOfChips />}
               <table className="vp-pays">
                 <tbody>{PAY_ROWS.map((h) => <tr key={h} className={v?.result?.hand === h ? 'on' : ''}><td>{POKER_LABELS[h]}</td><td>{POKER_PAYS[h]}×</td></tr>)}</tbody>
               </table>
