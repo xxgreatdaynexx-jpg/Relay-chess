@@ -130,7 +130,7 @@ describe('data center and power plant menus', () => {
     expect(gear.textContent).toMatch(/4 /);
     expect(gear.textContent).toContain('3,315');
     const install = host.querySelector('[data-testid="estate-gear-install"]') as HTMLButtonElement;
-    expect(install.textContent).toBe('Install one');
+    expect(install.textContent).toBe('Install one · 🪙 120,000');
     await act(async () => { fireEvent.click(install); });
     expect(req).toHaveBeenCalledWith('estate_gear', { lotId: 'lot:estate:3', qty: 1 });
   });

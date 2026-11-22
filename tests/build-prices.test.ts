@@ -92,7 +92,8 @@ describe('displayed construction totals equal the server charge', () => {
         expect(shown).toBe(estateProjectCost(ESTATE_BUILDS[id], index).total);
         const view = await e.view('Ann');
         const listed = view.builds.find((b: { id: string }) => b.id === id);
-        expect(listed.total).toBe(shown);
+        expect(listed).toBeDefined();
+        expect(listed!.total).toBe(shown);
         const before = chipsOf('Ann');
         const stages = estateStages(ESTATE_BUILDS[id]);
         for (const st of stages) {
