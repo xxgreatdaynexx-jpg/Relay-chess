@@ -8,10 +8,10 @@
  * and skips parked cars.
  */
 import * as THREE from 'three';
-import { routePoint, LANE, type OBB } from './worldLayout';
+import { routePoint, LANE, PLATE, type OBB } from './worldLayout';
 import {
   WEST_GROUND, WEST_ROADS, WEST_JUNCTIONS, WEST_CUL_ENDS, WEST_CUL_R, WEST_CAR_ROUTES, WEST_CAR_COUNT, WEST_LABELS, WEST_WAREHOUSES,
-  WESTGATE_PARK, WESTGATE_SQUARE, WEST_STADIUM, WEST_PORT, WEST_MARINA, WEST_LIGHTHOUSE, WIND_TURBINES, WEST, westFill, westRoadClearance, westDistrict, toLocal, onWest,
+  WESTGATE_PARK, WESTGATE_SQUARE, WEST_STADIUM, WEST_PORT, WEST_MARINA, WEST_LIGHTHOUSE, WIND_TURBINES, WIND_X, WEST_COLS, WEST_ROWS, WEST_INDUSTRIAL_X, WEST, westTown, westFill, westRoadClearance, westDistrict, toLocal, onWest,
 } from '../../../shared/westCity';
 import { OCEAN, coastZ } from '../../../shared/ocean';
 import { inBridgeSite } from '../../../shared/coop';
@@ -80,8 +80,7 @@ export function addWestCity(c: WestCityCtx) {
   { const G = WEST_GROUND; const w = G.x1 - G.x0, d = G.z1 - G.z0; const dirt = mat({ color: 0x4a3322 });
     const g = new THREE.Mesh(geo(new THREE.BoxGeometry(w, 3, d)), [dirt, dirt, c.groundTop(w, d, G.x0, G.z1), dirt, dirt, dirt]); g.position.set((G.x0 + G.x1) / 2, -1.53, (G.z0 + G.z1) / 2); scene.add(g); }
 
-  /* ---- roads: sidewalks (Westgate), asphalt ribbons + caps, centre dashes ---- */
-  const inGate = (x: number, z: number) => westDistrict(x, z) !== 'suburb';
+  /* ---- roads: asphalt ribbons + caps and centre dashes, painted exactly like the old city's (no sidewalks or crossings there) ---- */
   const ribbon = (pos: number[], idx: number[], pts: P[], w: number, y: number, keep?: (x: number, z: number) => boolean) => {
     const base = pos.length / 3; let prev = false;
     for (let i = 0; i < pts.length; i++) { const a0 = pts[Math.max(0, i - 1)], a1 = pts[Math.min(pts.length - 1, i + 1)]; const ang = Math.atan2(a1[1] - a0[1], a1[0] - a0[0]); const nx = -Math.sin(ang) * w / 2, nz = Math.cos(ang) * w / 2;
@@ -92,10 +91,6 @@ export function addWestCity(c: WestCityCtx) {
   const meshOf = (pos: number[], idx: number[]) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return geo(g); };
   const pts = (r: { closed: boolean; pts: P[] }): P[] => (r.closed ? [...r.pts, r.pts[0], r.pts[1]] : r.pts);
   { const pos: number[] = []; const idx: number[] = [];
-    for (const r of WEST_ROADS) if (r.kind !== 'lane') ribbon(pos, idx, pts(r), r.width + 3, roadY - 0.035, inGate);
-    for (const j of WEST_JUNCTIONS) if (inGate(j.x, j.z)) disc(pos, idx, j.x, j.z, j.r + 1.5, roadY - 0.035);
-    const side = new THREE.Mesh(meshOf(pos, idx), mat({ color: xm ? 0xc9d0dc : 0x8d8c92, roughness: 0.95, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -0.5, polygonOffsetUnits: -1 })); side.renderOrder = 1; scene.add(side); }
-  { const pos: number[] = []; const idx: number[] = [];
     for (const r of WEST_ROADS) ribbon(pos, idx, pts(r), r.width, roadY);
     for (const j of WEST_JUNCTIONS) disc(pos, idx, j.x, j.z, j.r, roadY);
     for (const [x, z] of WEST_CUL_ENDS) disc(pos, idx, x, z, WEST_CUL_R, roadY);
@@ -104,13 +99,7 @@ export function addWestCity(c: WestCityCtx) {
     for (const r of WEST_ROADS) { if (r.kind === 'street' || r.kind === 'lane') continue; const p = r.pts; for (let i = 1; i < p.length - 1; i += 3) if (!inJ(p[i][0], p[i][1])) spots.push([p[i][0], p[i][1], Math.atan2(p[i + 1][1] - p[i - 1][1], p[i + 1][0] - p[i - 1][0])]); }
     const dg = geo(new THREE.BoxGeometry(1.2, 0.02, 0.18)); const dm = new THREE.InstancedMesh(dg, c.dashMat, spots.length);
     spots.forEach(([x, z, a], i) => { dummy.position.set(x, roadY + 0.03, z); dummy.rotation.set(0, -a, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix(); dm.setMatrixAt(i, dummy.matrix); }); dm.renderOrder = 2; scene.add(dm);
-    // zebra crossings on the Westgate junction approaches
-    const zebra: Array<[number, number, number]> = [];
-    for (const r of WEST_ROADS) { if (r.closed) continue; const p = r.pts; if (p.length < 12) continue;
-      for (const [i0, i1] of [[0, 6], [p.length - 1, p.length - 7]] as const) { const [x, z] = p[i0]; if (!inGate(x, z) || westDistrict(x, z) !== 'downtown') continue; const ang = Math.atan2(p[i1][1] - z, p[i1][0] - x); const j = WEST_JUNCTIONS.find((q) => Math.hypot(q.x - x, q.z - z) < 1); if (!j) continue;
-        const cx = x + Math.cos(ang) * (j.r + 1.3), cz = z + Math.sin(ang) * (j.r + 1.3); for (let k = -2; k <= 2; k++) zebra.push([cx - Math.sin(ang) * k * 0.9, cz + Math.cos(ang) * k * 0.9, ang]); } }
-    const zm = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(2, 0.02, 0.45)), mat({ color: 0xe8e8e8, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }), zebra.length);
-    zebra.forEach(([x, z, a], i) => { dummy.position.set(x, roadY + 0.03, z); dummy.rotation.set(0, -a, 0); dummy.updateMatrix(); zm.setMatrixAt(i, dummy.matrix); }); zm.renderOrder = 2; scene.add(zm); }
+  }
 
   /* ---- occupancy grid (houses, patches, warehouses, landmarks) for props ---- */
   const solids: OBB[] = [...houses, ...patches, ...WEST_WAREHOUSES, WESTGATE_SQUARE, WEST_STADIUM, WESTGATE_PARK];
@@ -120,32 +109,28 @@ export function addWestCity(c: WestCityCtx) {
   const blocked = (x: number, z: number, m: number) => { for (const o of sgrid.get(`${Math.floor(x / SG)},${Math.floor(z / SG)}`) ?? []) if (hitObb(o, x, z, m)) return true; return false; };
   const placeable = (x: number, z: number, m: number, road = 1.2) => onWest(x, z, 2) && westRoadClearance(x, z) > m + road && !blocked(x, z, m);
 
-  /* ---- trees: park, street trees, yards, woods ---- */
-  const trees: Array<[number, number, number, number]> = []; // x, z, scale, crown colour
-  const leafCols = xm ? [0xdfe8ef, 0xcfdbe4] : [0x2f8a3a, 0x3c9a3e, 0x2a7a3a, 0x4a9a3a];
-  const tree = (x: number, z: number, s: number) => trees.push([x, z, s, leafCols[Math.floor(hash2(Math.round(x * 3), Math.round(z * 5)) * leafCols.length)]]);
-  for (const b of patches) if (b.kind === 'park') for (let i = 0; i < 7; i++) { const [x, z] = at(b, (rand() - 0.5) * (b.w - 2), (rand() - 0.5) * (b.d - 2)); tree(x, z, 0.8 + rand() * 0.7); }
-  for (const r of WEST_ROADS) { if (!(r.kind === 'ring' || r.kind === 'boulevard' || r.id === 'w-bay1' || r.id === 'w-coast')) continue; const p = r.pts; const off = r.width / 2 + 2.1; const step = low ? 14 : 8;
-    for (let i = 3; i < p.length - 3; i += step) { const a = Math.atan2(p[i + 1][1] - p[i - 1][1], p[i + 1][0] - p[i - 1][0]); for (const sd of [1, -1]) { const x = p[i][0] - Math.sin(a) * off * sd, z = p[i][1] + Math.cos(a) * off * sd; if (placeable(x, z, 0.8, 0.9)) tree(x, z, 0.75 + rand() * 0.3); } } }
-  for (const h of houses) { if (h.type !== 'house' || rand() < (low ? 0.6 : 0.2)) continue; const [x, z] = at(h, (rand() - 0.5) * h.w * 2.2, -h.d / 2 - 2.6 - rand() * 2); if (placeable(x, z, 1)) tree(x, z, 0.8 + rand() * 0.5); }
-  { const STEP = low ? 7.5 : 5;
-    for (let gx = WEST.x0 + 4; gx < WEST.x1 - 4; gx += STEP) for (let gz = WEST.z0 + 4; gz < WEST.z1 - 4; gz += STEP) {
-      const x = gx + (hash2(Math.round(gx), Math.round(gz)) - 0.5) * STEP * 0.8, z = gz + (hash2(Math.round(gz * 3), Math.round(gx * 7)) - 0.5) * STEP * 0.8;
-      const n = hash2(Math.floor(x / 37), Math.floor(z / 37)) * 0.6 + hash2(Math.floor(x / 13) + 7, Math.floor(z / 13) - 3) * 0.4; // patchy stands
-      if (westDistrict(x, z) !== 'suburb' || x > -470 && z > 120) continue;
-      const rc = westRoadClearance(x, z, 24); if (rc < 6) continue; // leave verges and yards open
-      if (n < (rc > 14 ? 0.42 : 0.62)) continue;
-      if (blocked(x, z, 3) || Math.abs(x - WIND_TURBINES[0][0]) < 10) continue;
-      tree(x, z, 0.8 + hash2(Math.round(x * 7), Math.round(z * 11)) * 0.6);
-    } }
-  { const tr = new THREE.InstancedMesh(c.tree.trunkGeo, c.tree.trunkMat, trees.length); const cr = new THREE.InstancedMesh(c.tree.crownGeo, M.leaf, trees.length); const cc = new THREE.Color();
-    trees.forEach(([x, z, s, col], i) => { dummy.rotation.set(0, 0, 0); dummy.position.set(x, 0.7 * s, z); dummy.scale.set(s, 1.4 * s, s); dummy.updateMatrix(); tr.setMatrixAt(i, dummy.matrix);
-      dummy.position.set(x, 2.1 * s, z); dummy.scale.set(s * 1.1, s * 1.3, s * 1.1); dummy.rotation.set(0, i, 0); dummy.updateMatrix(); cr.setMatrixAt(i, dummy.matrix); cr.setColorAt(i, cc.setHex(col)); });
+  /* ---- trees: the old city's planting, same tree and crown colour (world3d.ts): 9 per park, a loose scatter over the
+     town at the old plate's density with its clearances, palms along the beach, and the countryside is shared/westScenery.ts ---- */
+  const trees: Array<[number, number, number]> = []; // x, z, scale (< 0 = palm)
+  const tree = (x: number, z: number, s: number) => trees.push([x, z, s]);
+  for (const b of patches) if (b.kind === 'park') for (let i = 0; i < 9; i++) { const [x, z] = at(b, (rand() - 0.5) * (b.w - 2), (rand() - 0.5) * (b.d - 2)); tree(x, z, 0.8 + rand() * 0.7); }
+  const town = { x0: WEST_COLS[0] - 24, x1: WEST_INDUSTRIAL_X, z0: WEST_ROWS[0] - 30, z1: WEST.z1 };
+  const inTown = westTown;
+  const nearWorks = (x: number, z: number, m: number) => [WEST_PORT, WEST_MARINA].some((o) => hitObb(o, x, z, m)) || Math.abs(x - WIND_X) < 8;
+  { const OLD = (PLATE * 2 * 0.96) ** 2; const tries = Math.round(700 * ((town.x1 - town.x0) * (town.z1 - town.z0)) / OLD); // 700 tries over the old plate
+    for (let i = 0; i < tries; i++) { const x = town.x0 + rand() * (town.x1 - town.x0), z = town.z0 + rand() * (town.z1 - town.z0);
+      if (!inTown(x, z) || !onWest(x, z, 1) || westRoadClearance(x, z) < 1.4 || blocked(x, z, 1) || nearWorks(x, z, 2)) continue; tree(x, z, 0.7 + rand() * 0.6); } }
+  for (let x = WEST.x0 + 3; x < WEST.x1 - 2; x += 4.4) { const z = WEST.z1 - 1.4; if (westRoadClearance(x, z) > 1.4 && !blocked(x, z, 0.8) && !nearWorks(x, z, 3)) tree(x, z, -1); }
+  // (the countryside strips and wooded blocks are planted by shared/westScenery.ts, drawn with the old open land's trees)
+  { const tr = new THREE.InstancedMesh(c.tree.trunkGeo, c.tree.trunkMat, trees.length); const cr = new THREE.InstancedMesh(c.tree.crownGeo, c.tree.crownMat, trees.length);
+    trees.forEach(([x, z, s], i) => { const palm = s < 0; const sc = palm ? 1 : s; const th = palm ? 3.6 : 1.4 * sc; // world3d.ts city trees
+      dummy.position.set(x, th / 2, z); dummy.scale.set(sc, th, sc); dummy.rotation.set(0, 0, palm ? 0.08 : 0); dummy.updateMatrix(); tr.setMatrixAt(i, dummy.matrix);
+      dummy.position.set(x, th + (palm ? 0.2 : 0.7 * sc), z); dummy.scale.set(palm ? 1.6 : sc * 1.1, palm ? 0.45 : sc * 1.3, palm ? 1.6 : sc * 1.1); dummy.rotation.set(0, i, 0); dummy.updateMatrix(); cr.setMatrixAt(i, dummy.matrix); });
     tr.userData.noShadow = cr.userData.noShadow = low; scene.add(tr, cr); }
 
   /* ---- streetlights (pole + glow) ---- */
-  { const lp: number[] = []; const step = low ? 22 : 12;
-    for (const r of WEST_ROADS) { if (r.kind === 'lane') continue; const p = r.pts; const off = r.width / 2 + (inGate(p[0][0], p[0][1]) ? 1.1 : 0.8);
+  { const lp: number[] = []; const step = 11; // the old city's spacing and offset
+    for (const r of WEST_ROADS) { if (r.kind === 'lane') continue; const p = r.pts; const off = r.width / 2 + 0.8;
       for (let i = 4, k = 0; i < p.length - 1; i += step, k++) { const a = Math.atan2(p[i + 1][1] - p[i - 1][1], p[i + 1][0] - p[i - 1][0]); const sd = k % 2 ? 1 : -1; const x = p[i][0] - Math.sin(a) * off * sd, z = p[i][1] + Math.cos(a) * off * sd;
         if (westRoadClearance(x, z) > 0.3 && !blocked(x, z, 0.3) && !inBridgeSite(x, z, 1)) lp.push(x, 0, z); } } // the Fort McChud Bridge approach stays clear
     const n = lp.length / 3; const pole = new THREE.InstancedMesh(c.pole.geo, c.pole.mat, n);
@@ -154,22 +139,16 @@ export function addWestCity(c: WestCityCtx) {
     const lg = geo(new THREE.BufferGeometry()); lg.setAttribute('position', new THREE.Float32BufferAttribute(lp.map((v, i) => (i % 3 === 1 ? 2.5 : v)), 3));
     const lm = new THREE.PointsMaterial({ map: c.glowTex, color: 0xffd27a, size: 2.2, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }); disposables.push(lm); scene.add(new THREE.Points(lg, lm)); }
 
-  /* ---- parked cars along Westgate and Sunset Bay streets ---- */
-  const carCols = [0xe63946, 0xf1faee, 0x1d9bf0, 0xffb703, 0x8338ec, 0x2a9d8f, 0x30343c, 0xb0b4bc];
-  if (!low) for (const r of WEST_ROADS) { if (r.kind !== 'street') continue; const p = r.pts;
-    for (let i = 6; i < p.length - 6; i += 7) { if (hash2(i, r.pts.length) < 0.45) continue; const a = Math.atan2(p[i + 1][1] - p[i - 1][1], p[i + 1][0] - p[i - 1][0]); const sd = hash2(i * 3, 7) < 0.5 ? 1 : -1; const off = r.width / 2 - 0.55;
-      const x = p[i][0] - Math.sin(a) * off * sd, z = p[i][1] + Math.cos(a) * off * sd; if (WEST_JUNCTIONS.some((j) => Math.abs(j.x - x) < 10 && Math.abs(j.z - z) < 10 && Math.hypot(j.x - x, j.z - z) < j.r + 3)) continue;
-      const col = carCols[Math.floor(hash2(i, Math.round(x)) * carCols.length)]; block(M.metal, x, 0.15, z, 1.6, 0.55, 0.85, -a, col); block(M.glass, x - Math.cos(a) * 0.1, 0.68, z - Math.sin(a) * 0.1, 0.9, 0.38, 0.78, -a); } }
-
   /* ---- Westgate Square + the Westgate Spire ---- */
   { const S = WESTGATE_SQUARE; block(M.concrete, S.x, 0, S.z, S.w, 0.14, S.d, S.rot, 0xb8b2a6);
     for (const [lx, lz] of [[-8, -8], [8, -8], [-8, 8], [8, 8]] as const) { const [x, z] = at(S, lx, lz); piece('cyl', M.concrete, x, 0.35, z, 3.2, 0.5, 3.2, 0, 0x9a948a); piece('sphere', M.leaf, x, 1.6, z, 2.6, 2.2, 2.6, 0, xm ? 0xe6edf8 : 0x3c9a3e); }
     const x = S.x, z = S.z; piece('cyl', M.concrete, x, 0.5, z, 9, 1, 9, 0, 0xa8a29a); piece('cyl', M.glass, x, 0.75, z, 7.6, 0.4, 7.6, 0, 0x4aa8ff);
-    piece('taper', M.concrete, x, 1 + 6, z, 6, 12, 6, 0, 0xd8d4cc);
-    piece('taper', M.concrete, x, 13 + 18, z, 4.4, 36, 4.4, 0, 0xe4e0d8);
-    piece('cyl', M.neon, x, 49.2, z, 5.2, 0.4, 5.2, 0, 0x7fd0ff);
-    piece('cyl', M.glass, x, 52, z, 10, 5, 10, 0, 0x9fd8ff); piece('cyl', M.paint, x, 55, z, 11, 1, 11, 0, 0x30343c); piece('cyl', M.neon, x, 50, z, 10.4, 0.5, 10.4, 0, 0xffd27a);
-    piece('taper', M.metal, x, 58 + 3, z, 3, 6, 3, 0, 0xb8bcc4); piece('cone', M.metal, x, 64 + 7, z, 1.2, 14, 1.2, 0, 0xc8ccd4); piece('sphere', M.neon, x, 78.4, z, 0.9, 0.9, 0.9, 0, 0xff3030); }
+    // about the old Sky Tower's height (28), so the spire reads as part of the same skyline
+    piece('taper', M.concrete, x, 1 + 3, z, 5, 6, 5, 0, 0xd8d4cc);
+    piece('taper', M.concrete, x, 7 + 7, z, 3.2, 14, 3.2, 0, 0xe4e0d8);
+    piece('cyl', M.neon, x, 21.2, z, 4, 0.3, 4, 0, 0x7fd0ff);
+    piece('cyl', M.glass, x, 23, z, 7, 3, 7, 0, 0x9fd8ff); piece('cyl', M.paint, x, 24.8, z, 7.6, 0.6, 7.6, 0, 0x30343c); piece('cyl', M.neon, x, 21.7, z, 7.2, 0.35, 7.2, 0, 0xffd27a);
+    piece('taper', M.metal, x, 25.1 + 1.2, z, 2, 2.4, 2, 0, 0xb8bcc4); piece('cone', M.metal, x, 27.5 + 2.75, z, 0.9, 5.5, 0.9, 0, 0xc8ccd4); piece('sphere', M.neon, x, 33.4, z, 0.7, 0.7, 0.7, 0, 0xff3030); }
 
   /* ---- Westgate Park: lawn, pond, paths, gazebo, benches, trees ---- */
   { const Pk = WESTGATE_PARK; block(M.concrete, Pk.x, 0, Pk.z, Pk.w, 0.06, Pk.d, Pk.rot, xm ? 0xe6edf8 : 0x2e7a36);
@@ -178,7 +157,7 @@ export function addWestCity(c: WestCityCtx) {
     const sh = new THREE.Shape(); outline.forEach(([x, z], i) => (i ? sh.lineTo(x, z) : sh.moveTo(x, z))); sh.closePath(); const wg = new THREE.ShapeGeometry(sh, 2); wg.rotateX(Math.PI / 2);
     const water = new THREE.Mesh(geo(wg), c.makeWater(outline)); water.position.y = 0.1; water.renderOrder = 1; scene.add(water);
     { const [x, z] = at(Pk, 30, -8); piece('cyl6', M.paint, x, 0.25, z, 8, 0.5, 8, 0, 0xe8e0d0); for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; piece('cyl', M.paint, x + Math.cos(a) * 3.4, 1.9, z + Math.sin(a) * 3.4, 0.3, 2.8, 0.3, 0, 0xf2f2f2); } piece('cone', M.paint, x, 4.1, z, 9, 1.8, 9, 0, 0x6a2e2a); }
-    for (let k = 0; k < 14; k++) { const lx = -48 + k * 7.4, lz = k % 2 ? 2.2 : -2.2; const [x, z] = at(Pk, lx, lz); if (Math.abs(lx) < 3) continue; block(M.paint, x, 0.3, z, 1.6, 0.12, 0.5, Pk.rot, 0x6b4a2b); block(M.paint, x, 0.1, z, 0.2, 0.25, 0.5, Pk.rot, 0x30343c); }
+    for (let k = 0; k < 14; k++) { const lx = -40 + k * 6.2, lz = k % 2 ? 2.2 : -2.2; const [x, z] = at(Pk, lx, lz); if (Math.abs(lx) < 3) continue; block(M.paint, x, 0.3, z, 1.6, 0.12, 0.5, Pk.rot, 0x6b4a2b); block(M.paint, x, 0.1, z, 0.2, 0.25, 0.5, Pk.rot, 0x30343c); }
     for (let k = 0; k < (low ? 60 : 130); k++) { const lx = (rand() - 0.5) * (Pk.w - 6), lz = (rand() - 0.5) * (Pk.d - 6); if (Math.abs(lx) < 3 || Math.abs(lz) < 3) continue; if (Math.hypot((lx + 26) / 21, (lz - 6) / 13) < 1) continue; if (Math.hypot(lx - 30, lz + 8) < 7) continue; const [x, z] = at(Pk, lx, lz); tree(x, z, 0.7 + rand() * 0.8); } }
 
   /* ---- West Chud Stadium ---- */
@@ -234,10 +213,6 @@ export function addWestCity(c: WestCityCtx) {
     for (let i = 40; i < p.length - 20; i += low ? 220 : 110) { const a = Math.atan2(p[i + 1][1] - p[i - 1][1], p[i + 1][0] - p[i - 1][0]); const off = r.width / 2 + 1.6; const x = p[i][0] - Math.sin(a) * off, z = p[i][1] + Math.cos(a) * off; if (blocked(x, z, 1.4)) continue;
       block(M.glass, x, 0, z, 3, 2.2, 0.12, -a); block(M.paint, x, 2.2, z, 3.4, 0.15, 1.4, -a, 0x2a5aa8); block(M.paint, x, 0.45, z, 2.4, 0.1, 0.5, -a, 0x6b4a2b); } }
 
-  /* ---- rooftop beacons on the tallest Westgate towers ---- */
-  for (const h of houses) if (h.type === 'tower' && h.h >= 19) { piece('cyl', M.metal, h.x, h.h + 1.4, h.z, 0.12, 2.8, 0.12, 0, 0xb0b4bc); piece('sphere', M.neon, h.x, h.h + 2.9, h.z, 0.45, 0.45, 0.45, 0, 0xff3030);
-    if (h.h >= 24) block(M.neon, h.x, h.h, h.z, h.w + 0.12, 0.35, h.d + 0.12, h.rot, [0x7fd0ff, 0xffd27a, 0xc8a8ff][Math.round(h.x) & 1 ? 0 : (Math.round(h.z) & 1) + 1]); }
-
   /* ---- gateway arches where the link roads enter West Chud ---- */
   const labels: THREE.Texture[] = [];
   const sprite = (text: string, color: string, x: number, y: number, z: number, w: number) => { const t = c.label(text, color); labels.push(t); const img = t.image as { width: number; height: number } | undefined; const k = img ? img.height / img.width : 0.25;
@@ -248,7 +223,7 @@ export function addWestCity(c: WestCityCtx) {
     block(M.paint, x, 7, z, 1, 1.4, hw * 2 + 2.4, -a, 0x1f2a3a); block(M.neon, x, 8.4, z, 1.1, 0.25, hw * 2 + 2.4, -a, 0xffd27a);
     sprite('Welcome to West Chud', '#ffd27a', x, 12, z, 22); }
   for (const L of WEST_LABELS) sprite(L.text, L.color, L.x, 34, L.z, 44);
-  sprite('Westgate Spire', '#7fd0ff', WESTGATE_SQUARE.x, 86, WESTGATE_SQUARE.z, 22);
+  sprite('Westgate Spire', '#7fd0ff', WESTGATE_SQUARE.x, 38, WESTGATE_SQUARE.z, 22);
   sprite('West Chud Stadium', '#9be37a', WEST_STADIUM.x, 26, WEST_STADIUM.z, 26);
   sprite('Westgate Park', '#9be37a', WESTGATE_PARK.x, 16, WESTGATE_PARK.z, 22);
   sprite('Sunset Marina', '#7fe0ff', WEST_MARINA.x, 18, WEST_MARINA.z, 22);
@@ -264,6 +239,7 @@ export function addWestCity(c: WestCityCtx) {
   /* ---- traffic ---- */
   const NC = low ? Math.round(WEST_CAR_COUNT / 2) : WEST_CAR_COUNT;
   const body = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1.6, 0.6, 0.9)), mat({ color: 0xffffff, roughness: 0.4, metalness: 0.4 }), NC);
+  const carCols = [0xe63946, 0xf1faee, 0x1d9bf0, 0xffb703, 0x8338ec, 0x2a9d8f, 0x30343c, 0xb0b4bc];
   for (let i = 0; i < NC; i++) body.setColorAt(i, new THREE.Color(carCols[i % carCols.length]));
   const headG = geo(new THREE.BufferGeometry()); headG.setAttribute('position', new THREE.Float32BufferAttribute(new Array(NC * 6).fill(0), 3));
   const headM = new THREE.PointsMaterial({ map: c.glowTex, color: 0xfff2c0, size: 1.3, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }); disposables.push(headM);
