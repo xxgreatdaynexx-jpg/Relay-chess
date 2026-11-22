@@ -12,6 +12,7 @@ import { asLabel, cityLabel, fitLabel, LABEL_LAYER, labelMaterial, renderScene }
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { buildBoat, buildJet, disposeTree } from './fleetModels';
 import { FLEET_BY_ID } from '../../../shared/fleet';
+import { ISLAND_HELI, ISLAND_HUNT, ISLAND_SNORKEL, TOUR_PATH, treasureSpots } from '../../../shared/islandActivities';
 import {
   ISLAND_BEACH_R, ISLAND_CENTER, ISLAND_DOCK, ISLAND_GRASS_R, ISLAND_LAGOON, ISLAND_LAND_R, ISLAND_LOTS, ISLAND_LOUNGE, ISLAND_PLACES,
   clampIslandTarget, type IslandLot,
@@ -24,8 +25,14 @@ export interface IslandWorld {
   reset(): void;
   setOwners(owners: Map<string, string>, me: string | null): void;
   setRunning(v: boolean): void;
+  /** Treasure Hunt: which X marks were dug today, and the one that held the chest. */
+  setHunt(dug: number[], found: number | null): void;
+  /** Fly the helicopter sightseeing loop (camera rides along); resolves when it lands. */
+  tour(ms: number): Promise<void>;
   dispose(): void;
 }
+/** Pick id for a Treasure Hunt X mark. */
+export const huntSpotId = (n: number) => `${ISLAND_HUNT.id}:${n}`;
 type Handlers = { onHover: (id: string, x: number, y: number) => void; onPick: (id: string) => void };
 
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
@@ -194,12 +201,14 @@ export function createIsland(canvas: HTMLCanvasElement, h: Handlers): IslandWorl
   };
 
   const pickables: THREE.Object3D[] = [];
+  const HUNT_XS = treasureSpots();
   const pickable = (g: THREE.Object3D, id: string) => { g.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.userData.spot = id; pickables.push(o); } }); };
 
   // ---- Palms (instanced, curved trunks + fronds) and jungle canopy.
   const palmSpots: Array<[number, number, number]> = []; // x, z, height scale
   const busy = (x: number, z: number, pad = 2.2) => nearPath(x, z, pad) || PADS.some((p) => Math.hypot(x - p.x, z - p.z) < p.r + 1) || Math.hypot(x - PLAZA.x, z - PLAZA.z) < PLAZA.r + 2
-    || Math.hypot(x - ISLAND_DOCK.x, z - ISLAND_DOCK.z) < 10 || Math.hypot(x - ISLAND_LOUNGE.x, z - ISLAND_LOUNGE.z) < 9 || Math.hypot(x - ISLAND_LAGOON.x, z - ISLAND_LAGOON.z) < 9 || Math.hypot(x - 18, z - 12) < 9;
+    || Math.hypot(x - ISLAND_DOCK.x, z - ISLAND_DOCK.z) < 10 || Math.hypot(x - ISLAND_LOUNGE.x, z - ISLAND_LOUNGE.z) < 9 || Math.hypot(x - ISLAND_LAGOON.x, z - ISLAND_LAGOON.z) < 9 || Math.hypot(x - 18, z - 12) < 9
+    || Math.hypot(x - ISLAND_HELI.x, z - ISLAND_HELI.z) < 9 || Math.hypot(x - ISLAND_HUNT.x, z - ISLAND_HUNT.z) < 5 || HUNT_XS.some((q) => Math.hypot(x - q.x, z - q.z) < 3);
   for (let i = 0; i < 70; i++) { const a = r() * Math.PI * 2, rr = ISLAND_GRASS_R - 1 + r() * (ISLAND_BEACH_R - ISLAND_GRASS_R - 5); const x = CX + Math.cos(a) * rr, z = CZ + Math.sin(a) * rr; if (!busy(x, z)) palmSpots.push([x, z, 0.85 + r() * 0.5]); }
   for (const l of ISLAND_LOTS) { const p = padOf(l); for (let k = 0; k < 5; k++) { const a = r() * Math.PI * 2; palmSpots.push([l.x + Math.cos(a) * (p.r + 1.5), l.z + Math.sin(a) * (p.r + 1.5), 0.8 + r() * 0.4]); } }
   for (const [x, z] of [[-6, 20], [6, 20], [-6, 10], [6, 10]] as const) palmSpots.push([x, z, 1]);
@@ -220,7 +229,7 @@ export function createIsland(canvas: HTMLCanvasElement, h: Handlers): IslandWorl
     const spots: Array<[number, number, number]> = [];
     for (let i = 0; i < 2600 && spots.length < (tier === 'low' ? 220 : 380); i++) {
       const x = CX + (r() - 0.5) * 2 * (ISLAND_GRASS_R - 4), z = CZ + (r() - 0.5) * 2 * (ISLAND_GRASS_R - 4); const rr = rOf(x, z);
-      if (rr > ISLAND_GRASS_R - 5 || busy(x, z, 3.2) || PADS.some((p) => Math.hypot(x - p.x, z - p.z) < p.r + 5)) continue; if (z > 14 && Math.abs(x) < 14) continue; // keep the dock approach open
+      if (rr > ISLAND_GRASS_R - 5 || busy(x, z, 3.2) || PADS.some((p) => Math.hypot(x - p.x, z - p.z) < p.r + 5) || Math.hypot(x - ISLAND_HELI.x, z - ISLAND_HELI.z) < 14) continue; if (z > 14 && Math.abs(x) < 14) continue; // keep the dock approach open
       spots.push([x, z, 1.6 + r() * 2.2]);
     }
     const n = spots.length; const can = new THREE.InstancedMesh(geo(new THREE.IcosahedronGeometry(1, 0)), mat({ roughness: 0.85, flatShading: true }), n * 2);
@@ -375,6 +384,92 @@ export function createIsland(canvas: HTMLCanvasElement, h: Handlers): IslandWorl
     label(`${ISLAND_LOUNGE.icon} ${ISLAND_LOUNGE.label}`, 'Daily estate retreat', '#ffb070', ISLAND_LOUNGE.x, 10, ISLAND_LOUNGE.z, 0.9).userData.spot = ISLAND_LOUNGE.id;
   }
 
+  // ---- Snorkel Reef: a dive raft moored over a coral garden off Palm Beach, buoy line, dive flags and coral heads.
+  { const g = new THREE.Group(); g.position.set(ISLAND_SNORKEL.x, 0, ISLAND_SNORKEL.z); scene.add(g);
+    box(6, 0.4, 4.4, wood, 0, 0.35, 0, g); for (const x of [-2.6, 2.6]) for (const z of [-1.8, 1.8]) cyl(0.45, 0.45, 0.7, mat({ color: 0x2a4a68 }), x, -0.05, z, g, 10);
+    for (const x of [-0.5, 0.5]) box(0.1, 1.6, 0.1, slate, x, -0.2, 2.3, g); for (let k = 0; k < 3; k++) box(1.1, 0.08, 0.1, slate, 0, -0.6 + k * 0.45, 2.3, g);
+    const flagM = mat({ color: 0xd8302a, side: THREE.DoubleSide }); const stripeM = mat({ color: 0xffffff, side: THREE.DoubleSide });
+    for (const [fx, fz] of [[-2.6, -1.8], [2.6, 1.8]] as const) { cyl(0.06, 0.06, 3.4, white, fx, 2.2, fz, g, 5); const f = new THREE.Mesh(geo(new THREE.PlaneGeometry(1.6, 1.1)), flagM); f.position.set(fx + 0.8, 3.4, fz); g.add(f); const st = new THREE.Mesh(geo(new THREE.PlaneGeometry(1.9, 0.22)), stripeM); st.position.set(fx + 0.8, 3.4, fz + 0.01); st.rotation.z = -0.6; g.add(st);
+      anims.push((t) => { f.rotation.y = Math.sin(t * 2 + fx) * 0.25; st.rotation.y = f.rotation.y; }); }
+    for (let k = 0; k < 3; k++) { box(0.5, 0.9, 0.35, mat({ color: [0xf6c445, 0x2fb5b0, 0xf26b5b][k]! }), -1.6 + k * 0.7, 1, -1.2, g); }
+    pickable(g, ISLAND_SNORKEL.id);
+    anims.push((t) => { g.position.y = Math.sin(t * 1.1) * 0.12; g.rotation.z = Math.sin(t * 0.8) * 0.02; });
+    const buoyN = 16; const buoys = new THREE.InstancedMesh(geo(new THREE.SphereGeometry(0.4, 8, 6)), mat({ color: 0xffffff, emissive: 0x332200 }), buoyN); const bc = new THREE.Color();
+    for (let k = 0; k < buoyN; k++) { const a = (k / buoyN) * Math.PI * 2; d.position.set(ISLAND_SNORKEL.x + Math.cos(a) * 11, 0.15, ISLAND_SNORKEL.z + Math.sin(a) * 9); d.rotation.set(0, 0, 0); d.scale.setScalar(1); d.updateMatrix(); buoys.setMatrixAt(k, d.matrix); buoys.setColorAt(k, bc.setHex(k % 2 ? 0xffffff : 0xf26b5b)); }
+    scene.add(buoys);
+    const coralN = 22; const coral = new THREE.InstancedMesh(geo(new THREE.IcosahedronGeometry(1, 0)), mat({ roughness: 0.9, flatShading: true }), coralN); const cols = [0xd8857a, 0xd8a070, 0xa888b8, 0x6aa8a0, 0xc8b070];
+    for (let k = 0; k < coralN; k++) { const a = r() * Math.PI * 2, rr = 2.5 + r() * 7.5; const s = 0.35 + r() * 0.55; d.position.set(ISLAND_SNORKEL.x + Math.cos(a) * rr, -0.45 + r() * 0.2, ISLAND_SNORKEL.z + Math.sin(a) * rr * 0.8); d.rotation.set(r(), r(), r()); d.scale.set(s, s * (0.6 + r()), s); d.updateMatrix(); coral.setMatrixAt(k, d.matrix); coral.setColorAt(k, bc.setHex(cols[k % cols.length]!)); }
+    scene.add(coral);
+    // a few bright reef fish darting just under the surface
+    const fishN = 10; const fish = new THREE.InstancedMesh(geo(new THREE.ConeGeometry(0.22, 0.8, 5)), mat({ color: 0xffd040, emissive: 0x402800 }), fishN);
+    anims.push((t) => { for (let k = 0; k < fishN; k++) { const a = t * (0.5 + (k % 3) * 0.15) + k * 0.63; const rr = 4 + (k % 4) * 1.4; d.position.set(ISLAND_SNORKEL.x + Math.cos(a) * rr, -0.15, ISLAND_SNORKEL.z + Math.sin(a) * rr * 0.8); d.rotation.set(Math.PI / 2, 0, -a); d.scale.setScalar(1); d.updateMatrix(); fish.setMatrixAt(k, d.matrix); } fish.instanceMatrix.needsUpdate = true; });
+    scene.add(fish);
+    label(`${ISLAND_SNORKEL.icon} ${ISLAND_SNORKEL.label}`, '5 dives a day', '#7fe8ff', ISLAND_SNORKEL.x, 8, ISLAND_SNORKEL.z, 0.9).userData.spot = ISLAND_SNORKEL.id;
+  }
+
+  // ---- Treasure Hunt: a weathered map board and a beached rowboat on West Beach, with 12 X marks scattered round the sand.
+  const huntMarks = new Map<number, { x: THREE.Object3D; hole: THREE.Object3D; chest: THREE.Object3D }>();
+  { const hy = islandHeight(ISLAND_HUNT.x, ISLAND_HUNT.z); const g = new THREE.Group(); g.position.set(ISLAND_HUNT.x, hy, ISLAND_HUNT.z); g.rotation.y = Math.atan2(CX - ISLAND_HUNT.x, CZ - ISLAND_HUNT.z) + Math.PI; scene.add(g);
+    for (const x of [-1.4, 1.4]) cyl(0.14, 0.18, 3.6, darkWood, x, 1.8, 0, g, 6);
+    box(3.6, 2.4, 0.2, mat({ color: 0xe8d4a0, roughness: 1 }), 0, 2.6, 0.12, g);
+    const red = mat({ color: 0xc0302a, emissive: 0x300808 });
+    { const a = box(0.9, 0.14, 0.04, red, 0.6, 2.4, 0.25, g); a.rotation.z = 0.785; const b = box(0.9, 0.14, 0.04, red, 0.6, 2.4, 0.25, g); b.rotation.z = -0.785; }
+    for (let k = 0; k < 4; k++) box(0.5, 0.06, 0.04, mat({ color: 0x6a5030 }), -0.9 + k * 0.3, 2.9 - k * 0.25, 0.25, g);
+    const boat = new THREE.Group(); boat.position.set(3.6, 0.35, 1.8); boat.rotation.set(0, 0.5, 0.18); g.add(boat);
+    box(1.6, 0.5, 4.2, mat({ color: 0x3a7aa0 }), 0, 0, 0, boat); box(1.3, 0.12, 3.8, wood, 0, 0.25, 0, boat); box(1.5, 0.1, 0.3, wood, 0, 0.32, 0.4, boat);
+    { const sh = cyl(0.05, 0.05, 2, wood, -2.4, 1, 1.4, g, 5); sh.rotation.z = 0.5; box(0.5, 0.6, 0.06, slate, -2.9, 0.2, 1.4, g); }
+    pickable(g, ISLAND_HUNT.id);
+    label(`${ISLAND_HUNT.icon} ${ISLAND_HUNT.label}`, 'Dig 3 X marks a day', '#ffd27a', ISLAND_HUNT.x, hy + 7, ISLAND_HUNT.z, 0.9).userData.spot = ISLAND_HUNT.id;
+    const xRed = mat({ color: 0xd8342a, emissive: 0x501010, emissiveIntensity: 0.8 }); const holeM = mat({ color: 0x5a4630, roughness: 1 }); const pickM = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }); disposables.push(pickM);
+    for (const q of HUNT_XS) { const y = islandHeight(q.x, q.z); const id = huntSpotId(q.n);
+      const xg = new THREE.Group(); xg.position.set(q.x, y + 0.08, q.z); scene.add(xg);
+      for (const rot of [0.785, -0.785]) { const bar = box(3, 0.1, 0.6, xRed, 0, 0, 0, xg); bar.rotation.y = rot; }
+      const hit = new THREE.Mesh(geo(new THREE.CylinderGeometry(2.4, 2.4, 1.2, 12)), pickM); hit.position.y = 0.4; xg.add(hit);
+      pickable(xg, id); anims.push((t) => { xg.position.y = y + 0.08 + (Math.sin(t * 2 + q.n) + 1) * 0.04; });
+      const hole = new THREE.Group(); hole.position.set(q.x, y, q.z); hole.visible = false; scene.add(hole);
+      const pit = new THREE.Mesh(geo(new THREE.CylinderGeometry(1.3, 1.0, 0.1, 14)), holeM); pit.position.y = 0.06; hole.add(pit);
+      const mound = new THREE.Mesh(geo(new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2)), mat({ color: 0xe8d4a0, roughness: 1 })); mound.scale.set(1, 0.45, 0.8); mound.position.set(1.8, 0, 0.4); hole.add(mound);
+      const chest = new THREE.Group(); chest.position.set(q.x - 0.4, y + 0.1, q.z); chest.visible = false; scene.add(chest);
+      box(1.6, 0.9, 1, mat({ color: 0x7a4a22 }), 0, 0.45, 0, chest); const lid = box(1.6, 0.25, 1, mat({ color: 0x8a5a2a }), 0, 1.0, -0.45, chest); lid.rotation.x = -1.1;
+      box(1.5, 0.15, 0.9, gold, 0, 0.95, 0, chest); for (const x of [-0.7, 0.7]) box(0.12, 0.95, 1.04, gold, x, 0.47, 0, chest);
+      pickable(hole, id); pickable(chest, id);
+      huntMarks.set(q.n, { x: xg, hole, chest }); }
+  }
+
+  // ---- Helipad: landing pad with an H, windsock, and the tour helicopter (rotors turn; it flies the island tour).
+  const heli = new THREE.Group(); const heliHome = new THREE.Vector3(ISLAND_HELI.x, islandHeight(ISLAND_HELI.x, ISLAND_HELI.z) + 0.4, ISLAND_HELI.z);
+  { const hy = heliHome.y - 0.4; const pad = new THREE.Mesh(geo(new THREE.CylinderGeometry(6, 6.4, 0.4, 36)), slate); pad.position.set(ISLAND_HELI.x, hy + 0.1, ISLAND_HELI.z); pad.receiveShadow = true; scene.add(pad); pickable(pad, ISLAND_HELI.id);
+    const hM = mat({ color: 0xffffff, emissive: 0x333333 }); const hg = new THREE.Group(); hg.position.set(ISLAND_HELI.x, hy + 0.32, ISLAND_HELI.z); scene.add(hg);
+    box(0.6, 0.04, 4, hM, -1.3, 0, 0, hg); box(0.6, 0.04, 4, hM, 1.3, 0, 0, hg); box(2.2, 0.04, 0.6, hM, 0, 0, 0, hg);
+    const ring = new THREE.Mesh(geo(new THREE.RingGeometry(4.6, 5.1, 36)), mat({ color: 0xf6c445, emissive: 0x5a4010 })); ring.rotation.x = -Math.PI / 2; ring.position.set(ISLAND_HELI.x, hy + 0.33, ISLAND_HELI.z); scene.add(ring);
+    const lampN = 8; for (let k = 0; k < lampN; k++) { const a = (k / lampN) * Math.PI * 2; const b = new THREE.Mesh(geo(new THREE.SphereGeometry(0.2, 6, 5)), bulb); b.position.set(ISLAND_HELI.x + Math.cos(a) * 5.9, hy + 0.4, ISLAND_HELI.z + Math.sin(a) * 5.9); scene.add(b); }
+    cyl(0.07, 0.07, 4, slate, ISLAND_HELI.x + 7, hy + 2, ISLAND_HELI.z - 3, scene, 5);
+    const sock = new THREE.Mesh(geo(new THREE.ConeGeometry(0.4, 2, 8, 1, true)), mat({ color: 0xff7a20, side: THREE.DoubleSide })); sock.rotation.z = Math.PI / 2; sock.position.set(ISLAND_HELI.x + 8, hy + 3.8, ISLAND_HELI.z - 3); scene.add(sock); anims.push((t) => { sock.rotation.x = Math.sin(t * 1.5) * 0.2; });
+    const bodyM = mat({ color: 0xc8303a, metalness: 0.4, roughness: 0.35 }); const darkM = mat({ color: 0x22282e, metalness: 0.5, roughness: 0.4 });
+    const body = new THREE.Mesh(geo(new THREE.SphereGeometry(1.6, 18, 12)), bodyM); body.scale.set(1, 0.85, 1.6); body.position.y = 1.7; body.castShadow = true; heli.add(body);
+    const cab = new THREE.Mesh(geo(new THREE.SphereGeometry(1.25, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2)), glass); cab.rotation.x = Math.PI / 2 - 0.25; cab.scale.set(1, 1, 0.8); cab.position.set(0, 1.9, 1.3); heli.add(cab);
+    const boom = cyl(0.25, 0.45, 5, bodyM, 0, 2, -4, heli, 8); boom.rotation.x = Math.PI / 2;
+    box(0.15, 1.6, 1, bodyM, 0, 2.6, -6.3, heli); box(1.8, 0.1, 0.6, bodyM, 0, 2.1, -6.1, heli);
+    for (const x of [-1.1, 1.1]) { box(0.14, 0.14, 4, darkM, x, 0.1, 0.2, heli); for (const z of [-0.8, 1.2]) box(0.1, 0.9, 0.1, darkM, x * 0.8, 0.55, z, heli); }
+    cyl(0.18, 0.18, 0.7, darkM, 0, 3.2, 0, heli, 8);
+    const rotor = new THREE.Group(); rotor.position.y = 3.55; heli.add(rotor); for (let k = 0; k < 4; k++) { const bl = box(9, 0.06, 0.35, darkM, 0, 0, 0, rotor); bl.rotation.y = (k * Math.PI) / 2; bl.position.set(Math.cos((k * Math.PI) / 2) * 0, 0, 0); }
+    const tail = new THREE.Group(); tail.position.set(0.2, 2.4, -6.5); heli.add(tail); for (let k = 0; k < 2; k++) { const bl = box(0.05, 1.6, 0.18, darkM, 0, 0, 0, tail); bl.rotation.x = (k * Math.PI) / 2; }
+    heli.position.copy(heliHome); heli.rotation.y = 0.6; scene.add(heli); pickable(heli, ISLAND_HELI.id);
+    anims.push((t, dt) => { rotor.rotation.y += dt * (touring ? 28 : 3); tail.rotation.x += dt * (touring ? 40 : 4); });
+    label(`${ISLAND_HELI.icon} ${ISLAND_HELI.label}`, 'Island tour', '#ff9a9a', ISLAND_HELI.x, hy + 9, ISLAND_HELI.z, 0.85).userData.spot = ISLAND_HELI.id;
+  }
+  // The sightseeing loop (shared/islandActivities.ts TOUR_PATH): camera rides behind the helicopter.
+  let touring: { t0: number; ms: number; cam: THREE.CatmullRomCurve3; look: THREE.CatmullRomCurve3; done: () => void } | null = null;
+  const tourTick = () => {
+    if (!touring) return; const u = Math.min(1, (performance.now() - touring.t0) / touring.ms);
+    const e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2; const c = touring.cam.getPointAt(Math.min(e, 0.999)); const l = touring.look.getPointAt(Math.min(e, 0.999));
+    const ahead = touring.cam.getPointAt(Math.min(e + 0.02, 1)); const dir = ahead.clone().sub(c); dir.y = 0; if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1); dir.normalize();
+    const toL = l.clone().sub(c).normalize(); heli.position.copy(c).addScaledVector(toL, 26).add(new THREE.Vector3(0, -2.5, 0)); heli.rotation.set(0.12, Math.atan2(dir.x, dir.z), 0);
+    if (u < 0.06 || u > 0.94) { const k = u < 0.06 ? u / 0.06 : (1 - u) / 0.06; heli.position.lerpVectors(heliHome, heli.position, k); }
+    camera.position.copy(c); camera.lookAt(l);
+    if (u >= 1) { const t = touring; touring = null; heli.position.copy(heliHome); heli.rotation.set(0, 0.6, 0); controls.enabled = true; controls.target.set(ISLAND_HELI.x, heliHome.y, ISLAND_HELI.z); camera.position.set(ISLAND_HELI.x + 20, heliHome.y + 26, ISLAND_HELI.z + 34); controls.update(); t.done(); }
+  };
+
   // Place names (not clickable).
   for (const p of ISLAND_PLACES) { if (p.id === 'lagoon') continue; label(p.label, undefined, '#e8f6e8', p.x, islandHeight(p.x, p.z) + 6, p.z, 0.7); }
 
@@ -402,7 +497,7 @@ export function createIsland(canvas: HTMLCanvasElement, h: Handlers): IslandWorl
   const frame = () => {
     raf = requestAnimationFrame(frame); if (!running) return; const dt = Math.min(clock.getDelta(), 0.05); time += dt;
     waterMat.uniforms.uTime!.value = time; anims.forEach((f) => f(time, dt));
-    controls.update(); clampPan();
+    if (touring) tourTick(); else { controls.update(); clampPan(); }
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const s of signs) { const k = labelScale(camera.position.distanceTo(s.getWorldPosition(tmp)), portrait) * (s.userData.k as number); fitLabel(s, k); }
     renderScene(renderer, composer, scene, camera);
@@ -419,6 +514,15 @@ export function createIsland(canvas: HTMLCanvasElement, h: Handlers): IslandWorl
         const m = ownedMarks.get(l.id); if (m) m.visible = mine; }
     },
     setRunning(v) { running = v; clock.getDelta(); },
+    setHunt(dug, found) { for (const [n, m] of huntMarks) { const done = dug.includes(n); m.x.visible = !done; m.hole.visible = done; m.chest.visible = found === n; } },
+    tour(ms) {
+      return new Promise<void>((done) => {
+        if (touring) { const prev = touring.done; touring.done = () => { prev(); done(); }; return; }
+        const pts = TOUR_PATH.map(([x, y, z]) => new THREE.Vector3(x, y, z)); const looks = TOUR_PATH.map(([, , , lx, lz]) => new THREE.Vector3(lx, islandHeight(lx, lz) + 2, lz));
+        pts[0]!.copy(camera.position); controls.enabled = false;
+        touring = { t0: performance.now(), ms, cam: new THREE.CatmullRomCurve3(pts, false, 'centripetal'), look: new THREE.CatmullRomCurve3(looks, false, 'centripetal'), done };
+      });
+    },
     dispose() { cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave);
       controls.dispose(); models.forEach(disposeTree); for (const s of signs) (s.userData.tex as THREE.Texture | undefined)?.dispose(); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); scene.clear(); },
   };

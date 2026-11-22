@@ -3141,19 +3141,29 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .island-retreat-list li { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,.05); border: 1px solid rgba(242,212,138,.18); }
 .island-retreat-list li.mine { border-color: #8bdf87; }
 .island-retreat-list li small { grid-column: 1 / -1; opacity: .8; }
+.island-flat-reef { background: rgba(20,60,96,.92); border-color: #7fe8ff; }
+.island-flat-hunt { background: rgba(90,60,20,.92); border-color: #ffd27a; }
+.island-flat-heli { background: rgba(70,24,30,.92); border-color: #ff9a9a; }
+.island-hunt-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
+.island-hunt-grid button { display: grid; justify-items: center; padding: 4px 0; min-height: 44px; border-radius: 8px; background: rgba(232,212,160,.12); border: 1px solid rgba(232,212,160,.35); font-size: 16px; line-height: 1.1; }
+.island-hunt-grid button small { font-size: 10px; opacity: .8; }
+.island-hunt-grid button.sel { border-color: #ffd27a; background: rgba(255,210,122,.3); box-shadow: 0 0 0 1px #ffd27a; }
+.island-hunt-grid button.dug { opacity: .5; } .island-hunt-grid button.found { opacity: 1; border-color: #8bdf87; background: rgba(139,223,135,.25); }
+.island-flying { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); padding: 8px 14px; border-radius: 999px; background: rgba(12,14,24,.85); border: 1px solid #ff9a9a; font-weight: 700; pointer-events: none; z-index: 5; }
 .island-map-notice { position: absolute; left: 18px; top: 84px; font-size: 12px; opacity: .85; pointer-events: none; }
 .island-map-msg { position: absolute; left: 12px; bottom: 12px; padding: 6px 10px; border-radius: 8px; background: rgba(12,14,24,.85); }
 @media (max-width: 700px), (max-height: 520px) {
   .world.island .island-map-controls { top: auto; bottom: 8px; left: 8px; right: 8px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding-right: 0; }
   .world.island .island-map-controls button { min-height: 44px; min-width: 0; padding: 5px 8px; font-size: 12px; white-space: normal; }
-  .island-flat-map { bottom: 108px; }
+  .island-flat-map { bottom: 156px; }
   .island-map-notice { top: 70px; }
   .island-flat-map { top: 88px; }
   .island-flat-spot { width: 104px; font-size: 11px; }
+  .island-flat-spot.island-flat-act { width: 88px; }
   .island-flat-spot i { display: none; }
 }
 @media (max-height: 520px) { .island-flat-board { min-width: 264px; } .island-flat-spot { width: 76px; font-size: 10px; } .island-flat-spot i, .island-flat-spot small { display: none; } }
-@media (max-height: 520px) and (min-width: 700px) { .world.island .island-map-controls { grid-template-columns: repeat(6, minmax(0, 1fr)); } .island-flat-map { top: 88px; bottom: 60px; } }
+@media (max-height: 520px) and (min-width: 700px) { .world.island .island-map-controls { grid-template-columns: repeat(5, minmax(0, 1fr)); } .island-flat-map { top: 88px; bottom: 108px; } }
 .island-preview { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: rgba(4,8,14,.72); padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom)); }
 .island-preview-box { position: relative; display: flex; flex-direction: column; width: min(760px, 100%); height: min(680px, 100%); border-radius: 14px; overflow: hidden; background: #101418; border: 1px solid rgba(201,162,74,.55); }
 .island-preview-box > header { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; }

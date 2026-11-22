@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-22T09:45:00-06:00", "title": "More to do on the Private Island: snorkelling, a treasure hunt and helicopter tours", "bullets": [
+    "New, island only: Snorkel Reef, a dive raft over a coral garden off Palm Beach. You get 5 dives a day, a minute apart, and every dive brings up a find: Conch Shell 400 (50%), Sea Glass 700 (25%), Red Coral 1,200 (13%), Lagoon Pearl 2,500 (8%), Black Pearl 6,000 (3%) or a Golden Doubloon 15,000 (1%). That averages about 1,060 a dive.",
+    "New, island only: the Treasure Hunt. Twelve X marks are scattered round the beaches and one of them hides today's chest, worth 25,000. You get 3 digs a day. An empty X still turns up a 250 trinket, and finding the chest ends the hunt for the day. The chest is in a different place for every player, every day.",
+    "New, island only: helicopter tours from the new Helipad. Take off for a 30-second sightseeing loop over the lagoon, the estates, the falls and the reef. Your first tour each day pays a 2,000 postcard bonus, and later tours are free. On the 2D map the tour runs as a timer.",
+    "All three reset at 00:00 UTC, only work while you are on the island, and their amounts are before the price index. They show on both the 3D island and the 2D map.",
+  ]},
   {"commit": "", "at": "2026-11-22T09:10:00-06:00", "title": "Chud Resort is twice as big", "bullets": [
     "The resort map now stretches twice as far along the coast, with two new districts: Coral Cove in the west and Azure Point in the east. Everything already there stays where it was, with the same owners.",
     "66 new properties: beachfront villas, overwater bungalows on the Coral Cove lagoon, grand resort hotels, royal palm estates in the hills, more penthouse skyrises and clifftop mansions, plus extra beach houses, condos, villas and 9 more plantation plots. The Resort real estate list now shows every type.",

@@ -25,7 +25,7 @@ export function IslandPreview({ onClose, onTravel, travelLabel, canTravel }: { o
             : sel === ISLAND_DOCK.id ? <span><b>{ISLAND_DOCK.icon} {ISLAND_DOCK.label}</b> · where you land. The island is reached by Sovereign Megayacht or your own jet.</span>
             : sel === ISLAND_LAGOON.id ? <span><b>{ISLAND_LAGOON.icon} {ISLAND_LAGOON.label}</b> · {ISLAND_LAGOON.blurb}</span>
             : sel === ISLAND_LOUNGE.id ? <span><b>{ISLAND_LOUNGE.icon} {ISLAND_LOUNGE.label}</b> · {ISLAND_LOUNGE.blurb}</span>
-            : <span>Tap an estate, the dock, the lagoon or the lounge.</span>}
+            : <span>Tap an estate, the dock, the lagoon, the lounge, the reef, the treasure hunt or the helipad.</span>}
           <button type="button" disabled={!canTravel} onClick={onTravel} data-testid="island-preview-travel">{travelLabel}</button>
         </footer>
       </div>

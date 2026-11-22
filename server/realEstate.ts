@@ -25,6 +25,7 @@ import { px, priceIndex } from './price-index.js';
 import { requireResort, requireIsland, isAtIsland } from './travel.js';
 import { claimRetreat, retreatState, RetreatError, type RetreatDeps } from './islandRetreat.js';
 import { isJailed } from './jail.js';
+import { claimTour, dig, dive, IslandActivityError, islandActivityState, startTour, type ActivityDeps } from './islandActivities.js';
 import { assessedTaxBasis, taxBasisOf, propertyValue, GRACE_DAYS, propertyById as baseProperty, cityRefundOf, taxOf, landMultiplier, type OwnedProperty } from '../shared/realEstate.js';
 import { skillLevelAsync } from './skills.js';
 import { propertyWorth, propertyPaid, propertyPaidPlusUpgrades, upgradeSpendFromLevels } from '../shared/netWorth.js';
@@ -482,6 +483,14 @@ export function registerRealEstate(io: Server, socket: Socket): void {
   const retreat = async <T,>(fn: () => Promise<T>) => { try { return await fn(); } catch (err) { if (err instanceof RetreatError) throw new PropertyError(err.message); throw err; } };
   on('isl_retreat_state', (_b, e) => retreat(() => retreatState(nameOf(), retreatDeps(e))));
   on('isl_retreat_claim', async (_b, e) => { const r = await retreat(() => claimRetreat(need(), retreatDeps(e))); return r; });
+  // Private Island day activities (server/islandActivities.ts): reef dives, treasure hunt, helicopter tour.
+  const actDeps: ActivityDeps = { bank: getBank, atIsland: (n) => isAtIsland(n), jailed: (n) => isJailed(n), px };
+  const act = async <T,>(fn: () => T | Promise<T>) => { try { return await fn(); } catch (err) { if (err instanceof IslandActivityError) throw new PropertyError(err.message); throw err; } };
+  on('isl_act_state', () => act(() => islandActivityState(nameOf(), actDeps)));
+  on('isl_dive', () => act(() => dive(need(), actDeps)));
+  on('isl_dig', (b) => act(() => dig(need(), b.spot, actDeps)));
+  on('isl_tour_start', () => act(() => startTour(need(), actDeps)));
+  on('isl_tour_claim', () => act(() => claimTour(need(), actDeps)));
 }
 
 export async function propertySpend(pool: { query: (sql: string, args?: unknown[]) => Promise<{ rows: any[] }> }, ownerKey: string | null): Promise<Map<string, { upgrades: number; crops: number }>> {
