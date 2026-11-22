@@ -3,6 +3,8 @@
  * A launched rig pumps crude into the owner's Fort McChud tank (or holds it at the dock
  * until there is room / a refinery to take it).
  */
+import { GOODS } from './mines.js';
+import { buildCashCharge, projectCashCost, type ProjectCashCost } from './buildCosts.js';
 export const RIG_TOTAL = 2_800_000;
 export const RIG_LAUNCH_FEE = 200_000;
 export const RIG_CRUDE_PER_HOUR = 90;
@@ -31,6 +33,15 @@ export interface RigState {
   hold: number;
   settledAt: number;
 }
+
+const rigPriceOf = (id: string) => GOODS[id]?.price ?? 0;
+/** Cash charged if every rig part is filled in one contribute, with no warehouse goods, at `index`. Launch fee is separate. */
+export const rigProjectCost = (index: number, priceOf: (id: string) => number = rigPriceOf): ProjectCashCost =>
+  projectCashCost(RIG_STAGES.map((s) => ({
+    id: s.id, name: s.name, chips: s.chips,
+    goods: s.goods.map(([id, qty]) => ({ qty, price: priceOf(id) })),
+  })), index);
+export const rigLaunchCash = (index: number) => buildCashCharge(RIG_LAUNCH_FEE, index);
 
 export const rigLabel = (r: Pick<RigState, 'status' | 'stage'>) =>
   r.status === 'launched' ? 'On station' : r.status === 'ready' ? 'Ready to launch' : `Building · ${RIG_STAGES[Math.min(r.stage, 3)]!.name}`;

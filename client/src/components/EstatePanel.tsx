@@ -2,30 +2,32 @@ import { useEffect, useState } from 'react';
 import { MapSheet } from './MapSheet';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { request } from '@/lib/net';
-import { DEMOLISH_RULES, ESTATE_BUILD_ORDER, ESTATE_BUILDS, type EstateBuildId } from '../../../shared/estateProjects';
+import { DEMOLISH_RULES, ESTATE_BUILD_ORDER, ESTATE_BUILDS, estateProjectCost, type EstateBuildId } from '../../../shared/estateProjects';
 import { PLASTICS_RECIPES } from '../../../shared/plasticsPlant';
-import { RIG_CHIP_STEP, RIG_CRUDE_PER_HOUR, RIG_HOLD_CAP, RIG_LAUNCH_FEE, RIG_MAX_PER_PLAYER, RIG_STAGES, rigPct, rigStagePct, type RigStatus } from '../../../shared/offshoreRig';
-import { HYPER_STAGES } from '../../../shared/hyperFarm';
+import { RIG_CHIP_STEP, RIG_CRUDE_PER_HOUR, RIG_HOLD_CAP, RIG_LAUNCH_FEE, RIG_MAX_PER_PLAYER, RIG_STAGES, rigPct, rigProjectCost, rigStagePct, type RigStatus } from '../../../shared/offshoreRig';
+import { HYPER_STAGES, hyperProjectCost } from '../../../shared/hyperFarm';
 import { GOODS } from '../../../shared/mines';
 import { announceEstateChange } from '@/lib/estateSites';
+import { usePriceIndex } from '@/lib/priceIndex';
+import { buildCashCharge, type ProjectCashCost } from '../../../shared/buildCosts';
 
 type SiteView = {
   lotId: string; build: EstateBuildId | null; stage: number; complete: boolean; gear: number; kind: string;
   was?: { type: string; label: string };
-  plan?: { name: string; icon: string; blurb: string; total: number };
+  plan?: { name: string; icon: string; blurb: string; total: number; cost?: ProjectCashCost };
   stages?: Array<{ id: string; name: string; chips: number; goods: Array<{ id: string; name: string; qty: number }>; done: Record<string, number>; pct: number; parts?: HyperPart[] }>;
   gearDef?: { name: string; icon: string; price: number; mw: number; chipsPerHour: number; max: number; install?: Array<{ id: string; qty: number; name: string }> };
 };
 
-type HyperPart = { part: string; name: string; need: number; done: number; price: number; have?: number };
-type HyperView = { plotId: string; stage: number; complete: boolean; finished?: boolean; pct: number; stages: Array<{ id: string; name: string; pct: number; parts: HyperPart[] }> };
+type HyperPart = { part: string; name: string; need: number; done: number; price: number; basePrice?: number; have?: number };
+type HyperView = { plotId: string; stage: number; complete: boolean; finished?: boolean; pct: number; total?: number; cost?: ProjectCashCost; stages: Array<{ id: string; name: string; pct: number; parts: HyperPart[] }> };
 const pctLabel = (v: number) => `${Math.floor(Math.max(0, Math.min(1, v)) * 100)}%`;
 const Bar = ({ v, testid }: { v: number; testid?: string }) => <div className="coop-bar" data-testid={testid}><div style={{ width: `${Math.min(100, Math.max(0, v) * 100)}%` }} /><span>{pctLabel(v)}</span></div>;
 const priceOf = (id: string) => GOODS[id]?.price ?? 0;
 
 type RigView = {
   id: string; label: string; status: RigStatus; stage: number;
-  done?: Array<Record<string, number>>; hold?: number; launchFee?: number;
+  done?: Array<Record<string, number>>; hold?: number; launchFee?: number; total?: number; cost?: ProjectCashCost;
 };
 type EstateMsg = { text: string; ok: boolean };
 
@@ -84,6 +86,18 @@ type PowerView = {
 
 const chips = (n: number) => n.toLocaleString('en-US');
 
+/** Cash a contribute/fill will debit: chips are indexed; materials are indexed(unit * qty bought). */
+function partCharge(p: Pick<HyperPart, 'part' | 'price' | 'basePrice' | 'have'>, qty: number, index: number) {
+  if (p.part === 'chips') return buildCashCharge(qty, index);
+  const buy = Math.max(0, qty - (p.have ?? 0));
+  return buildCashCharge((p.basePrice ?? 0) * buy, index);
+}
+
+function costLine(cost: ProjectCashCost) {
+  return `Total 🪙 ${chips(cost.total)} at today's prices — 🪙 ${chips(cost.chips)} chips + 🪙 ${chips(cost.materials)} materials if you buy them with chips. Warehouse stock is used first and costs nothing.`;
+}
+
+
 function plantFuelBadge(power: PowerView) {
   if (power.plantMw <= 0) return { label: 'None in service', kind: 'is-muted' };
   const ms = (power.fuelUntil ?? 0) - Date.now();
@@ -97,6 +111,7 @@ function plantFuelBadge(power: PowerView) {
 export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?: string; me: string | null; mine?: boolean; kind?: 'estate' | 'plastics' | 'rigdock' | 'hyper'; onClose: () => void }) {
   const [view, setView] = useState<Record<string, unknown> | null>(null);
   const [msg, setMsg] = useState<EstateMsg | null>(null);
+  const pidx = usePriceIndex();
   const dragEstate = usePanelDrag('estate');
   const load = () => { void request('estate_view', {}).then((r) => { if (r && (r as { ok?: boolean }).ok !== false) setView(r as unknown as Record<string, unknown>); }); };
   useEffect(() => { load(); }, []);
@@ -116,6 +131,7 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
   };
   const sites = (view?.sites as SiteView[] | undefined) ?? [];
   const site = lotId ? sites.find((s) => s.lotId === lotId) : sites[0];
+  const worksCost = site?.plan && site.build ? (site.plan.cost ?? estateProjectCost(ESTATE_BUILDS[site.build], pidx)) : null;
   const power = view?.power as PowerView | undefined;
   const canBuild = !!me && mine;
   const heading = kind === 'plastics' ? '🧴 Plastics Plant' : kind === 'rigdock' ? '🛢️ Shore Construction Dock' : kind === 'hyper' ? '🌿 Hyper farm' : site?.plan ? `${site.plan.icon} ${site.plan.name}` : '🏗️ Private works';
@@ -157,17 +173,23 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
             </ul>
           </div>
         )}
-        {kind === 'rigdock' && <RigDock me={!!me} chips={typeof view?.chips === 'number' ? (view.chips as number) : undefined} rigs={((view?.rigs as RigView[] | undefined) ?? [])} onCall={call} />}
+        {kind === 'rigdock' && <RigDock me={!!me} chips={typeof view?.chips === 'number' ? (view.chips as number) : undefined} pidx={pidx} rigs={((view?.rigs as RigView[] | undefined) ?? [])} onCall={call} />}
         {kind === 'hyper' && lotId && (
           <div data-testid="estate-hyper">
             <p>Convert this farm into a Dutch glasshouse. Flowers and other difficult crops unlock when it is finished.</p>
             {(() => {
               const h = ((view?.hyper as HyperView[] | undefined) ?? []).find((x) => x.plotId === lotId);
-              if (!h) return <>
-                <ol>{HYPER_STAGES.map((s) => <li key={s.id}>{s.name} · 🪙 {chips(s.chips)}{s.goods.length ? ` + ${s.goods.map(([, n]) => chips(n)).join(' / ')} materials` : ''}</li>)}</ol>
+              if (!h) {
+                const hcost = hyperProjectCost(pidx);
+                return <>
+                <p className="estate-dock-blurb" data-testid="estate-hyper-total">{costLine(hcost)}</p>
+                <ol>{hcost.stages.map((s) => <li key={s.id}>{s.name} · 🪙 {chips(s.total)} <small>chips 🪙 {chips(s.chips)} + materials 🪙 {chips(s.materials)}</small></li>)}</ol>
                 <button type="button" disabled={!canBuild} data-testid="estate-hyper-start" onClick={() => void call('estate_hyper_start', { plotId: lotId })}>Start conversion</button>
               </>;
+              }
+              const hcost = h.cost ?? hyperProjectCost(pidx);
               return <>
+                <p className="estate-dock-blurb" data-testid="estate-hyper-total">{costLine(hcost)}</p>
                 <p className="estate-sticky-line">{h.complete ? 'Glasshouse finished' : `Stage ${Math.min(h.stage + 1, h.stages.length)} of ${h.stages.length}`} · {pctLabel(h.pct)} complete</p>
                 <Bar v={h.pct} testid="estate-hyper-progress" />
                 {h.complete && !h.finished && canBuild && <button type="button" className="estate-hyper-finish" data-testid="estate-hyper-finish" onClick={() => void call('estate_hyper_finish', { plotId: lotId })}>🌷 Finish glasshouse</button>}
@@ -179,11 +201,11 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
                       {i === h.stage && !h.complete && st.parts.map((p) => {
                         const left = Math.max(0, p.need - p.done);
                         const step = p.part === 'chips' ? Math.min(left, 10_000) : Math.min(left, Math.max(1, Math.ceil(p.need / 10)));
-                        const cost = (n: number) => p.part === 'chips' ? n : Math.max(0, n - (p.have ?? 0)) * p.price;
+                        const cost = (n: number) => partCharge(p, n, pidx);
                         return <div key={p.part} className="estate-hyper-part">
                           <small>{p.name}: {chips(p.done)} / {chips(p.need)}{p.part !== 'chips' ? ` · in warehouse ${chips(p.have ?? 0)} · 🪙 ${chips(p.price)} each otherwise` : ''}</small>
                           {canBuild && left > 0 && <>
-                            <button type="button" data-testid={`estate-hyper-add-${p.part}`} onClick={() => void call('estate_hyper_contribute', { plotId: lotId, part: p.part, qty: step })}>Add {chips(step)}{cost(step) > 0 && p.part !== 'chips' ? ` · 🪙 ${chips(cost(step))}` : ''}</button>
+                            <button type="button" data-testid={`estate-hyper-add-${p.part}`} onClick={() => void call('estate_hyper_contribute', { plotId: lotId, part: p.part, qty: step })}>Add {chips(step)}{cost(step) > 0 ? ` · 🪙 ${chips(cost(step))}` : ''}</button>
                             {left > step && <button type="button" onClick={() => void call('estate_hyper_contribute', { plotId: lotId, part: p.part, qty: left })}>Fill {chips(left)}{cost(left) > 0 ? ` · 🪙 ${chips(cost(left))}` : ''}</button>}
                           </>}
                         </div>;
@@ -213,7 +235,8 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
                 <ul className="prestige-list" data-testid="estate-build-list">
                   {ESTATE_BUILD_ORDER.map((id) => {
                     const b = ESTATE_BUILDS[id];
-                    return <li key={id}><div><b>{b.icon} {b.name}</b><small>{b.blurb} · 🪙 {chips(b.total)}</small></div>
+                    const cost = estateProjectCost(b, pidx);
+                    return <li key={id} data-testid={`estate-build-row-${id}`}><div><b>{b.icon} {b.name}</b><small data-testid={`estate-build-cost-${id}`}>{b.blurb} · 🪙 {chips(cost.total)} at today's prices</small></div>
                       <button type="button" disabled={!canBuild || !lotId} data-testid={`estate-build-${id}`} onClick={() => void call('estate_choose', { lotId, build: id })}>Build</button></li>;
                   })}
                 </ul>
@@ -222,7 +245,7 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
             {site?.plan && (
               <div className="estate-dock estate-works" data-testid="estate-works">
                 <p className="estate-dock-blurb">{site.plan.blurb}</p>
-                <p className="estate-dock-blurb">Catalog total 🪙 {chips(site.plan.total)}.</p>
+                <p className="estate-dock-blurb" data-testid="estate-works-total">{costLine(worksCost ?? estateProjectCost(ESTATE_BUILDS[site.build!], pidx))}</p>
                 <ul className="estate-dock-list">
                   <li className="estate-dock-card" data-testid="estate-works-build">
                     <div className="estate-dock-head">
@@ -242,23 +265,23 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
                       const pct = done ? 1 : (s.pct ?? 0);
                       return (
                         <div key={s.id} className={`estate-dock-stage${current ? ' is-current' : done ? ' is-done' : ' is-upcoming'}`} data-testid={`estate-works-stage-${s.id}`}>
-                          <div className="estate-dock-stage-head"><b>{s.name}</b> <span>{done ? 'Done' : pctLabel(pct)}</span></div>
+                          <div className="estate-dock-stage-head"><b>{s.name}</b> <span>{done ? 'Done' : pctLabel(pct)}{worksCost?.stages[i] ? ` · 🪙 ${chips(worksCost.stages[i]!.total)}` : ''}</span></div>
                           <Bar v={pct} />
                           {canBuild && current && !s.parts && (
                             <div className="estate-dock-actions">
-                              <button type="button" className="estate-dock-btn" onClick={() => void call('estate_contribute', { lotId: site.lotId, part: 'chips', qty: 10_000 })}>Add 10,000 chips</button>
+                              <button type="button" className="estate-dock-btn" onClick={() => void call('estate_contribute', { lotId: site.lotId, part: 'chips', qty: 10_000 })}>Add 10,000 chips · 🪙 {chips(buildCashCharge(10_000, pidx))}</button>
                             </div>
                           )}
                           {current && (s.parts ?? []).map((p) => {
                             const left = Math.max(0, p.need - p.done);
                             const step = p.part === 'chips' ? Math.min(left, 10_000) : Math.min(left, Math.max(1, Math.ceil(p.need / 10)));
-                            const cost = (n: number) => p.part === 'chips' ? n : Math.max(0, n - (p.have ?? 0)) * p.price;
+                            const cost = (n: number) => partCharge(p, n, pidx);
                             return (
                               <div key={p.part} className="estate-dock-part" data-testid={`estate-site-part-${p.part}`}>
                                 <small>{p.name}: {chips(p.done)} / {chips(p.need)}{p.part !== 'chips' ? ` · in warehouse ${chips(p.have ?? 0)} · 🪙 ${chips(p.price)} each otherwise` : ''}</small>
                                 {canBuild && left > 0 && (
                                   <div className="estate-dock-actions">
-                                    <button type="button" className="estate-dock-btn" data-testid={`estate-site-add-${p.part}`} onClick={() => void call('estate_contribute', { lotId: site.lotId, part: p.part, qty: step })}>Add {chips(step)}{cost(step) > 0 && p.part !== 'chips' ? ` · 🪙 ${chips(cost(step))}` : ''}</button>
+                                    <button type="button" className="estate-dock-btn" data-testid={`estate-site-add-${p.part}`} onClick={() => void call('estate_contribute', { lotId: site.lotId, part: p.part, qty: step })}>Add {chips(step)}{cost(step) > 0 ? ` · 🪙 ${chips(cost(step))}` : ''}</button>
                                     {left > step && <button type="button" className="estate-dock-btn estate-dock-fill" data-testid={`estate-site-fill-${p.part}`} onClick={() => void call('estate_contribute', { lotId: site.lotId, part: p.part, qty: left })}>Fill {chips(left)}{cost(left) > 0 ? ` · 🪙 ${chips(cost(left))}` : ''}</button>}
                                   </div>
                                 )}
@@ -290,7 +313,7 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
                       </dl>
                       {canBuild && (
                         <div className="estate-dock-actions">
-                          <button type="button" className="estate-dock-btn" data-testid="estate-gear-install" onClick={() => void call('estate_gear', { lotId: site.lotId, qty: 1 })}>Install one</button>
+                          <button type="button" className="estate-dock-btn" data-testid="estate-gear-install" onClick={() => void call('estate_gear', { lotId: site.lotId, qty: 1 })}>Install one · 🪙 {chips(site.gearDef.price)}</button>
                         </div>
                       )}
                     </li>
@@ -368,14 +391,15 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
   );
 }
 
-function RigDock({ me, chips: wallet, rigs, onCall }: { me: boolean; chips?: number; rigs: RigView[]; onCall: (ev: string, body: Record<string, unknown>) => Promise<void> }) {
+function RigDock({ me, chips: wallet, pidx, rigs, onCall }: { me: boolean; chips?: number; pidx: number; rigs: RigView[]; onCall: (ev: string, body: Record<string, unknown>) => Promise<void> }) {
   const atCap = rigs.length >= RIG_MAX_PER_PLAYER;
   const afford = wallet == null ? Number.POSITIVE_INFINITY : Math.max(0, wallet);
   return (
     <div className="estate-dock" data-testid="estate-dock">
-      <p className="estate-dock-blurb">Build a rig on the dock in four stages, then launch it. Add chips and materials to the current stage — warehouse stock is used first, then the catalog price.</p>
+      <p className="estate-dock-blurb">Build a rig on the dock in four stages, then launch it. Add chips and materials to the current stage — warehouse stock is used first, then the catalog price at today's index.</p>
+      <p className="estate-dock-blurb" data-testid="estate-dock-total">{costLine((rigs[0]?.cost) ?? rigProjectCost(pidx))} Launch is a separate 🪙 {chips(rigs[0]?.launchFee ?? buildCashCharge(RIG_LAUNCH_FEE, pidx))} fee.</p>
       <ol className="estate-dock-plan">
-        {RIG_STAGES.map((s) => <li key={s.id}>{s.name}</li>)}
+        {((rigs[0]?.cost) ?? rigProjectCost(pidx)).stages.map((s) => <li key={s.id}>{s.name} · 🪙 {chips(s.total)}</li>)}
       </ol>
       <div className="estate-dock-toolbar">
         <button type="button" className="estate-dock-btn" data-testid="estate-dock-start" disabled={!me || atCap} onClick={() => void onCall('estate_rig_start', {})}>Start a new rig</button>
@@ -404,7 +428,7 @@ function RigDock({ me, chips: wallet, rigs, onCall }: { me: boolean; chips?: num
                 const current = i === r.stage;
                 return (
                   <div key={st.id} className={`estate-dock-stage${current ? ' is-current' : i < r.stage ? ' is-done' : ' is-upcoming'}`} data-testid={`estate-dock-stage-${r.id}-${st.id}`}>
-                    <div className="estate-dock-stage-head"><b>{st.name}</b> <span>{i < r.stage ? 'Done' : pctLabel(pct)}</span></div>
+                    <div className="estate-dock-stage-head"><b>{st.name}</b> <span>{i < r.stage ? 'Done' : pctLabel(pct)}{(r.cost ?? rigProjectCost(pidx)).stages[i] ? ` · 🪙 ${chips((r.cost ?? rigProjectCost(pidx)).stages[i]!.total)}` : ''}</span></div>
                     <Bar v={pct} />
                     {current && (
                       <>
@@ -417,8 +441,8 @@ function RigDock({ me, chips: wallet, rigs, onCall }: { me: boolean; chips?: num
                               <small>Chips: {chips(row.chips ?? 0)} / {chips(st.chips)}</small>
                               {me && left > 0 && (
                                 <div className="estate-dock-actions">
-                                  <button type="button" className="estate-dock-btn" data-testid={`estate-dock-add-chips-${r.id}`} disabled={add < 1} onClick={() => void onCall('estate_rig_contribute', { id: r.id, part: 'chips', qty: add })}>Add {chips(add)}</button>
-                                  {fill > add && <button type="button" className="estate-dock-btn estate-dock-fill" data-testid={`estate-dock-fill-chips-${r.id}`} onClick={() => void onCall('estate_rig_contribute', { id: r.id, part: 'chips', qty: fill })}>Fill {chips(fill)}</button>}
+                                  <button type="button" className="estate-dock-btn" data-testid={`estate-dock-add-chips-${r.id}`} disabled={add < 1} onClick={() => void onCall('estate_rig_contribute', { id: r.id, part: 'chips', qty: add })}>Add {chips(add)}{add > 0 ? ` · 🪙 ${chips(buildCashCharge(add, pidx))}` : ''}</button>
+                                  {fill > add && <button type="button" className="estate-dock-btn estate-dock-fill" data-testid={`estate-dock-fill-chips-${r.id}`} onClick={() => void onCall('estate_rig_contribute', { id: r.id, part: 'chips', qty: fill })}>Fill {chips(fill)} · 🪙 {chips(buildCashCharge(fill, pidx))}</button>}
                                 </div>
                               )}
                             </div>
@@ -428,11 +452,11 @@ function RigDock({ me, chips: wallet, rigs, onCall }: { me: boolean; chips?: num
                           const have = row[`good:${id}`] ?? 0;
                           const left = Math.max(0, need - have);
                           const step = Math.min(left, Math.max(1, Math.ceil(need / 10)));
-                          const catalog = (n: number) => n * priceOf(id);
+                          const catalog = (n: number) => buildCashCharge(priceOf(id) * n, pidx);
                           const name = GOODS[id]?.name ?? id;
                           return (
                             <div key={id} className="estate-dock-part">
-                              <small>{name}: {chips(have)} / {chips(need)} · 🪙 {chips(priceOf(id))} each if you need to buy</small>
+                              <small>{name}: {chips(have)} / {chips(need)} · 🪙 {chips(buildCashCharge(priceOf(id), pidx))} each if you need to buy</small>
                               {me && left > 0 && (
                                 <div className="estate-dock-actions">
                                   <button type="button" className="estate-dock-btn" data-testid={`estate-dock-add-good:${id}-${r.id}`} onClick={() => void onCall('estate_rig_contribute', { id: r.id, part: id, qty: step })}>Add {chips(step)}{catalog(step) > 0 ? ` · 🪙 ${chips(catalog(step))}` : ''}</button>

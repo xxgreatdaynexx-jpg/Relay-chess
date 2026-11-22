@@ -5,6 +5,8 @@
  * Data centers and bitcoin farms then run on bought hardware and power (grid contract or a plant).
  */
 import { GOODS, type ItemType } from './mines.js';
+import { projectCashCost, type ProjectCashCost } from './buildCosts.js';
+export { buildCashCharge, type ProjectCashCost } from './buildCosts.js';
 
 export type EstateBuildId = 'data_center' | 'bitcoin_farm' | 'monument' | 'mansion' | 'highrise' | 'power_plant';
 export type EstateSiteKind = 'open' | 'demolished' | 'winery' | 'turnkey_plant';
@@ -126,6 +128,9 @@ export function estateStages(p: EstateBuildPlan): StageNeed[] {
 export const partKey = (g: { type: ItemType; id: string } | 'chips') => (g === 'chips' ? 'chips' : `${g.type}:${g.id}`);
 export const stageValue = (s: StageNeed) => s.chips + s.goods.reduce((a, x) => a + x.qty * x.price, 0);
 export const estateProjectValue = (p: EstateBuildPlan) => estateStages(p).reduce((a, s) => a + stageValue(s), 0);
+/** Cash charged if every part is filled in one contribute, with no warehouse goods, at `index`. */
+export const estateProjectCost = (p: EstateBuildPlan, index: number): ProjectCashCost =>
+  projectCashCost(estateStages(p).map((s) => ({ id: s.id, name: s.name, chips: s.chips, goods: s.goods })), index);
 export const stagePct = (s: StageNeed, done: Record<string, number>) => {
   const need = stageValue(s);
   const got = Math.min(s.chips, done.chips ?? 0) + s.goods.reduce((a, x) => a + Math.min(x.qty, done[partKey(x)] ?? 0) * x.price, 0);

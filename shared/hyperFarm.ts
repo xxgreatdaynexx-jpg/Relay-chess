@@ -3,6 +3,8 @@
  * Flowers and other difficult crops can be planted after the glasshouse is finished.
  */
 import { HYPER_CROPS, isHyperCrop, type Crop } from './farm.js';
+import { GOODS } from './mines.js';
+import { projectCashCost, type ProjectCashCost } from './buildCosts.js';
 export { HYPER_CROPS, isHyperCrop };
 export const hyperCropById = (id: unknown): Crop | undefined => HYPER_CROPS.find((c) => c.id === id);
 
@@ -30,6 +32,14 @@ export const hyperPct = (stage: number, doneByStage: Array<Record<string, number
   const got = HYPER_STAGES.reduce((a, st, i) => a + hyperStageValue(st, priceOf) * (i < stage ? 1 : i === stage ? hyperStagePct(st, doneByStage[i] ?? {}, priceOf) : 0), 0);
   return Math.max(0, Math.min(1, got / total));
 };
+
+const hyperPriceOf = (id: string) => GOODS[id]?.price ?? 0;
+/** Cash charged if every glasshouse part is filled in one contribute, with no warehouse goods, at `index`. */
+export const hyperProjectCost = (index: number, priceOf: (id: string) => number = hyperPriceOf): ProjectCashCost =>
+  projectCashCost(HYPER_STAGES.map((s) => ({
+    id: s.id, name: s.name, chips: s.chips,
+    goods: s.goods.map(([id, qty]) => ({ qty, price: priceOf(id) })),
+  })), index);
 
 export const HYPER_GROW_MUL = 0.7;
 export const HYPER_WITHER_FACTOR = 8;

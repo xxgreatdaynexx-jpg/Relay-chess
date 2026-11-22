@@ -8,20 +8,20 @@ import type { Server, Socket } from 'socket.io';
 import { bootAttach, setBootState } from './boot-retry.js';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
-import { px } from './price-index.js';
+import { priceIndex, px } from './price-index.js';
 import { playerKey } from './skins.js';
 import { propertyById } from '../shared/realEstate.js';
 import { getRealEstate } from './realEstate.js';
 import {
   ESTATE_BUILDS, ESTATE_BUILD_ORDER, GEAR_FOR, GRID_POWER_DAY, GRID_SELL_FRACTION, PLANT_FUEL_DAY, PLANT_MW,
   PLANT_COAL_PER_HOUR, SERVER_RACK, GPU_RIG, DIGITAL_DAILY_BASE, buildStageIndex, canDemolish, digitalPayout, emptySiteDone,
-  estateProjectValue, estateStages, partKey, stageFull, stagePct, stageValue, throttle, DEMOLISH_RULES,
+  estateProjectCost, estateStages, partKey, stageFull, stagePct, stageValue, throttle, DEMOLISH_RULES,
   type EstateBuildId, type EstateSiteKind, type EstateSiteState,
 } from '../shared/estateProjects.js';
 import { estateLotOf, RIG_BERTHS, wineryOf } from '../shared/mapExpansion.js';
 import { isDemolishedSite } from '../shared/estateSites.js';
-import { HYPER_STAGES, HYPER_FARM_TOTAL, hyperPct, hyperStagePct } from '../shared/hyperFarm.js';
-import { RIG_STAGES, RIG_LAUNCH_FEE, RIG_CRUDE_PER_HOUR, RIG_MAX_PER_PLAYER, RIG_HOLD_CAP, rigLabel, type RigState } from '../shared/offshoreRig.js';
+import { HYPER_STAGES, hyperPct, hyperProjectCost, hyperStagePct } from '../shared/hyperFarm.js';
+import { RIG_STAGES, RIG_CRUDE_PER_HOUR, RIG_MAX_PER_PLAYER, RIG_HOLD_CAP, rigLabel, rigLaunchCash, rigProjectCost, type RigState } from '../shared/offshoreRig.js';
 import { FORT_IMPORT, PLASTICS_RECIPES, plantRecipe, type FortFeed } from '../shared/plasticsPlant.js';
 import { GOODS, type ItemType } from '../shared/mines.js';
 import { pantryAlias } from '../shared/factory.js';
@@ -455,7 +455,7 @@ export class Estate {
     const r = this.rigs.get(id);
     if (!r || playerKey(r.owner) !== playerKey(name)) throw new EstateError('You do not own that rig.');
     if (r.status !== 'ready') throw new EstateError('Finish the rig before you launch it.');
-    this.charge(name, px(RIG_LAUNCH_FEE), `rig_launch:${r.id}`, 'Launch offshore drilling rig');
+    this.charge(name, rigLaunchCash(priceIndex()), `rig_launch:${r.id}`, 'Launch offshore drilling rig');
     const used = new Set([...this.rigs.values()].filter((x) => x.status === 'launched' && x.berth != null).map((x) => x.berth));
     const berth = RIG_BERTHS.findIndex((_, i) => !used.has(i));
     r.berth = berth >= 0 ? berth : 0;
@@ -559,16 +559,17 @@ export class Estate {
     const stages = plan ? estateStages(plan).map((st, i) => {
       const done = s.done[i] ?? {};
       const parts = [
-        { part: 'chips', name: 'Chips', need: st.chips, done: Math.min(st.chips, done.chips ?? 0), price: 1 },
-        ...st.goods.map((x) => ({ part: partKey(x), name: x.name, need: x.qty, done: Math.min(x.qty, done[partKey(x)] ?? 0), price: px(x.price), have: this.warehouseQty(s.owner, x.type, x.id) })),
+        { part: 'chips', name: 'Chips', need: st.chips, done: Math.min(st.chips, done.chips ?? 0), price: 1, basePrice: 1 },
+        ...st.goods.map((x) => ({ part: partKey(x), name: x.name, need: x.qty, done: Math.min(x.qty, done[partKey(x)] ?? 0), price: px(x.price), basePrice: x.price, have: this.warehouseQty(s.owner, x.type, x.id) })),
       ];
       return { ...st, done, parts, pct: stagePct(st, done) };
     }) : [];
     const complete = !!plan && s.stage >= (plan.stages.length);
     const gear = (s.build === 'data_center' || s.build === 'bitcoin_farm') ? GEAR_FOR[s.build] : null;
+    const cost = plan ? estateProjectCost(plan, priceIndex()) : null;
     return {
       id: s.id, lotId: s.lotId, kind: s.kind, build: s.build, stage: s.stage, complete, gear: s.gear, was: s.was, launched: s.launched,
-      plan: plan && { id: plan.id, name: plan.name, icon: plan.icon, blurb: plan.blurb, total: estateProjectValue(plan), w: plan.w, d: plan.d, h: plan.h },
+      plan: plan && { id: plan.id, name: plan.name, icon: plan.icon, blurb: plan.blurb, total: cost!.total, cost, w: plan.w, d: plan.d, h: plan.h },
       stages, gearDef: gear && { ...gear, price: px(gear.price), install: (gear.install ?? []).map(([id, qty]) => ({ id, qty, name: GOODS[id]?.name ?? id })) },
     };
   }
@@ -579,15 +580,17 @@ export class Estate {
     const stages = HYPER_STAGES.map((st, i) => {
       const done = h.done[i] ?? {};
       const parts = [
-        { part: 'chips', name: 'Chips', need: st.chips, done: Math.min(st.chips, done.chips ?? 0), price: 1 },
-        ...st.goods.map(([id, n]) => ({ part: `good:${id}`, name: GOODS[id]?.name ?? id, need: n, done: Math.min(n, done[`good:${id}`] ?? 0), price: px(priceOfGood(id)), have: this.warehouseQty(name, GOODS[id]?.type ?? 'good', id) })),
+        { part: 'chips', name: 'Chips', need: st.chips, done: Math.min(st.chips, done.chips ?? 0), price: 1, basePrice: 1 },
+        ...st.goods.map(([id, n]) => ({ part: `good:${id}`, name: GOODS[id]?.name ?? id, need: n, done: Math.min(n, done[`good:${id}`] ?? 0), price: px(priceOfGood(id)), basePrice: priceOfGood(id), have: this.warehouseQty(name, GOODS[id]?.type ?? 'good', id) })),
       ];
       return { ...st, done, parts, pct: i < h.stage ? 1 : hyperStagePct(st, done, priceOfGood) };
     });
-    return { plotId, stage: h.stage, complete: h.stage >= HYPER_STAGES.length, finished: h.stage >= HYPER_STAGES.length && !!h.finishedAt, finishedAt: h.finishedAt ?? null, total: HYPER_FARM_TOTAL, pct: hyperPct(h.stage, h.done, priceOfGood), stages };
+    const cost = hyperProjectCost(priceIndex(), priceOfGood);
+    return { plotId, stage: h.stage, complete: h.stage >= HYPER_STAGES.length, finished: h.stage >= HYPER_STAGES.length && !!h.finishedAt, finishedAt: h.finishedAt ?? null, total: cost.total, cost, pct: hyperPct(h.stage, h.done, priceOfGood), stages };
   }
   rigView(r: RigState) {
-    return { ...r, label: rigLabel(r), launchFee: px(RIG_LAUNCH_FEE), berthAt: r.berth != null ? RIG_BERTHS[r.berth] : null, stages: RIG_STAGES };
+    const cost = rigProjectCost(priceIndex());
+    return { ...r, label: rigLabel(r), launchFee: rigLaunchCash(priceIndex()), berthAt: r.berth != null ? RIG_BERTHS[r.berth] : null, stages: RIG_STAGES, total: cost.total, cost };
   }
   powerView(name: string) {
     const e = this.ecoOf(name);
@@ -612,7 +615,7 @@ export class Estate {
   }
   knownPlayers(): string[] { return [...new Set([...this.sites.values()].map((s) => s.owner).concat([...this.rigs.values()].map((r) => r.owner), ...this.eco.keys()))]; }
   async view(name: string | null) {
-    const builds = ESTATE_BUILD_ORDER.map((id) => { const p = ESTATE_BUILDS[id]; return { id, name: p.name, icon: p.icon, blurb: p.blurb, total: estateProjectValue(p), stages: estateStages(p).map((s) => ({ id: s.id, name: s.name, chips: s.chips, goods: s.goods })), w: p.w, d: p.d, h: p.h }; });
+    const builds = ESTATE_BUILD_ORDER.map((id) => { const p = ESTATE_BUILDS[id]; const cost = estateProjectCost(p, priceIndex()); return { id, name: p.name, icon: p.icon, blurb: p.blurb, total: cost.total, cost, stages: estateStages(p).map((s) => ({ id: s.id, name: s.name, chips: s.chips, goods: s.goods })), w: p.w, d: p.d, h: p.h }; });
     if (!name) return { signedIn: false, builds, rules: DEMOLISH_RULES };
     for (const s of this.sitesOf(name)) if (this.healStage(s)) await this.saveSite(s);
     return {

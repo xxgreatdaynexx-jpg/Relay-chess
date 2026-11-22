@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-22T13:02:00-06:00", "title": "Building quotes now match what you actually pay", "bullets": [
+    "The Data Center, Bitcoin Farm, monument, mansion, highrise and Power Plant were quoting their base catalog total, before today's price index. The Bitcoin Farm said 1,317,280 when paying in chips actually costs about 2.3 million at today's index. The quote now uses the same index as the charge, with a chips and materials breakdown.",
+    "Hyper farm glasshouse and offshore rig quotes had the same miss on chip amounts, and the rig also showed material prices before the index. Those now match the charge too. Warehouse stock is still used first. Actual prices and what you are charged are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-22T12:59:00-06:00", "title": "Owned properties no longer show as for sale after a listing glitch", "bullets": [
     "If the property list could not be loaded, the map treated every deed as for sale and owned homes and farms could not be opened.",
     "The last good list now stays on screen until a fresh copy arrives, and the server still returns ownership when a side query is slow.",
