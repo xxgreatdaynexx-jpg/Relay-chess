@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   WEST, WEST_GROUND, WEST_ROADS, WEST_JUNCTIONS, WEST_CUL_ENDS, WEST_RESERVED, WEST_WAREHOUSES, WEST_PORT, WEST_MARINA,
   GW_TIE, RURAL_SW, WEST_DC, WEST_TOWN, WEST_POCKET, WEST_FARMS, WEST_FARM_N0, WEST_HILLS, WEST_LAKES, WEST_CREEK, WEST_INDUSTRIAL_X,
+  WEST_FIELDS, WEST_YARDS, WEST_HAMLETS, WEST_LAKESIDE, WEST_MEADOWS, WEST_OUTCROPS, WEST_DECOR_SOLIDS,
   westFill, westRoadClearance, westDistrict, onWest, lakeClearance, creekClearance, nearWater,
 } from '../shared/westCity';
 import { ROAD_WIDTH, district, cityFill, landmarks, obbOverlap, obbCorners, roadClearance, type OBB } from '../shared/worldLayout';
@@ -76,14 +77,15 @@ describe('West Chud (western half of the map)', () => {
     const old = cityFill(7).houses.length;
     expect(houses.length).toBeGreaterThan(old); expect(houses.length).toBeLessThan(old * 2.2); // about one more old city's worth, mostly in Westgate
     expect(houses.filter((h) => h.type === 'tower').length).toBeGreaterThan(5);
-    // outside town the only homes are the farmhouses
-    const country = houses.filter((h) => !westTown(h.x, h.z)); expect(country.length).toBeLessThanOrEqual(WEST_FARMS.length); expect(country.every((h) => h.type === 'house')).toBe(true);
+    // outside town the only homes are farmhouses, hamlet homes and lakeside cabins, all detached houses
+    const country = houses.filter((h) => !westTown(h.x, h.z)); const slots = WEST_FARMS.length + WEST_HAMLETS.reduce((n, h) => n + h.homes.length, 0) + WEST_LAKESIDE.cabins.length;
+    expect(country.length).toBeLessThanOrEqual(slots); expect(country.length).toBeGreaterThan(20); expect(country.every((h) => h.type === 'house')).toBe(true);
     const lots = patches.filter((p) => p.kind === 'lot' && !westTown(p.x, p.z)); expect(lots.length).toBeGreaterThan(30); // empty buildable land along the country roads
     const all: OBB[] = [...houses, ...patches];
     for (const b of all) {
       for (const [x, z] of obbCorners(b)) { expect(onWest(x, z, 1), `${b.x},${b.z}`).toBe(true); expect(z).toBeLessThan(OCEAN.beachZ); expect(nearWater(x, z, 0), `${b.x},${b.z} in water`).toBe(false); }
       expect(westRoadClearance(b.x, b.z)).toBeGreaterThan(0);
-      for (const r of [...WEST_RESERVED, ...WEST_WAREHOUSES, ...WEST_FARMS]) expect(obbOverlap(b, r, 0)).toBe(false);
+      for (const r of [...WEST_RESERVED, ...WEST_WAREHOUSES, ...WEST_FARMS, ...WEST_DECOR_SOLIDS]) expect(obbOverlap(b, r, 0)).toBe(false);
     }
     const G = 30; const grid = new Map<string, OBB[]>();
     for (const b of all) { const k = `${Math.floor(b.x / G)},${Math.floor(b.z / G)}`; (grid.get(k) ?? grid.set(k, []).get(k)!).push(b); }
@@ -184,5 +186,30 @@ describe('West Chud (western half of the map)', () => {
     const coast = WEST_ROADS.find((r) => r.id === 'w-coast')!; const near = coast.pts.reduce((b, p) => (Math.abs(p[0] + 190) < Math.abs(b[0] + 190) ? p : b));
     expect(Math.abs(near[1] + coast.width / 2 - 172.5)).toBeLessThan(0.5);
     for (const r of WEST_ROADS) if (r.id !== 'w-coast') for (const [x, z] of r.pts) expect(inBridgeSite(x, z, 2), r.id).toBe(false);
+  });
+
+  it('feels lived-in: planted fields, orchards, vineyards and pastures, farmyards, hamlets, lakeside spots, meadows and outcrops, all clear of roads and water', () => {
+    expect(WEST_FIELDS.length).toBeGreaterThan(30);
+    const kinds = new Set(WEST_FIELDS.map((f) => f.kind)); for (const k of ['crop', 'wheat', 'orchard', 'vineyard', 'pasture', 'hay']) expect(kinds.has(k as never), k).toBe(true);
+    expect(WEST_FIELDS.length).toBeGreaterThan(WEST_FARMS.length * 2); // decor farmland outnumbers bare deed fields
+    for (const f of WEST_FIELDS) { for (const [x, z] of obbCorners(f)) { expect(onWest(x, z, 1)).toBe(true); expect(westTown(x, z)).toBe(false); expect(nearWater(x, z, 0)).toBe(false); }
+      expect(westRoadClearance(f.x, f.z)).toBeGreaterThan(Math.min(f.w, f.d) / 2);
+      for (const o of [...WEST_FARMS, ...WEST_RESERVED]) expect(obbOverlap(o, f, 0)).toBe(false);
+      for (const o of WEST_FIELDS) if (o !== f) expect(obbOverlap(o, f, 0)).toBe(false); }
+    expect(WEST_YARDS.length).toBeGreaterThanOrEqual(WEST_FARMS.length * 0.7);
+    expect(WEST_HAMLETS.length).toBeGreaterThanOrEqual(2); expect(WEST_HAMLETS.length).toBeLessThanOrEqual(4);
+    const ps = new Map(properties().map((p) => [p.id, p])); const { houses } = westFill();
+    for (const h of WEST_HAMLETS) { expect(h.shops.map((o) => o.kind).sort()).toEqual(['church', 'diner', 'gas', 'store']); expect(h.homes.length).toBeGreaterThanOrEqual(3);
+      for (const o of h.shops) { expect(westRoadClearance(o.x, o.z)).toBeGreaterThan(Math.min(o.w, o.d) / 2); for (const [x, z] of obbCorners(o)) expect(nearWater(x, z, 0)).toBe(false); }
+      // its homes are ordinary deeds
+      const deeds = houses.filter((b) => h.homes.some((s) => Math.hypot(s.x - b.x, s.z - b.z) < 0.01)); expect(deeds.length).toBeGreaterThanOrEqual(3);
+      for (const b of deeds) { const id = `b:house:${Math.round(b.x * 10)}:${Math.round(b.z * 10)}`; expect(ps.get(id)?.kind, id).toBe('building'); expect(isWestDeed(id)).toBe(true); } }
+    const L = WEST_LAKESIDE; expect(L.cabins.length).toBeGreaterThanOrEqual(3); expect(L.docks.length).toBeGreaterThanOrEqual(5); expect(L.tents.length + L.picnic.length).toBeGreaterThanOrEqual(4);
+    for (const o of [...L.tents, ...L.picnic]) { expect(nearWater(o.x, o.z, 0)).toBe(false); expect(westRoadClearance(o.x, o.z)).toBeGreaterThan(1); }
+    for (const d of L.docks) expect(lakeClearance(d.x + Math.cos(d.rot) * d.len, d.z + Math.sin(d.rot) * d.len)).toBeLessThan(0); // the dock end is out over the water
+    expect(WEST_MEADOWS.length).toBeGreaterThan(15); expect(WEST_OUTCROPS.length).toBeGreaterThan(10);
+    for (const [x, z, r] of [...WEST_MEADOWS, ...WEST_OUTCROPS]) { expect(westRoadClearance(x, z)).toBeGreaterThan(r); expect(nearWater(x, z, r)).toBe(false); }
+    // the forest keeps clear of all of it
+    const solids = WEST_DECOR_SOLIDS; for (const p of westScenery()) if (p.kind === 'pine' || p.kind === 'deciduous') for (const o of solids) if (Math.abs(o.x - p.x) < 40 && Math.abs(o.z - p.z) < 40) expect(obbOverlap(o, { x: p.x, z: p.z, w: 1, d: 1, rot: 0 }, 0)).toBe(false);
   });
 });

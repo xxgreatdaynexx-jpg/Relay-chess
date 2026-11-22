@@ -553,7 +553,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   { const patches2 = [...patches, ...west.patches]; // the city's patches, then West Chud's (instance order keeps the old ones first)
   if (patches2.length) {
     const gm = new THREE.InstancedMesh(unitBox, mat({ color: 0xffffff, roughness: 1 }), patches2.length); const d = new THREE.Object3D(); const c = new THREE.Color();
-    patches2.forEach((b, i) => { d.position.set(b.x, 0.04, b.z); d.scale.set(b.w, 0.08, b.d); d.rotation.set(0, b.rot, 0); d.updateMatrix(); gm.setMatrixAt(i, d.matrix); gm.setColorAt(i, c.setHex(XM ? (b.kind === 'plaza' ? 0xb4bccb : b.kind === 'park' ? 0xe6edf8 : 0xd4dbe8) : b.kind === 'park' ? 0x2e7a36 : b.kind === 'plaza' ? 0x77727a : 0x4a3a2c)); });
+    patches2.forEach((b, i) => { d.position.set(b.x, 0.04, b.z); d.scale.set(b.w, 0.08, b.d); d.rotation.set(0, b.rot, 0); d.updateMatrix(); gm.setMatrixAt(i, d.matrix); gm.setColorAt(i, c.setHex(XM ? (b.kind === 'plaza' ? 0xb4bccb : b.kind === 'park' ? 0xe6edf8 : 0xd4dbe8) : b.kind === 'park' ? 0x2e7a36 : b.kind === 'plaza' ? 0x77727a : i >= patches.length ? 0x7fa64e : 0x4a3a2c)); }); // West Chud's empty lots are rough grass (with a for-sale sign), not dirt, so they never read as farmland
     scene.add(gm); gm.userData.props = patches2.map((b) => patchId(b.kind, b)); pickables.push(gm);
     patches2.forEach((b, i) => propTop.set(gm.userData.props[i], [b.x, 0.1, b.z]));
     patches2.forEach((b, i) => { if (civicRetired(b)) retire(gm.userData.props[i], [[gm, i]]); });

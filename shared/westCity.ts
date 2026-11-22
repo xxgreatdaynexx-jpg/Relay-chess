@@ -250,6 +250,62 @@ function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; 
 const OLD_PLATE_AREA = 232 * 232; // the old downtown plate (worldLayout PLATE 116)
 const keepOut = (b: OBB, m: number) => [...WEST_RESERVED, ...WEST_WAREHOUSES].some((o) => obbOverlap(o, b, m)) || obbCorners(b).some(([x, z]) => nearWater(x, z, m + 2)) || nearWater(b.x, b.z, m + 2);
 
+/* ---------------- hamlets and lakeside (decor + a few homes that are ordinary deeds) ---------------- */
+export type WestShopKind = 'store' | 'gas' | 'diner' | 'church';
+export interface WestShop extends OBB { kind: WestShopKind; h: number }
+export interface WestHamlet { name: string; road: string; x: number; z: number; shops: WestShop[]; homes: OBB[] }
+const SHOP_SIZE: Record<WestShopKind, [number, number, number]> = { store: [10, 8, 4.2], gas: [13, 10, 4.8], diner: [11, 7, 3.8], church: [8, 13, 6.5] };
+/** Roadside frontage spot j points along road q from index ci, on one side, set back for a d-deep footprint. */
+const frontage = (q: P[], i: number, side: number, width: number, w: number, d: number, extra = 0): OBB | null => {
+  if (i < 3 || i > q.length - 4) return null; const a = q[i - 2], b = q[i + 2]; const ang = Math.atan2(b[1] - a[1], b[0] - a[0]); const nx = -Math.sin(ang), nz = Math.cos(ang);
+  const off = width / 2 + 2.5 + d / 2 + extra; return { x: q[i][0] + nx * off * side, z: q[i][1] + nz * off * side, w, d, rot: -ang };
+};
+const nearestIx = (q: P[], x: number, z: number) => { let ci = 0; q.forEach((p, i) => { if (Math.hypot(p[0] - x, p[1] - z) < Math.hypot(q[ci][0] - x, q[ci][1] - z)) ci = i; }); return ci; };
+/** Three crossroads hamlets on the country roads: a general store, a gas station, a diner, a church and a handful of homes each. */
+export const WEST_HAMLETS: WestHamlet[] = (() => {
+  const specs: Array<[string, string, number, number]> = [['Cedar Crossing', 'w-cedar', -1050, -12], ['Ridgeview', 'w-ridgew', -1080, -326], ['Millbrook', 'w-ridge', -545, -290]];
+  const out: WestHamlet[] = []; const all: OBB[] = [];
+  for (const [name, id, cx, cz] of specs) {
+    const r = WEST_ROADS.find((o) => o.id === id); if (!r) continue; const q = r.pts; const ci = nearestIx(q, cx, cz);
+    const shops: WestShop[] = []; const homes: OBB[] = []; const kinds: WestShopKind[] = ['store', 'gas', 'diner', 'church'];
+    const js: number[] = []; for (let j = 0; j <= 60; j += 2) { js.push(j); if (j) js.push(-j); }
+    for (const j of js) for (const side of [1, -1]) {
+      const wantShop = shops.length < kinds.length; if (!wantShop && homes.length >= 7) break;
+      const [w, d, h] = wantShop ? SHOP_SIZE[kinds[shops.length]] : [8, 8, 0];
+      const o = frontage(q, ci + j, side, r.width, w, d); if (!o) continue;
+      const ok = obbCorners(o).every(([x, z]) => onWest(x, z, 3) && !westTown(x, z) && !nearWater(x, z, 2)) && clearOfWestRoads(o, 1.5)
+        && ![...WEST_RESERVED, ...WEST_WAREHOUSES, ...all].some((b) => obbOverlap(b, o, 2.5));
+      if (!ok) continue; all.push(o);
+      if (wantShop) shops.push({ ...o, kind: kinds[shops.length], h }); else homes.push(o);
+    }
+    out.push({ name, road: id, x: q[ci][0], z: q[ci][1], shops, homes });
+  }
+  return out;
+})();
+const HAMLET_SOLIDS: OBB[] = WEST_HAMLETS.flatMap((h) => [...h.shops, ...h.homes]);
+
+export interface WestDock { x: number; z: number; len: number; rot: number }
+/** Lakeside: cabins (home deeds) with docks on Cedar Lake's north shore, a campground and picnic tables, fishing piers on Mill Pond. */
+export const WEST_LAKESIDE = (() => {
+  const cabins: OBB[] = []; const docks: WestDock[] = []; const tents: OBB[] = []; const picnic: OBB[] = []; const fires: P[] = [];
+  const taken: OBB[] = [...HAMLET_SOLIDS];
+  const free = (o: OBB, m: number) => obbCorners(o).every(([x, z]) => onWest(x, z, 3) && !nearWater(x, z, 0.8)) && clearOfWestRoads(o, 1.5)
+    && ![...WEST_RESERVED, ...taken].some((b) => obbOverlap(b, o, m));
+  for (const l of WEST_LAKES) { const big = l.rx > 30; const n = big ? 30 : 14; const ring = lakeOutline(l, n);
+    for (let i = 0; i < n; i++) { const [sx, sz] = ring[i]; const dx = sx - l.x, dz = sz - l.z, m = Math.hypot(dx, dz) || 1; const nx = dx / m, nz = dz / m;
+      if (creekClearance(sx, sz) < 10) continue; const rot = -Math.atan2(nz, nx);
+      const role = big ? (nz < -0.25 ? 'cabin' : nx > 0.2 ? 'camp' : 'picnic') : (i % 3 === 0 ? 'cabin' : i % 3 === 1 ? 'fish' : 'picnic');
+      if (role === 'cabin' && i % 2 === 0) { const o: OBB = { x: sx + nx * 9, z: sz + nz * 9, w: 8, d: 8, rot }; if (free(o, 3)) { cabins.push(o); taken.push(o); docks.push({ x: sx - nx * 1, z: sz - nz * 1, len: 8, rot: Math.atan2(-nz, -nx) }); } }
+      else if (role === 'camp' && i % 2 === 1) { const f: OBB = { x: sx + nx * 8, z: sz + nz * 8, w: 1.6, d: 1.6, rot: 0 }; if (free(f, 0.8)) { fires.push([f.x, f.z]); taken.push(f); } }
+      else if (role === 'camp') { for (const [k, dd] of [[0, 6], [1, 11]] as const) { const t: OBB = { x: sx + nx * dd + nz * (k ? 2.5 : -2.5), z: sz + nz * dd - nx * (k ? 2.5 : -2.5), w: 3, d: 3, rot }; if (free(t, 1.2)) { tents.push(t); taken.push(t); } }
+      }
+      else if (role === 'picnic' && i % 2 === 1) { const t: OBB = { x: sx + nx * 6, z: sz + nz * 6, w: 2.2, d: 1.8, rot }; if (free(t, 1.5)) { picnic.push(t); taken.push(t); } }
+      else if (role === 'fish') docks.push({ x: sx - nx * 0.5, z: sz - nz * 0.5, len: 4.5, rot: Math.atan2(-nz, -nx) });
+    } }
+  return { cabins, docks, tents, picnic, fires };
+})();
+const LAKESIDE_SOLIDS: OBB[] = [...WEST_LAKESIDE.cabins, ...WEST_LAKESIDE.tents, ...WEST_LAKESIDE.picnic, ...WEST_LAKESIDE.fires.map(([x, z]) => ({ x, z, w: 1.6, d: 1.6, rot: 0 }))];
+
 /**
  * West Chud farms: countryside crop fields on the ordinary farm system (cf:<3000+k>: deed, plant, grow, harvest, tax),
  * laid out like the East Estates farms: square to the compass, set back from a country road, with a farmhouse by the road.
@@ -269,7 +325,7 @@ export const WEST_FARMS: WestFarm[] = (() => {
       const fx = ax ? x + Math.sign(nx * side) * off : x, fz = ax ? z : z + Math.sign(nz * side) * off;
       const f: OBB = { x: fx, z: fz, w, d, rot: 0 };
       const ok = obbCorners(f).every(([px, pz]) => onWest(px, pz, 4) && !westTown(px, pz) && px < WEST_INDUSTRIAL_X - 6) && !(f.z + d / 2 > WEST.z1 - 8)
-        && clearOfWestRoads(f, 2.5) && !keepOut(f, 4) && !out.some((o) => obbOverlap(o, f, 6)) && Math.abs(fx - WIND_X) > d / 2 + w / 2 + 8;
+        && clearOfWestRoads(f, 2.5) && !keepOut(f, 4) && !out.some((o) => obbOverlap(o, f, 6)) && ![...HAMLET_SOLIDS, ...LAKESIDE_SOLIDS].some((o) => obbOverlap(o, f, 8)) && Math.abs(fx - WIND_X) > d / 2 + w / 2 + 8;
       if (!ok) { i += 3; continue; }
       // farmhouse by the road at the field's corner
       const hx = ax ? x + Math.sign(nx * side) * (r.width / 2 + 3) : x + (w / 2 + 5), hz = ax ? z + (d / 2 + 5) : z + Math.sign(nz * side) * (r.width / 2 + 3);
@@ -292,6 +348,48 @@ export const WEST_HILLS: Array<[number, number, number, number]> = (() => {
   return out;
 })();
 
+/* ---------------- decorative farmland, farmyards, meadows and outcrops ---------------- */
+export type WestFieldKind = 'crop' | 'wheat' | 'corn' | 'orchard' | 'vineyard' | 'pasture' | 'hay';
+export interface WestField extends OBB { kind: WestFieldKind; seed: number }
+const FIELD_KINDS: WestFieldKind[] = ['crop', 'pasture', 'wheat', 'orchard', 'corn', 'pasture', 'vineyard', 'hay', 'crop', 'orchard', 'wheat', 'pasture'];
+/** Planted fields, orchards, vineyards, pastures and hay meadows (scenery, not deeds) around the farms, so the countryside reads as worked land. */
+export const WEST_FIELDS: WestField[] = (() => {
+  const out: WestField[] = []; const r0 = rng(7331); const solids: OBB[] = [...WEST_FARMS, ...WEST_FARMS.map((f) => ({ ...f.home, w: 10, d: 10 })), ...HAMLET_SOLIDS, ...LAKESIDE_SOLIDS];
+  for (const id of ['w-cedar', 'w-ridgew', 'w-coast', 'w-ridge', 'w-maple']) { const r = WEST_ROADS.find((o) => o.id === id); if (!r) continue; const q = r.pts;
+    for (const tier of [0, 1]) for (const side of [1, -1]) for (let i = 8; i < q.length - 8;) {
+      const [x, z] = q[i]; if (x > WEST_INDUSTRIAL_X - 10 || westTown(x, z) || x < WEST.x0 + 16) { i += 4; continue; }
+      if (tier === 0 && r0() < 0.45) { i += 14; continue; } // leave roadside room for the empty lots
+      const kind = FIELD_KINDS[out.length % FIELD_KINDS.length]; const w = Math.round(22 + r0() * 22), d = Math.round(16 + r0() * 16);
+      const a = q[i - 3], b = q[i + 3]; const ang = Math.atan2(b[1] - a[1], b[0] - a[0]); const nx = -Math.sin(ang), nz = Math.cos(ang); const ax = Math.abs(nx) > Math.abs(nz);
+      const off = r.width / 2 + 3 + (ax ? w : d) / 2 + tier * 40; const f: WestField = { x: ax ? x + Math.sign(nx * side) * off : x, z: ax ? z : z + Math.sign(nz * side) * off, w, d, rot: 0, kind, seed: Math.floor(r0() * 1e6) };
+      const ok = obbCorners(f).every(([px, pz]) => onWest(px, pz, 4) && !westTown(px, pz) && px < WEST_INDUSTRIAL_X - 6 && pz < WEST.z1 - 8) && clearOfWestRoads(f, 2.5) && !keepOut(f, 3)
+        && ![...solids, ...out].some((o) => obbOverlap(o, f, 4)) && Math.abs(f.x - WIND_X) > w / 2 + 8 && !WEST_HILLS.some(([hx, hz, hr]) => obbHit(f, hx, hz, hr + 2));
+      if (!ok) { i += 3; continue; } out.push(f); i += Math.ceil((ax ? d : w) + 8);
+    } }
+  return out;
+})();
+/** Farmyards: a barn with hay bales beside each farm's farmhouse. */
+export const WEST_YARDS: OBB[] = (() => {
+  const out: OBB[] = []; const solids: OBB[] = [...WEST_FARMS, ...WEST_FIELDS, ...HAMLET_SOLIDS, ...LAKESIDE_SOLIDS];
+  for (const f of WEST_FARMS) { const h = f.home; let done = false;
+    for (const rad of [11, 14, 18]) { for (let k = 0; k < 8 && !done; k++) { const a = (k / 8) * Math.PI * 2; const o: OBB = { x: h.x + Math.cos(a) * rad, z: h.z + Math.sin(a) * rad, w: 8, d: 10, rot: h.rot };
+      if (obbCorners(o).every(([x, z]) => onWest(x, z, 3) && !nearWater(x, z, 1) && !westTown(x, z)) && clearOfWestRoads(o, 2) && ![...solids, ...out].some((b) => obbOverlap(b, o, 2)) && !obbOverlap({ ...h, w: 10, d: 10 }, o, 1)) { out.push(o); done = true; } } if (done) break; } }
+  return out;
+})();
+/** Wildflower meadows [x, z, r] and rock outcrops [x, z, r] in the open land. */
+export const WEST_MEADOWS: Array<[number, number, number]> = [];
+export const WEST_OUTCROPS: Array<[number, number, number]> = [];
+{ const r = rng(4711); const solids: OBB[] = [...WEST_FARMS, ...WEST_FIELDS, ...WEST_YARDS, ...HAMLET_SOLIDS, ...LAKESIDE_SOLIDS, ...WEST_RESERVED, ...WEST_WAREHOUSES];
+  const open = (x: number, z: number, rad: number) => onWest(x, z, rad + 4) && z < WEST.z1 - 12 && !westTown(x, z) && x < WEST_INDUSTRIAL_X - 10 && westRoadClearance(x, z, rad + 20) > rad + 4 && !nearWater(x, z, rad + 3)
+    && Math.abs(x - WIND_X) > rad + 8 && !WEST_HILLS.some(([hx, hz, hr]) => Math.hypot(hx - x, hz - z) < hr + rad + 3) && !solids.some((o) => obbHit(o, x, z, rad + 3));
+  for (let t = 0; t < 4000 && WEST_MEADOWS.length < 30; t++) { const x = WEST.x0 + r() * (WEST.x1 - WEST.x0), z = WEST.z0 + r() * (WEST.z1 - WEST.z0), rad = 7 + r() * 7;
+    if (open(x, z, rad) && !WEST_MEADOWS.some(([mx, mz, mr]) => Math.hypot(mx - x, mz - z) < mr + rad + 10)) WEST_MEADOWS.push([x, z, rad]); }
+  for (let t = 0; t < 4000 && WEST_OUTCROPS.length < 22; t++) { const x = WEST.x0 + r() * (WEST.x1 - WEST.x0), z = WEST.z0 + r() * (WEST.z1 - WEST.z0), rad = 3 + r() * 3;
+    if (open(x, z, rad) && ![...WEST_MEADOWS, ...WEST_OUTCROPS].some(([mx, mz, mr]) => Math.hypot(mx - x, mz - z) < mr + rad + 8)) WEST_OUTCROPS.push([x, z, rad]); } }
+/** Everything the countryside decor occupies (fields, yards, hamlet shops, lakeside, meadows, outcrops), for the scenery and fill to keep clear of. */
+export const WEST_DECOR_SOLIDS: OBB[] = [...WEST_FIELDS, ...WEST_YARDS, ...WEST_HAMLETS.flatMap((h) => h.shops), ...WEST_LAKESIDE.tents, ...WEST_LAKESIDE.picnic,
+  ...WEST_LAKESIDE.fires.map(([x, z]) => ({ x, z, w: 1.6, d: 1.6, rot: 0 })), ...[...WEST_MEADOWS, ...WEST_OUTCROPS].map(([x, z, r]) => ({ x, z, w: r * 2, d: r * 2, rot: 0 }))];
+
 let fillCache: { houses: House[]; patches: Patch[] } | null = null;
 /**
  * West Chud fill. Westgate and the Maple Heights pocket use the old city's cityFill rules unchanged (same housing types,
@@ -301,7 +399,7 @@ let fillCache: { houses: House[]; patches: Patch[] } | null = null;
 export function westFill(): { houses: House[]; patches: Patch[] } {
   if (fillCache) return fillCache;
   const rand = rng(2026); const houses: House[] = []; const patches: Patch[] = [];
-  const taken: OBB[] = [...WEST_RESERVED, ...WEST_WAREHOUSES, ...WEST_FARMS, ...WEST_HILLS.map(([x, z, r]) => ({ x, z, w: r * 1.6, d: r * 1.6, rot: 0 }))];
+  const taken: OBB[] = [...WEST_RESERVED, ...WEST_WAREHOUSES, ...WEST_FARMS, ...WEST_DECOR_SOLIDS, ...WEST_HILLS.map(([x, z, r]) => ({ x, z, w: r * 1.6, d: r * 1.6, rot: 0 }))];
   const TG = 24; const tgrid = new Map<string, OBB[]>();
   const take = (o: OBB) => { const r = Math.hypot(o.w, o.d) / 2; for (let i = Math.floor((o.x - r) / TG); i <= Math.floor((o.x + r) / TG); i++) for (let j = Math.floor((o.z - r) / TG); j <= Math.floor((o.z + r) / TG); j++) { const k = `${i},${j}`; (tgrid.get(k) ?? tgrid.set(k, []).get(k)!).push(o); } };
   taken.forEach(take);
@@ -321,6 +419,9 @@ export function westFill(): { houses: House[]; patches: Patch[] } {
   // farmhouses (country homes, like the old outskirts' farmhouses)
   for (const f of WEST_FARMS) { const e = like('house'); const hb: OBB = { ...f.home, w: e.w, d: e.d };
     if (clearOfWestRoads(hb, 0.5) && free(hb, 1)) { houses.push({ ...hb, h: e.h, type: 'house', color: HOUSING_TYPES.find((t) => t.id === 'house')!.colors[Math.floor(rand() * 6) % HOUSING_TYPES.find((t) => t.id === 'house')!.colors.length] }); take(hb); } }
+  // hamlet homes and lakeside cabins: ordinary detached-home deeds (old house sizes)
+  for (const slot of [...WEST_HAMLETS.flatMap((h) => h.homes), ...WEST_LAKESIDE.cabins]) { const e = like('house'); const hb: OBB = { ...slot, w: e.w, d: e.d };
+    if (clearOfWestRoads(hb, 0.5) && free(hb, 0.8) && !nearWater(hb.x, hb.z, 2)) { const t = HOUSING_TYPES.find((o) => o.id === 'house')!; houses.push({ ...hb, h: e.h, type: 'house', color: t.colors[Math.floor(rand() * t.colors.length)] }); take(hb); } }
   // town frontage, the old rules
   for (const road of WEST_ROADS) {
     if (road.id === 'w-expy') continue; const pts = road.pts; let typeIx = -1; let runLeft = 0;
@@ -355,7 +456,7 @@ export function westFill(): { houses: House[]; patches: Patch[] } {
   // empty lots along the country roads: open, buildable land deeds (old empty-lot rules and prices)
   for (const road of WEST_ROADS) { if (road.kind !== 'avenue') continue; const q = road.pts;
     for (const side of [1, -1]) for (let i = 12; i < q.length - 12; i += 9) {
-      const [x, z] = q[i]; if (urban(x, z) || x > WEST_INDUSTRIAL_X - 6 || rand() > 0.32) continue;
+      const [x, z] = q[i]; if (urban(x, z) || x > WEST_INDUSTRIAL_X - 6 || rand() > 0.6) continue;
       const a = q[i - 3], b = q[i + 3]; const ang = Math.atan2(b[1] - a[1], b[0] - a[0]); const nx = -Math.sin(ang), nz = Math.cos(ang);
       const w = 14 + rand() * 8, d = 12 + rand() * 6; const off = road.width / 2 + 2.5 + d / 2;
       const lot: Patch = { x: x + nx * off * side, z: z + nz * off * side, w, d, rot: -ang, kind: 'lot' };

@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { routePoint, LANE, PLATE, type OBB } from './worldLayout';
 import {
   WEST_GROUND, WEST_ROADS, WEST_JUNCTIONS, WEST_CUL_ENDS, WEST_CUL_R, WEST_CAR_ROUTES, WEST_CAR_COUNT, WEST_LABELS, WEST_WAREHOUSES,
-  WESTGATE_PARK, WESTGATE_SQUARE, WEST_STADIUM, WEST_PORT, WEST_MARINA, WEST_LIGHTHOUSE, WIND_TURBINES, WIND_X, WEST_TOWN, WEST_POCKET, WEST_LAKES, WEST_CREEK, WEST_CREEK_W, WEST_HILLS, WEST_FARMS, lakeOutline, creekClearance, lakeClearance, nearWater, WEST, westTown, westFill, westRoadClearance, westDistrict, toLocal, onWest,
+  WESTGATE_PARK, WESTGATE_SQUARE, WEST_STADIUM, WEST_PORT, WEST_MARINA, WEST_LIGHTHOUSE, WIND_TURBINES, WIND_X, WEST_TOWN, WEST_POCKET, WEST_LAKES, WEST_CREEK, WEST_CREEK_W, WEST_HILLS, WEST_FARMS, WEST_FIELDS, WEST_YARDS, WEST_HAMLETS, WEST_LAKESIDE, WEST_MEADOWS, WEST_OUTCROPS, WEST_DECOR_SOLIDS, lakeOutline, creekClearance, lakeClearance, nearWater, WEST, westTown, westFill, westRoadClearance, westDistrict, toLocal, onWest,
 } from '../../../shared/westCity';
 import { OCEAN, coastZ } from '../../../shared/ocean';
 import { inBridgeSite } from '../../../shared/coop';
@@ -49,6 +49,10 @@ export function addWestCity(c: WestCityCtx) {
     cone: geo(new THREE.ConeGeometry(0.5, 1, 10)),
     taper: geo(new THREE.CylinderGeometry(0.36, 0.5, 1, 12)),
     sphere: geo(new THREE.SphereGeometry(0.5, 10, 8)),
+    ball: geo(new THREE.SphereGeometry(0.5, 6, 4)),
+    flower: geo(new THREE.OctahedronGeometry(0.5, 0)),
+    rock: geo(new THREE.DodecahedronGeometry(0.5, 0)),
+    prism: geo(new THREE.CylinderGeometry(0.5, 0.5, 1, 3).rotateZ(Math.PI / 2).rotateX(Math.PI / 6)),
   };
   type Shape = keyof typeof shapes;
   const batches = new Map<string, { shape: Shape; m: THREE.Material; items: Array<{ mx: THREE.Matrix4; col: number }> }>();
@@ -102,7 +106,7 @@ export function addWestCity(c: WestCityCtx) {
   }
 
   /* ---- occupancy grid (houses, patches, warehouses, landmarks) for props ---- */
-  const solids: OBB[] = [...houses, ...patches, ...WEST_WAREHOUSES, WESTGATE_SQUARE, WEST_STADIUM, WESTGATE_PARK];
+  const solids: OBB[] = [...houses, ...patches, ...WEST_WAREHOUSES, WESTGATE_SQUARE, WEST_STADIUM, WESTGATE_PARK, ...WEST_FARMS, ...WEST_DECOR_SOLIDS];
   const SG = 16; const sgrid = new Map<string, OBB[]>();
   for (const o of solids) { const r = Math.hypot(o.w, o.d) / 2; for (let i = Math.floor((o.x - r) / SG); i <= Math.floor((o.x + r) / SG); i++) for (let j = Math.floor((o.z - r) / SG); j <= Math.floor((o.z + r) / SG); j++) { const k = `${i},${j}`; (sgrid.get(k) ?? sgrid.set(k, []).get(k)!).push(o); } }
   const hitObb = (o: OBB, x: number, z: number, m: number) => { const cs = Math.cos(o.rot), sn = Math.sin(o.rot); const dx = x - o.x, dz = z - o.z; return Math.abs(dx * cs - dz * sn) < o.w / 2 + m && Math.abs(dx * sn + dz * cs) < o.d / 2 + m; };
@@ -254,6 +258,93 @@ export function addWestCity(c: WestCityCtx) {
   sprite('West Chud Stadium', '#9be37a', WEST_STADIUM.x, 26, WEST_STADIUM.z, 26);
   sprite('Westgate Park', '#9be37a', WESTGATE_PARK.x, 16, WESTGATE_PARK.z, 22);
   sprite('Sunset Marina', '#7fe0ff', WEST_MARINA.x, 18, WEST_MARINA.z, 22);
+
+  /* ---- lived-in countryside: planted fields, orchards, vineyards, pastures with animals, farmyards, hamlets, lakeside, meadows ---- */
+  { const R = rng(2718);
+    const boardMat = (text: string, color: string) => { const t = c.label(text, color); labels.push(t); const m = mat({ color: 0xffffff, map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 0.35 }); disposables.push(m); return m; };
+    const signBoard = (text: string, color: string, x: number, z: number, ry: number, w = 5, y = 2.6) => { const t = c.label(text, color); labels.push(t); const img = t.image as { width: number; height: number } | undefined; const k = img ? img.height / img.width : 0.25;
+      const m = mat({ color: 0xffffff, map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 0.35 }); disposables.push(m); const b = new THREE.Mesh(geo(new THREE.BoxGeometry(w, w * k, 0.15)), m); b.position.set(x, y, z); b.rotation.y = ry; scene.add(b);
+      for (const sd of [-1, 1]) piece('box', M.paint, x + Math.cos(ry) * (w / 2 - 0.3) * sd, (y - w * k / 2) / 2, z - Math.sin(ry) * (w / 2 - 0.3) * sd, 0.18, y - w * k / 2, 0.18, ry, 0x5a4a3a); };
+    const fenceRun = (x0: number, z0: number, x1: number, z1: number, col = 0x8a6a48) => { const len = Math.hypot(x1 - x0, z1 - z0); const ang = Math.atan2(z1 - z0, x1 - x0); const n = Math.max(1, Math.round(len / 3));
+      for (let k = 0; k <= n; k++) piece('box', M.paint, x0 + (x1 - x0) * k / n, 0.55, z0 + (z1 - z0) * k / n, 0.16, 1.1, 0.16, 0, 0x6a4e34);
+      for (const y of [0.45, 0.9]) piece('box', M.paint, (x0 + x1) / 2, y, (z0 + z1) / 2, len, 0.08, 0.08, -ang, col); };
+    const hedge = (x0: number, z0: number, x1: number, z1: number) => { const len = Math.hypot(x1 - x0, z1 - z0); piece('box', M.leaf, (x0 + x1) / 2, 0.7, (z0 + z1) / 2, len, 1.4, 1.1, -Math.atan2(z1 - z0, x1 - x0), xm ? 0xe6edf8 : 0x2f6b32); };
+    for (const f of WEST_FIELDS) { const hw = f.w / 2, hd = f.d / 2; const r = rng(f.seed + 1);
+      const base = { crop: 0x4f8a34, wheat: 0xc8a845, corn: 0x5a8a2e, orchard: 0x4c8c3c, vineyard: 0x6a7a3a, pasture: 0x6fae4a, hay: 0xb8a458 }[f.kind];
+      block(M.concrete, f.x, 0, f.z, f.w - 0.6, 0.1, f.d - 0.6, 0, xm ? 0xe6edf8 : base);
+      if (f.kind === 'crop' || f.kind === 'wheat' || f.kind === 'corn') { const step = f.kind === 'corn' ? 1.8 : 1.5; const hgt = f.kind === 'corn' ? 1.3 : f.kind === 'wheat' ? 0.5 : 0.35;
+        const col = f.kind === 'wheat' ? 0xe0c25a : f.kind === 'corn' ? 0x6fa83a : [0x3f8f3a, 0x6aaa3a, 0x8fb848][f.seed % 3];
+        for (let z = -hd + 1.5; z < hd - 1; z += step) piece('box', M.leaf, f.x, 0.1 + hgt / 2, f.z + z, f.w - 2.4, hgt, step * 0.55, 0, xm ? 0xf0f4fa : col); }
+      else if (f.kind === 'orchard') { const fruit = [0xd8402a, 0xf0b030, 0x9ac040][f.seed % 3];
+        for (let x = -hw + 2.5; x < hw - 2; x += 4) for (let z = -hd + 2.5; z < hd - 2; z += 4) { piece('cyl6', M.paint, f.x + x, 0.7, f.z + z, 0.3, 1.4, 0.3, 0, 0x6b4526); piece('ball', M.leaf, f.x + x, 2, f.z + z, 2.4, 2, 2.4, 0, xm ? 0xe6edf8 : 0x2e8b45);
+          if (!low && !xm) piece('ball', M.paint, f.x + x + 0.6, 2.1, f.z + z + 0.7, 0.3, 0.3, 0.3, 0, fruit); } }
+      else if (f.kind === 'vineyard') { for (let z = -hd + 1.6; z < hd - 1; z += 2.4) { piece('box', M.leaf, f.x, 0.75, f.z + z, f.w - 3, 1.2, 0.55, 0, xm ? 0xe6edf8 : 0x3f7a2e);
+          for (let x = -hw + 1.5; x < hw - 1; x += 6) piece('box', M.paint, f.x + x, 0.8, f.z + z, 0.12, 1.6, 0.12, 0, 0x5a4a3a); } }
+      else if (f.kind === 'pasture') { const sheep = f.seed % 2 === 0; const n = low ? 4 : 5 + (f.seed % 5);
+        for (let k = 0; k < n; k++) { const x = f.x + (r() - 0.5) * (f.w - 5), z = f.z + (r() - 0.5) * (f.d - 5), a = r() * Math.PI * 2;
+          if (sheep) { piece('ball', M.paint, x, 0.7, z, 1.3, 0.9, 0.9, a, 0xf2efe6); piece('box', M.paint, x + Math.cos(a) * 0.75, 0.85, z - Math.sin(a) * 0.75, 0.4, 0.4, 0.35, a, 0x2a2a2a); }
+          else { const col = [0x4a3424, 0xf0ece4, 0x2a2420, 0x8a5a34][Math.floor(r() * 4)]; piece('box', M.paint, x, 0.95, z, 1.9, 0.9, 0.85, a, col); piece('box', M.paint, x + Math.cos(a) * 1.15, 1.2, z - Math.sin(a) * 1.15, 0.6, 0.55, 0.5, a, col);
+            for (const [lx, lz] of [[-0.7, -0.3], [0.7, -0.3], [-0.7, 0.3], [0.7, 0.3]]) piece('box', M.paint, x + Math.cos(a) * lx + Math.sin(a) * lz, 0.25, z - Math.sin(a) * lx + Math.cos(a) * lz, 0.18, 0.5, 0.18, a, 0x2a2420); } }
+        piece('box', M.metal, f.x + hw - 3, 0.35, f.z, 2.4, 0.6, 0.9, 0, 0x8a9098); // water trough
+        fenceRun(f.x - hw + 0.4, f.z - hd + 0.4, f.x + hw - 0.4, f.z - hd + 0.4); fenceRun(f.x - hw + 0.4, f.z + hd - 0.4, f.x + hw - 0.4, f.z + hd - 0.4);
+        fenceRun(f.x - hw + 0.4, f.z - hd + 0.4, f.x - hw + 0.4, f.z + hd - 0.4); fenceRun(f.x + hw - 0.4, f.z - hd + 0.4, f.x + hw - 0.4, f.z + hd - 0.4); }
+      else { for (let k = 0; k < 6 + (f.seed % 6); k++) { const x = f.x + (r() - 0.5) * (f.w - 4), z = f.z + (r() - 0.5) * (f.d - 4); piece('cyl', M.paint, x, 0.75, z, 1.5, 1.5, 1.5, r() * 3, 0xd8bc6a, Math.PI / 2); } }
+      // hedgerow on the far side of every planted field, fence on the road side (pastures are fenced all round)
+      if (f.kind !== 'pasture') { const c0 = westRoadClearance(f.x, f.z - hd - 3), c1 = westRoadClearance(f.x, f.z + hd + 3); const far = c0 > c1 ? -1 : 1; if (!low) hedge(f.x - hw, f.z + far * (hd + 0.2), f.x + hw, f.z + far * (hd + 0.2));
+        fenceRun(f.x - hw + 0.4, f.z - far * (hd - 0.4), f.x + hw - 0.4, f.z - far * (hd - 0.4)); } }
+    // farmyards: a red barn, hay bales and a mailbox at each farm
+    for (const y of WEST_YARDS) { block(M.paint, y.x, 0, y.z, y.w, 4.4, y.d, y.rot, 0x8a2a22); piece('prism', M.paint, y.x, 4.4 + 1.1, y.z, y.d + 0.4, 2.2, y.w + 0.4, y.rot + Math.PI / 2, 0x3a3a40);
+      const [dx, dz] = at(y, 0, y.d / 2 + 0.06); block(M.paint, dx, 0, dz, 3, 2.8, 0.12, y.rot, 0xe8e0d0);
+      for (let k = 0; k < 4; k++) { const [bx, bz] = at(y, -y.w / 2 - 2.2, -3 + k * 2); piece('cyl', M.paint, bx, 0.75, bz, 1.5, 1.4, 1.5, y.rot, 0xd8bc6a, Math.PI / 2); } }
+    // mailboxes at every country home
+    for (const h of houses) { if (westTown(h.x, h.z)) continue; const [fx, fz] = at(h, 0, h.d / 2 + 2), [bx, bz] = at(h, 0, -h.d / 2 - 2); const [mx, mz] = westRoadClearance(fx, fz) < westRoadClearance(bx, bz) ? [fx, fz] : [bx, bz];
+      if (westRoadClearance(mx, mz) < 0.6) continue; piece('box', M.paint, mx, 0.55, mz, 0.12, 1.1, 0.12, h.rot, 0x5a4a3a); piece('box', M.paint, mx, 1.2, mz, 0.5, 0.35, 0.3, h.rot, [0x2a4a8a, 0xb02a22, 0x30343c][Math.floor(hash2(Math.round(h.x), Math.round(h.z)) * 3)]); }
+    // hamlets: general store, gas station, diner and church at each crossroads, with name signs
+    const storeM = boardMat('GENERAL STORE', '#ffd27a'), dinerM = boardMat('DINER', '#ff6a8a'), gasM = boardMat('GAS', '#7fe0ff');
+    for (const hm of WEST_HAMLETS) { for (const o of hm.shops) { const front = (k: number) => at(o, 0, westRoadClearance(...at(o, 0, o.d / 2 + 2)) < westRoadClearance(...at(o, 0, -o.d / 2 - 2)) ? k : -k);
+        if (o.kind === 'store') { block(M.paint, o.x, 0, o.z, o.w, o.h, o.d, o.rot, 0xc9a27a); block(M.paint, o.x, o.h, o.z, o.w + 0.4, 0.4, o.d + 0.4, o.rot, 0x4a3a2c); const [ax, az] = front(o.d / 2 + 1); block(M.paint, ax, 2.6, az, o.w - 1, 0.2, 2, o.rot, 0x2e7a46);
+          const [sx, sz] = front(o.d / 2 + 0.1); const b = new THREE.Mesh(geo(new THREE.BoxGeometry(6, 1.2, 0.1)), storeM); b.position.set(sx, o.h - 0.8, sz); b.rotation.y = o.rot; scene.add(b); }
+        else if (o.kind === 'gas') { for (const [lx, lz] of [[-4, -2.5], [4, -2.5], [-4, 2.5], [4, 2.5]]) { const [px, pz] = at(o, lx, lz); piece('box', M.metal, px, 2.3, pz, 0.35, 4.6, 0.35, o.rot, 0xe8e8e8); }
+          block(M.paint, o.x, 4.6, o.z, o.w - 2, 0.6, 7, o.rot, 0xf2f2f2); block(M.neon, o.x, 4.6, o.z, o.w - 1.9, 0.18, 7.05, o.rot, 0xd83a2a);
+          for (const lx of [-2, 2]) { const [px, pz] = at(o, lx, 0); block(M.paint, px, 0, pz, 0.8, 1.6, 0.6, o.rot, 0xd83a2a); }
+          const [kx, kz] = at(o, 0, -o.d / 2 + 1.4); block(M.paint, kx, 0, kz, 5, 3, 2.4, o.rot, 0xe8e0d0);
+          const [gx, gz] = at(o, o.w / 2 - 0.5, o.d / 2 - 0.5); piece('box', M.metal, gx, 3, gz, 0.3, 6, 0.3, 0, 0x8a8e96); const b = new THREE.Mesh(geo(new THREE.BoxGeometry(2.6, 1.3, 0.2)), gasM); b.position.set(gx, 6.2, gz); b.rotation.y = o.rot; scene.add(b); }
+        else if (o.kind === 'diner') { block(M.paint, o.x, 0, o.z, o.w, o.h, o.d, o.rot, 0xd8dce2); block(M.neon, o.x, o.h * 0.55, o.z, o.w + 0.05, 0.3, o.d + 0.05, o.rot, 0xff5a7a); block(M.glass, o.x, 1.1, o.z, o.w + 0.04, 1.1, o.d + 0.04, o.rot, 0x9fd8ff);
+          block(M.paint, o.x, o.h, o.z, o.w + 0.3, 0.3, o.d + 0.3, o.rot, 0x30343c); const [sx, sz] = front(o.d / 2 + 0.6); const b = new THREE.Mesh(geo(new THREE.BoxGeometry(4, 1.3, 0.15)), dinerM); b.position.set(sx, o.h + 1, sz); b.rotation.y = o.rot; scene.add(b); }
+        else { block(M.paint, o.x, 0, o.z, o.w, o.h * 0.6, o.d, o.rot, 0xf2efe6); piece('prism', M.paint, o.x, o.h * 0.6 + 1.3, o.z, o.d + 0.3, 2.6, o.w + 0.4, o.rot + Math.PI / 2, 0x5a3a2a);
+          const [tx, tz] = at(o, 0, o.d / 2 - 2); block(M.paint, tx, 0, tz, 2.6, o.h + 2.5, 2.6, o.rot, 0xf2efe6); piece('cone', M.paint, tx, o.h + 2.5 + 2, tz, 2.4, 4, 2.4, o.rot, 0x5a3a2a); piece('box', M.neon, tx, o.h + 5, tz, 0.15, 1.2, 0.15, o.rot, 0xffe08a); } }
+      const q = WEST_ROADS.find((r) => r.id === hm.road)!.pts; const ci = q.findIndex((p) => p[0] === hm.x && p[1] === hm.z);
+      for (const j of [-66, 66]) { const i = ci + j; if (i < 3 || i > q.length - 4) continue; const a = Math.atan2(q[i + 2][1] - q[i - 2][1], q[i + 2][0] - q[i - 2][0]); const w = WEST_ROADS.find((r) => r.id === hm.road)!.width;
+        const x = q[i][0] - Math.sin(a) * (w / 2 + 2), z = q[i][1] + Math.cos(a) * (w / 2 + 2); if (!blocked(x, z, 1) && !nearWater(x, z, 1)) signBoard(hm.name, '#ffffff', x, z, -a + (j < 0 ? 0 : Math.PI)); }
+      sprite(hm.name, '#ffd27a', hm.x, 20, hm.z, 26); }
+    // lakeside: docks, campground tents and fire rings, picnic tables
+    for (const d of WEST_LAKESIDE.docks) { const cx = d.x + Math.cos(d.rot) * d.len / 2, cz = d.z + Math.sin(d.rot) * d.len / 2; block(M.paint, cx, 0.25, cz, d.len, 0.2, 1.8, -d.rot, 0x8a6a46);
+      for (const t of [0.3, 0.95]) for (const sd of [-0.8, 0.8]) piece('cyl6', M.paint, d.x + Math.cos(d.rot) * d.len * t - Math.sin(d.rot) * sd, 0.1, d.z + Math.sin(d.rot) * d.len * t + Math.cos(d.rot) * sd, 0.22, 0.8, 0.22, 0, 0x5a4a3a); }
+    for (const [k, t] of WEST_LAKESIDE.tents.entries()) piece('cone', M.sail, t.x, 1.1, t.z, 3, 2.2, 3, t.rot, [0xe86a2a, 0x2a8a5a, 0x3a6ad0, 0xd8b030][k % 4]);
+    for (const [x, z] of WEST_LAKESIDE.fires) { piece('cyl6', M.concrete, x, 0.15, z, 1.6, 0.3, 1.6, 0, 0x6a6a6a); piece('cone', M.neon, x, 0.55, z, 0.6, 0.7, 0.6, 0, 0xff8a2a); }
+    for (const t of WEST_LAKESIDE.picnic) { block(M.paint, t.x, 0.75, t.z, 2, 0.12, 0.9, t.rot, 0x8a6a46); for (const lz of [-0.8, 0.8]) { const [bx, bz] = at(t, 0, lz); block(M.paint, bx, 0.42, bz, 2, 0.1, 0.35, t.rot, 0x7a5a3a); } block(M.paint, t.x, 0, t.z, 0.2, 0.75, 0.2, t.rot, 0x5a4a3a); }
+    if (WEST_LAKESIDE.tents.length) { const t = WEST_LAKESIDE.tents[0]; signBoard('Cedar Lake Campground', '#9be37a', t.x + 4, t.z + 4, 0, 6); }
+    // wildflower meadows and rock outcrops
+    for (const [x, z, r] of WEST_MEADOWS) { piece('cyl', M.concrete, x, 0.03, z, r * 2, 0.04, r * 2, 0, xm ? 0xe6edf8 : 0x79b450); if (xm) continue; const n = Math.round(r * r * (low ? 0.25 : 0.55));
+      for (let k = 0; k < n; k++) { const a = R() * Math.PI * 2, d = Math.sqrt(R()) * (r - 0.6); piece('flower', M.neon, x + Math.cos(a) * d, 0.35, z + Math.sin(a) * d, 0.35, 0.45, 0.35, a, [0xf6e04a, 0xf2f2f2, 0xd86ad8, 0xff7a4a, 0x8ab8ff][k % 5]); } }
+    for (const [x, z, r] of WEST_OUTCROPS) for (let k = 0; k < 3 + Math.floor(r); k++) { const a = R() * Math.PI * 2, d = R() * r * 0.6, s = 1.2 + R() * (r * 0.7); piece('rock', M.concrete, x + Math.cos(a) * d, s * 0.3, z + Math.sin(a) * d, s, s * 0.75, s * 0.9, a, 0x8a8c90, R(), R()); }
+    // for-sale signs on the empty lots
+    const saleM = boardMat('FOR SALE', '#ff7a3a');
+    for (const p of patches) { if (p.kind !== 'lot' || westTown(p.x, p.z)) continue; const [fx, fz] = at(p, 0, p.d / 2 - 1), [bx, bz] = at(p, 0, -p.d / 2 + 1); const [x, z] = westRoadClearance(fx, fz) < westRoadClearance(bx, bz) ? [fx, fz] : [bx, bz];
+      piece('box', M.paint, x, 0.8, z, 0.15, 1.6, 0.15, p.rot, 0x5a4a3a); const b = new THREE.Mesh(geo(new THREE.BoxGeometry(2.4, 1, 0.1)), saleM); b.position.set(x, 1.7, z); b.rotation.y = p.rot; scene.add(b); }
+    // power lines along the country roads: poles every ~30 units, three wires between neighbours
+    for (const id of ['w-cedar', 'w-ridgew', 'w-ridge', 'w-maple']) { const r = WEST_ROADS.find((o) => o.id === id); if (!r) continue; const p = r.pts; let prev: [number, number, number] | null = null;
+      for (let i = 10; i < p.length - 2; i += 30) { const a = Math.atan2(p[i + 1][1] - p[i - 1][1], p[i + 1][0] - p[i - 1][0]); const off = r.width / 2 + 3.2; const x = p[i][0] - Math.sin(a) * off, z = p[i][1] + Math.cos(a) * off;
+        if (westTown(x, z) || blocked(x, z, 0.8) || nearWater(x, z, 1) || westRoadClearance(x, z) < 2 || inBridgeSite(x, z, 4)) { prev = null; continue; }
+        piece('cyl6', M.paint, x, 4, z, 0.32, 8, 0.32, 0, 0x6a5038); piece('box', M.paint, x, 7.6, z, 2.6, 0.18, 0.18, -a + Math.PI / 2, 0x5a4a3a);
+        if (prev && !low) { const [px, pz, pa] = prev; for (const sd of [-1.1, 0, 1.1]) { const x0 = px + Math.cos(pa) * sd, z0 = pz - Math.sin(pa) * sd, x1 = x + Math.cos(-a + Math.PI / 2) * sd, z1 = z - Math.sin(-a + Math.PI / 2) * sd; const len = Math.hypot(x1 - x0, z1 - z0);
+          piece('box', M.metal, (x0 + x1) / 2, 7.45, (z0 + z1) / 2, len, 0.05, 0.05, -Math.atan2(z1 - z0, x1 - x0), 0x2a2a2a); } }
+        prev = [x, z, -a + Math.PI / 2]; } }
+    // road signs: a speed sign every ~150 units on the country roads
+    for (const id of ['w-cedar', 'w-ridgew', 'w-ridge', 'w-maple']) { const r = WEST_ROADS.find((o) => o.id === id); if (!r) continue; const p = r.pts;
+      for (let i = 40; i < p.length - 2; i += 150) { const a = Math.atan2(p[i + 1][1] - p[i - 1][1], p[i + 1][0] - p[i - 1][0]); const off = r.width / 2 + 1.4; const x = p[i][0] + Math.sin(a) * off, z = p[i][1] - Math.cos(a) * off;
+        if (blocked(x, z, 0.5) || nearWater(x, z, 1) || westTown(x, z)) continue; piece('box', M.metal, x, 1.1, z, 0.1, 2.2, 0.1, -a, 0x9aa2aa); piece('cyl', M.paint, x, 2.4, z, 0.9, 0.06, 0.9, -a, 0xf2f2f2, Math.PI / 2); piece('cyl', M.paint, x, 2.4, z, 1.05, 0.05, 1.05, -a, 0xc0302a, Math.PI / 2); } }
+  }
 
   flush();
 
