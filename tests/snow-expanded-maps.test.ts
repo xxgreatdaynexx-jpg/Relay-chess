@@ -19,7 +19,7 @@ describe('snow on expanded maps', () => {
   });
   it('every ground top passes its world origin', () => {
     const w = src('client/src/lib/world3d.ts'); const v = src('client/src/lib/worldVenues.ts');
-    expect([...w.matchAll(/xmasGround\(([^)]*)\)/g)].map((m) => m[1].split(',').length)).toEqual([5, 5, 5]);
+    expect([...w.matchAll(/xmasGround\(([^)]*)\)/g)].map((m) => m[1].split(',').length)).toEqual([5, 5, 5, 5]); // + West Chud ground
     expect(v).toMatch(/xmasGround\([^)]*r\.x0, r\.z1\)/);
   });
   it('snowfall volume covers the camera and target at every zoom and pan, including far corners; never culled', () => {

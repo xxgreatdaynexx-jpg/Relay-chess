@@ -27,6 +27,8 @@ import { addExpansionScenery } from './worldExpansionDecor';
 import { BEACH_X0, BEACH_X1, expansionLandBoxes } from '../../../shared/expansionScenery';
 import { RIG_DOCK } from '../../../shared/mapExpansion';
 import { addExpansionLand } from './worldExpansionLand';
+import { addWestCity } from './worldWestCity';
+import { westFill, westRoadClearance } from '../../../shared/westCity';
 import { buildStoneQuarry } from './worldQuarry';
 import { buildSpaceCenter } from './spaceCenterModel';
 import { createLaunchFx } from './worldLaunch';
@@ -491,7 +493,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Filler: housing along every street's frontage (turned to face it), plus parks, plazas and lots (worldLayout.cityFill).
   // Housing is data-driven (housing.ts): one instanced body (+ instanced gable roof) per type, tinted per instance.
   const r = rng(7);
-  const { houses: cityHouses, patches } = cityFill(7, lmIds); const fillers = [...cityHouses, ...countryHomes()];
+  const { houses: cityHouses, patches } = cityFill(7, lmIds); const west = westFill(); const fillers = [...cityHouses, ...countryHomes(), ...west.houses]; // West Chud homes are ordinary city deeds
   const cityJoke = attachCityProtestJoke(scene, { map: 'city', tier, sites: patches.filter(b => !civicRetired(b)), crowdObstacles: [...cityHouses, ...Object.values(lmBoxes)], buildings: cityHouses.filter(b => !civicRetired(b)), enabled: false });
   // pt2037u: hidden until /api/city confirms the riot is still on; a mayor ending it (any server) turns it off for good.
   const riotGate = cityRiotGate({ setEnabled: (on) => cityJoke.setEnabled(on && CITY_PROTEST_JOKE_ENABLED) });
@@ -548,15 +550,17 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     xmas = addXmas(scene, { tier, half: PLATE + 50, roofs: xmasRoofs, decor, roads: xmasRoads, ground: { x0: OUTSKIRTS.x0, x1: OUTSKIRTS.x1, z0: OUTSKIRTS.z0, z1: OUTSKIRTS.z1 }, frost: false, footprints });
   }
   // Open-space patches: parks (grass), plazas (paving + fountain glow), lots (dirt) — one instanced slab, tinted, rotated.
-  if (patches.length) {
-    const gm = new THREE.InstancedMesh(unitBox, mat({ color: 0xffffff, roughness: 1 }), patches.length); const d = new THREE.Object3D(); const c = new THREE.Color();
-    patches.forEach((b, i) => { d.position.set(b.x, 0.04, b.z); d.scale.set(b.w, 0.08, b.d); d.rotation.set(0, b.rot, 0); d.updateMatrix(); gm.setMatrixAt(i, d.matrix); gm.setColorAt(i, c.setHex(XM ? (b.kind === 'plaza' ? 0xb4bccb : b.kind === 'park' ? 0xe6edf8 : 0xd4dbe8) : b.kind === 'park' ? 0x2e7a36 : b.kind === 'plaza' ? 0x77727a : 0x4a3a2c)); });
-    scene.add(gm); gm.userData.props = patches.map((b) => patchId(b.kind, b)); pickables.push(gm);
-    patches.forEach((b, i) => propTop.set(gm.userData.props[i], [b.x, 0.1, b.z]));
-    patches.forEach((b, i) => { if (civicRetired(b)) retire(gm.userData.props[i], [[gm, i]]); });
-    const plazas = patches.filter((b) => b.kind === 'plaza');
+  { const patches2 = [...patches, ...west.patches]; // the city's patches, then West Chud's (instance order keeps the old ones first)
+  if (patches2.length) {
+    const gm = new THREE.InstancedMesh(unitBox, mat({ color: 0xffffff, roughness: 1 }), patches2.length); const d = new THREE.Object3D(); const c = new THREE.Color();
+    patches2.forEach((b, i) => { d.position.set(b.x, 0.04, b.z); d.scale.set(b.w, 0.08, b.d); d.rotation.set(0, b.rot, 0); d.updateMatrix(); gm.setMatrixAt(i, d.matrix); gm.setColorAt(i, c.setHex(XM ? (b.kind === 'plaza' ? 0xb4bccb : b.kind === 'park' ? 0xe6edf8 : 0xd4dbe8) : b.kind === 'park' ? 0x2e7a36 : b.kind === 'plaza' ? 0x77727a : 0x4a3a2c)); });
+    scene.add(gm); gm.userData.props = patches2.map((b) => patchId(b.kind, b)); pickables.push(gm);
+    patches2.forEach((b, i) => propTop.set(gm.userData.props[i], [b.x, 0.1, b.z]));
+    patches2.forEach((b, i) => { if (civicRetired(b)) retire(gm.userData.props[i], [[gm, i]]); });
+    const plazas = patches2.filter((b) => b.kind === 'plaza');
     if (plazas.length) { const fm = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(2.2, 2.4, 0.6, 16)), mat({ color: 0x4aa8ff, emissive: 0x2a78ff, emissiveIntensity: 0.8 * NEON }), plazas.length);
       plazas.forEach((b, i) => { d.position.set(b.x, 0.3, b.z); d.scale.set(1, 1, 1); d.rotation.set(0, 0, 0); d.updateMatrix(); fm.setMatrixAt(i, d.matrix); }); scene.add(fm); }
+  }
   }
   const solids = [...Object.values(lmBoxes), ...fillers];
   const blocked = (x: number, z: number, m: number) => obbHit(PARK_AREA, x, z, m) || solids.some((o) => Math.abs(o.x - x) < 12 && Math.abs(o.z - z) < 12 && obbHit(o, x, z, m));
@@ -757,6 +761,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Countryside (shared/outskirts.ts), drawn with the city's own materials: plate grass, asphalt + dashes, city trees,
   // streetlight poles + glow, river water. Country homes are city 'house' instances above (buyable); gas stations and
   // warehouses are buyable too. All instanced (~16 draw calls).
+  let westCity: ReturnType<typeof addWestCity> | null = null;
   {
     const O = outskirts(); const d = new THREE.Object3D(); const c = new THREE.Color();
     const inst = (g: THREE.BufferGeometry, m: THREE.Material, n: number, f: (i: number) => void, colors?: (i: number) => number) => { if (!n) return null;
@@ -851,13 +856,13 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x7a7670, roughness: 1, flatShading: true }), R.rocks.length, (i) => { const [x, z, s] = R.rocks[i]; d.position.set(x, s * 0.2, z); d.scale.set(s, s * 0.55, s * 0.8); d.rotation.set(0, i * 2.3, 0); });
       inst(trunk.geometry, trunk.material, R.trees.length, (i) => { const [x, z, s] = R.trees[i]; d.position.set(x, 0.7 * s, z); d.rotation.set(0, 0, 0); d.scale.set(s, 1.4 * s, s); });
       inst(crown.geometry, crown.material, R.trees.length, (i) => { const [x, z, s] = R.trees[i]; d.position.set(x, 2.1 * s, z); d.scale.set(s * 1.1, s * 1.3, s * 1.1); d.rotation.y = i; }); }
-    const oRocks = O.rocks.filter(([x, z]) => !inStadiumSite(x, z) && clearNew(x, z, 1)); // co-op Stadium site stays clear (no keepOut: the seeded fill must not move)
+    const oRocks = O.rocks.filter(([x, z]) => !inStadiumSite(x, z) && clearNew(x, z, 1) && westRoadClearance(x, z) > 1.2); // co-op Stadium site stays clear (no keepOut: the seeded fill must not move)
     // low rolling hills in the grass colour, rocks near the mines
-    const hills = O.hills.filter(([x, z, r]) => clearNew(x, z, r + 0.5));
+    const hills = O.hills.filter(([x, z, r]) => clearNew(x, z, r + 0.5) && westRoadClearance(x, z, r + 20) > r + 0.5);
     inst(geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2)), (XM ? mat({ color: 0xeef3ff, roughness: 0.95, flatShading: true, emissive: 0x1a2238, emissiveIntensity: 0.6 }) : mat({ color: 0x3f9a45, roughness: 1, flatShading: true, emissive: 0x0f3a14, emissiveIntensity: 0.6 })), hills.length, (i) => { const [x, z, r, h] = hills[i]; d.position.set(x, -0.05, z); d.scale.set(r, h * 0.6, r * 0.8); d.rotation.y = i; });
     inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x6a6670, roughness: 1, flatShading: true }), oRocks.length, (i) => { const [x, z, s] = oRocks[i]; d.position.set(x, s * 0.3, z); d.scale.set(s, s * 0.6, s); d.rotation.set(0, i * 2, 0); });
     // forest: the city's tree (trunk + low-poly crown, same materials)
-    const T = O.trees.filter(([x, z]) => !inStadiumSite(x, z) && clearNew(x, z, 1.3));
+    const T = O.trees.filter(([x, z]) => !inStadiumSite(x, z) && clearNew(x, z, 1.3) && westRoadClearance(x, z) > 1.6); // and off the West Chud link roads
     inst(trunk.geometry, trunk.material, T.length, (i) => { const [x, z, s] = T[i]; d.position.set(x, 0.7 * s, z); d.scale.set(s, 1.4 * s, s); });
     inst(crown.geometry, crown.material, T.length, (i) => { const [x, z, s] = T[i]; d.position.set(x, 2.1 * s, z); d.scale.set(s * 1.1, s * 1.3, s * 1.1); d.rotation.y = i; });
     // road lamps: the city's streetlight pole + glow
@@ -865,6 +870,10 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     inst(geo(new THREE.SphereGeometry(0.22, 8, 6)), mat({ color: 0xfff0c0, emissive: 0xffd080, emissiveIntensity: 1 }), O.lamps.length, (i) => d.position.set(O.lamps[i][0], 2.45, O.lamps[i][1]));
     addExpansionScenery(scene, mat, geo, tier === 'low');
     addExpansionLand({ scene, mat, geo, low: tier === 'low', xm: XM, roadY: ROAD_Y, roadMat, dashMat: dash.material as THREE.Material, makeWater, addSlush: (g) => xmas?.addRoads(g) });
+    // West Chud: the western half of the map (shared/westCity.ts). Houses/patches above; ground, roads, props and landmarks here.
+    westCity = addWestCity({ scene, mat, geo, low: tier === 'low', xm: XM, roadY: ROAD_Y, roadMat, dashMat: dash.material as THREE.Material, makeWater: (o) => makeWater(o),
+      groundTop: (w, dd, gx0, gz1) => (XM ? keep(xmasGround(w, dd, tier === 'low', gx0, gz1)) : grass), tree: { trunkGeo: trunk.geometry, trunkMat: trunk.material as THREE.Material, crownGeo: crown.geometry, crownMat: crown.material as THREE.Material },
+      pole: { geo: pole.geometry, mat: pole.material as THREE.Material }, glowTex, label: (text, color) => cityLabel(text, color, undefined, labelRenderer), addSlush: (g) => xmas?.addRoads(g) });
   }
   // Farm district (shared/farm.ts): a grass apron east of the plate, dirt lanes, fenced fields (farmland properties),
   // barns and silos. Crops on owned plots come from /api/farm (setFarm). Toned-down night palette, a little warm glow.
@@ -1100,6 +1109,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const dt = Math.min(clock.getDelta(), 0.05); time += dt;
     cars.forEach((c, i) => { c.t += c.sp * dt; const [x, z, a] = routePoint(c.route, c.t, c.lane); d.position.set(x, 0.45, z); d.rotation.set(0, -a, 0); d.updateMatrix(); carBody.setMatrixAt(i, d.matrix); hp.setXYZ(i * 2, x + Math.cos(a) * 0.9 - Math.sin(a) * 0.3, 0.5, z + Math.sin(a) * 0.9 + Math.cos(a) * 0.3); hp.setXYZ(i * 2 + 1, x + Math.cos(a) * 0.9 + Math.sin(a) * 0.3, 0.5, z + Math.sin(a) * 0.9 - Math.cos(a) * 0.3); });
     carBody.instanceMatrix.needsUpdate = true; hp.needsUpdate = true;
+    westCity?.update(dt, time);
     if (blink) blink.visible = Math.sin(time * 4) > 0;
     nextFw -= dt; if (nextFw <= 0) { burst(); nextFw = 3 + r() * 4; }
     if (fwAge < 2.2) { fwAge += dt; for (let i = 0; i < FP; i++) { fwVel[i * 3 + 1] -= 4 * dt; fwPos[i * 3] += fwVel[i * 3] * dt; fwPos[i * 3 + 1] += fwVel[i * 3 + 1] * dt; fwPos[i * 3 + 2] += fwVel[i * 3 + 2] * dt; } fwG.attributes.position.needsUpdate = true; fwM.opacity = Math.max(0, 1 - fwAge / 2.2); }
@@ -1189,7 +1199,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     project(id: string) { const l = lms.find((x) => x.id === id); if (!l) return null; const v = l.pos.clone().setY(l.height + 2.2).project(camera); const rc = canvas.getBoundingClientRect(); return { x: rc.left + (v.x + 1) / 2 * rc.width, y: rc.top + (1 - v.y) / 2 * rc.height }; },
     hover(id: string | null) { setHover(id); },
     setLaunchShows: launchFx.setShows, setLaunchFx: launchFx.setEnabled, watchLaunch,
-    dispose() { cityJoke.dispose(); launchFx.dispose(); townHallProtest?.dispose(); townHallProtest = null; farmProtest?.dispose(); farmProtest = null; disposeSharedProtestSfx(); xmas?.dispose(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; jailDead = true; civicDead = true; civicKit.dispose(); window.clearInterval(civicPoll); window.removeEventListener('city-changed', loadCivic); window.clearInterval(jailPoll); window.clearInterval(jailTick); for (const o of inmateObjs) o.tex.dispose(); cancelAnimationFrame(raf); venues.dispose(); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
+    dispose() { cityJoke.dispose(); westCity?.dispose(); westCity = null; launchFx.dispose(); townHallProtest?.dispose(); townHallProtest = null; farmProtest?.dispose(); farmProtest = null; disposeSharedProtestSfx(); xmas?.dispose(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; jailDead = true; civicDead = true; civicKit.dispose(); window.clearInterval(civicPoll); window.removeEventListener('city-changed', loadCivic); window.clearInterval(jailPoll); window.clearInterval(jailTick); for (const o of inmateObjs) o.tex.dispose(); cancelAnimationFrame(raf); venues.dispose(); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }
 export type World = ReturnType<typeof createWorld>;

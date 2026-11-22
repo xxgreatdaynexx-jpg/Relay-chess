@@ -7,7 +7,8 @@
  */
 import { AIRPORT, AIRPORT_ROADS, RACETRACK, RACETRACK_ROADS, RUNWAY, RUNWAY2 } from './venues.js';
 import { BIG_FARM_AREA, BIG_GROUND_X0, BIG_GROUND_X1, BIG_GROUND_Z0, BIG_ROADS, BIG_ROAD_W, bigFarms } from './bigFarms.js';
-import { MAP_VIEW } from './farm.js';
+import { MAP_VIEW, MAP_VIEW_CORE } from './farm.js';
+import { westRoadClearance } from './westCity.js';
 import {
   EAST_X1, GOLDWOOD, PLASTICS_PLANT, RIG_DOCK,
   estateLots, expansionFarms, goldwoodHomes, goldwoodLot, wineryPlots, wineryVisual,
@@ -23,7 +24,7 @@ import { SPACE_CENTER, SPACE_CENTER_ID } from './spaceCenter.js';
 export type Aabb = { x0: number; x1: number; z0: number; z1: number };
 
 /** Continuous land rectangle: whole 2x map down to the beach line (ocean stays south of this). */
-export const LAND_FILL: Aabb = { x0: MAP_VIEW.x0, x1: MAP_VIEW.x1, z0: MAP_VIEW.z0, z1: OCEAN.beachZ };
+export const LAND_FILL: Aabb = { x0: MAP_VIEW_CORE.x0, x1: MAP_VIEW_CORE.x1, z0: MAP_VIEW_CORE.z0, z1: OCEAN.beachZ }; // West Chud has its own ground slab (shared/westCity.ts)
 
 /** Beach ribbon, extended west past the airport and east past East Estates / Orchard Ridge. */
 export const BEACH_X0 = Math.min(OUTSKIRTS.x0 - 40, MAP_VIEW.x0 - 20, AIRPORT.x0 - 20);
@@ -336,8 +337,10 @@ export function expansionScenery(seed = 1): ScenerySpot[] {
   // East Estates: split-rail fence along the far east edge
   for (let z = -440; z < 150; z += 2.2) { const x = EAST_X1 - 3; if (anyRoadClearance(x, z) > 1.5 && keeps.every((p) => !obbHit(p, x, z, 1))) spots.push({ kind: 'fence', x, z, s: 1, rot: 0 }); }
 
-  if (seed === 1) sceneryCache = spots;
-  return spots;
+  // keep the West Chud link roads (Westgate Expressway, Sunset Coast Road) clear where they cross the old land
+  const kept = spots.filter((p) => westRoadClearance(p.x, p.z) > (p.kind === 'pond' ? p.s + 2 : 2));
+  if (seed === 1) sceneryCache = kept;
+  return kept;
 }
 
 /** Overlap check: every scenery item against roads (all networks), plot grounds, the river and bridges. */

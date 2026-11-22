@@ -5,7 +5,7 @@
  */
 import { OUTSKIRTS } from './worldLayout.js';
 
-export const OCEAN = { x0: -900, x1: 900, beachZ: OUTSKIRTS.z1, shoreZ: OUTSKIRTS.z1 + 14, z1: 1100 } as const;
+export const OCEAN = { x0: -1700, x1: 900, beachZ: OUTSKIRTS.z1, shoreZ: OUTSKIRTS.z1 + 14, z1: 1100 } as const;
 /** Gentle wavy coastline (still always south of beachZ + 8). */
 export const COAST_WAVE = [2.2, 31, 1.3, 13] as const;
 export const coastZ = (x: number) => OCEAN.shoreZ + COAST_WAVE[0] * Math.sin(x / COAST_WAVE[1] + 0.7) + COAST_WAVE[2] * Math.sin(x / COAST_WAVE[3] + 2.1);

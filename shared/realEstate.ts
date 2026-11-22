@@ -30,6 +30,7 @@ import { islandProperties } from './island.js';
 import { skyProperties } from './skyPenthouses.js';
 import { estateLotId, estateLots, goldwoodHomes, goldwoodId, wineryId, wineryPlots } from './mapExpansion.js';
 import { orchardId, orchardPlots } from './orchard.js';
+import { westFill } from './westCity.js';
 import { countryHomes, countryBusinesses, businessType, COMMERCIAL_PRICE, COMMERCIAL_LABEL } from './outskirts.js';
 
 export const TAX_RATE = 0.005;
@@ -141,7 +142,9 @@ const employeesForPrice = (price: number) => price < 25_000 ? 1 : price < 75_000
 export const HOUSING_BASE_PER_EMPLOYEE = 10_000;
 const housingTypes = new Set([...HOUSING_TYPES.map((t) => t.id), ...Object.keys(RESORT_TYPES), 'penthouse', 'isleestate']);
 export const isEmployeeHousing = (p: Pick<Property, 'kind' | 'type'>) => p.kind === 'building' && housingTypes.has(p.type);
-let cache: Property[] | null = null; let byId: Map<string, Property> | null = null;
+let cache: Property[] | null = null; let byId: Map<string, Property> | null = null; let westIds: Set<string> | null = null;
+/** A West Chud deed (shared/westCity.ts): the new western half's homes, towers, parks, plazas and lots. */
+export const isWestDeed = (id: unknown): boolean => { properties(); return typeof id === 'string' && !!westIds?.has(id); };
 /** Every property on the map (deterministic: same layout -> same ids and prices). */
 export function properties(): Property[] {
   if (cache) return cache;
@@ -175,6 +178,14 @@ export function properties(): Property[] {
   for (const o of orchardPlots()) out.push({ x: o.x, z: o.z, w: o.w, d: o.d, rot: 0, id: orchardId(o.n), kind: 'farm', type: 'orchard', label: `${o.label} (${o.cols}×${o.rows})`, price: o.price, tiles: o.cols * o.rows });
   // Additional factory plants (Bill Chud 3): commercial, off-map, scarce like farm plots.
   for (const f of factoryPlants()) out.push({ ...f });
+  // West Chud (shared/westCity.ts): its homes, towers, parks, plazas and empty lots are ordinary city deeds (same ids, prices and tax rules).
+  { const w = westFill(); const ids = new Set<string>();
+    for (const h of w.houses) {
+      const t = HOUSING_TYPES.find((x) => x.id === h.type); if (!t) continue;
+      const ref = ((t.w[0] + t.w[1]) / 2) * ((t.d[0] + t.d[1]) / 2), midH = ((t.floors[0] + t.floors[1]) / 2) * t.floorH;
+      out.push({ x: h.x, z: h.z, w: h.w, d: h.d, rot: h.rot, h: h.h, id: `b:${t.id}:${pos(h)}`, kind: 'building', type: t.id, label: t.label, price: round500((BASE_PRICE[t.id] ?? 15_000) * clamp((h.w * h.d) / ref) * clamp(h.h / midH)) }); ids.add(`b:${t.id}:${pos(h)}`);
+    }
+    for (const p of w.patches) out.push({ x: p.x, z: p.z, w: p.w, d: p.d, rot: p.rot, id: `p:${p.kind}:${pos(p)}`, kind: 'patch', type: p.kind, label: PATCH_LABEL[p.kind] ?? p.kind, price: round500(BASE_PRICE[p.kind]! * clamp((p.w * p.d) / PATCH_REF[p.kind]!)) }); for (const p of w.patches) ids.add(`p:${p.kind}:${pos(p)}`); westIds = ids; }
   // Reprice only housing. Capture the actual old employment bonus BEFORE lowering its base price: otherwise
   // a two-slot home priced at 20k would silently lose a slot, and a three-slot home at 30k would become two-slot.
   // No owned rows, paid prices, IDs, geometry or equipment are changed. Slots outside 1–3 keep their old price.

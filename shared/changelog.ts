@@ -6,6 +6,13 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-22T08:20:00-06:00", "title": "Chud City doubles in size with West Chud", "bullets": [
+    "The city map is now twice as wide. West Chud opens up west of the airport, reached by the Westgate Expressway (off the Airport Expressway) and Sunset Coast Road (along the beach past the airport).",
+    "Five new districts: Westgate downtown with a skyline of towers half again as tall as the old downtown's, Westgate Square with the Westgate Spire observation tower, and Westgate Park with a pond and gazebo; Sunset Bay on the waterfront; Maple Heights and Cedar Hills suburbs; and the Ironworks industrial district.",
+    "About 1,600 new homes, row houses, apartment blocks and towers, plus over 40 new parks, plazas and empty lots. All of them can be bought, taxed and sold like any other city property.",
+    "New sights: West Chud Stadium, a container port with gantry cranes and a cargo ship, Sunset Marina, a lighthouse, a wind farm, water towers, bus shelters, streetlights, parked cars and traffic on the new roads.",
+    "Nothing on the old map moved. Every lot, house, farm and building you already own is exactly where it was.",
+  ]},
   {"commit": "", "at": "2026-11-22T07:40:00-06:00", "title": "Power plant and data center menus match the rest of the game", "bullets": [
     "The power plant and data center screens now use the same cards, progress bars and large gold buttons as the Shore Construction Dock and the Employment Office, including on phones.",
     "Utility contract, plant fuel, demand and supply, digital income and server-rack installs are laid out as clear stats instead of a single block of text. Costs, power, income and what each button does are unchanged.",

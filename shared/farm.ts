@@ -13,6 +13,7 @@ import { BIG_FARM_AREA } from './bigFarms.js';
 import { EXPANSION_BOUNDS, RIG_BERTHS, RIG_DOCK } from './mapExpansion.js';
 import { PLATE, PARK_AREA, MINE_SITES, MINE_APRON, OUTSKIRTS, type OBB } from './worldLayout.js';
 import { VENUE_BOUNDS } from './venues.js';
+import { WEST } from './westCity.js';
 import { TROPICAL_CROPS } from './resort.js';
 
 export const TILE = 2; // world units per farm tile
@@ -168,17 +169,21 @@ export const cropOutlook = (c: Crop, growMul = 1, profitMul = 1, yieldBonus = 0)
 
 /** Where the camera may look: the whole plate (incl. the Trailer Park), the farm district on the east edge, the outskirts mines and the Airport / Speedway (shared/venues.ts). */
 const SITES = Object.values(MINE_SITES); const HALF = MINE_APRON / 2;
-export const MAP_BOUNDS = {
+/** The map before West Chud (the old land fill and scenery are laid out on this, so they never shift). */
+export const MAP_BOUNDS_CORE = {
   x0: Math.min(-PLATE, OUTSKIRTS.x0 + 10, VENUE_BOUNDS.x0, PARK_AREA.x - PARK_AREA.w / 2, EXPANSION_BOUNDS.x0, ...SITES.map((s) => s.x - HALF)) - 6, x1: Math.max(FARM_X1, OUTSKIRTS.x1 - 10, BIG_FARM_AREA.x1, VENUE_BOUNDS.x1, EXPANSION_BOUNDS.x1, ...SITES.map((s) => s.x + HALF)) + 4,
   z0: Math.min(-PLATE, FARM_Z0, OUTSKIRTS.z0 + 10, BIG_FARM_AREA.z0, VENUE_BOUNDS.z0, PARK_AREA.z - PARK_AREA.d / 2, EXPANSION_BOUNDS.z0, ...SITES.map((s) => s.z - HALF)) - 6, z1: Math.max(PLATE, FARM_Z1, OUTSKIRTS.z1 - 10, BIG_FARM_AREA.z1, VENUE_BOUNDS.z1, PARK_AREA.z + PARK_AREA.d / 2, EXPANSION_BOUNDS.z1, ...SITES.map((s) => s.z + HALF)) + 6,
 };
 /** Camera bounds = MAP_BOUNDS plus the ocean coast, harbour, and launched-rig berths. MAP_BOUNDS stays land-side of the shore. */
-export const MAP_VIEW = {
-  x0: Math.min(MAP_BOUNDS.x0, RIG_DOCK.x - 40),
-  x1: Math.max(MAP_BOUNDS.x1, RIG_DOCK.x + 40),
-  z0: MAP_BOUNDS.z0,
-  z1: Math.max(MAP_BOUNDS.z1, VIEW_Z1, RIG_DOCK.z + 20, ...RIG_BERTHS.map(([, z]) => z + 20)),
+export const MAP_VIEW_CORE = {
+  x0: Math.min(MAP_BOUNDS_CORE.x0, RIG_DOCK.x - 40),
+  x1: Math.max(MAP_BOUNDS_CORE.x1, RIG_DOCK.x + 40),
+  z0: MAP_BOUNDS_CORE.z0,
+  z1: Math.max(MAP_BOUNDS_CORE.z1, VIEW_Z1, RIG_DOCK.z + 20, ...RIG_BERTHS.map(([, z]) => z + 20)),
 };
+/** Whole map including West Chud, the western half added west of the airport (shared/westCity.ts). */
+export const MAP_BOUNDS = { ...MAP_BOUNDS_CORE, x0: Math.min(MAP_BOUNDS_CORE.x0, WEST.x0 - 6) };
+export const MAP_VIEW = { ...MAP_VIEW_CORE, x0: Math.min(MAP_VIEW_CORE.x0, MAP_BOUNDS.x0) };
 /** Closest and furthest the city camera may sit from its pan target. Max is large enough that a 38° vertical FOV can frame the whole expanded map (city plate + East Estates + Goldwood + ocean berths) with a little margin for the minimum tilt. */
 export const MAP_CAM_MIN = 30;
 export const MAP_CAM_MAX = Math.max(360, Math.ceil((Math.max(MAP_VIEW.x1 - MAP_VIEW.x0, MAP_VIEW.z1 - MAP_VIEW.z0) / 2) / Math.tan((38 * Math.PI) / 180 / 2) * 1.2));

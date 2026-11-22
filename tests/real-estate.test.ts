@@ -6,7 +6,7 @@ import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { px, setPriceIndexForTest } from '../server/price-index';
 import { estateLots, goldwoodHomes } from '../shared/mapExpansion';
-import { properties, propertyById, buildingId, patchId, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, landPrice, landMultiplierNote, landSurchargePct } from '../shared/realEstate';
+import { properties, propertyById, buildingId, patchId, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, landPrice, landMultiplierNote, landSurchargePct, isWestDeed } from '../shared/realEstate';
 import { cityFill, LANDMARK_IDS, PARK_AREA, obbOverlap } from '../shared/worldLayout';
 import { WORLD_SPOTS } from '../client/src/lib/worldSpots';
 import { registerPgAdvisoryFunctions } from './pg-advisory';
@@ -29,7 +29,8 @@ const cheapest = () => [...properties()].filter((p) => p.kind !== 'landmark' && 
 
 describe('real estate catalog', () => {
   it('every building, lot, park, plaza and landmark has a unique id and a price; the Trailer Park is not for sale', () => {
-    const ps = properties(); expect(new Set(ps.map((p) => p.id)).size).toBe(ps.length);
+    const all = properties(); expect(new Set(all.map((p) => p.id)).size).toBe(all.length);
+    const ps = all.filter((p) => !isWestDeed(p.id)); // West Chud deeds are checked in west-city.test.ts
     const { houses, patches } = cityFill(7);
     expect(ps.filter((p) => p.kind === 'building' && !p.map && !p.id.startsWith('sky:') && !p.id.startsWith('b:mansion:') && p.type !== 'factory_plant')).toHaveLength(houses.length + countryHomes().length + countryBusinesses().length + farmBarns().length);
     expect(ps.filter((p) => p.id.startsWith('b:mansion:'))).toHaveLength(goldwoodHomes().length);

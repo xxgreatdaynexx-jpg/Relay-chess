@@ -4,7 +4,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { BUILDING_IDS, CIVIC_PLOTS, civicPad, civicPlot, inCivic } from '../shared/city';
-import { properties, propertyById, isEmptyLand, EMPTY_LAND_PRICE_MUL } from '../shared/realEstate';
+import { properties, propertyById, isEmptyLand, EMPTY_LAND_PRICE_MUL, isWestDeed } from '../shared/realEstate';
 import { outskirts } from '../shared/outskirts';
 import { clearOfRoads, landmarks, nearestTangent, obbOverlap, PARK_AREA, PLATE, roadClearance } from '../shared/worldLayout';
 import { RealEstate, PropertyError } from '../server/realEstate';
@@ -41,7 +41,7 @@ describe('ownership and stable ids', () => {
   const ps = properties();
   it('catalog ids, geometry and prices are byte-identical to the base; countryside unchanged', () => {
     const added = ['cf:1008', 'cf:1009', 'cf:1010', 'cf:1011', 'barn:big:1008', 'barn:big:1009', 'barn:big:1010', 'barn:big:1011', 'sky:1', 'sky:2', 'sky:3', 'sky:4', 'sky:5', 'sky:6', 'isl:1', 'isl:2', 'isl:3', 'isl:4', 'fac:2', 'fac:3', 'fac:4', 'fac:5', 'fac:6', 'fac:7', 'fac:8', 'fac:9', 'fac:10', 'fac:11', 'fac:12', 'fac:13'];
-    const isExp = (id: string) => /^(lot:estate:|winery:|b:mansion:|orchard:)/.test(id) || /^cf:2\d{3}$/.test(id);
+    const isExp = (id: string) => /^(lot:estate:|winery:|b:mansion:|orchard:)/.test(id) || /^cf:2\d{3}$/.test(id) || isWestDeed(id);
     const prior = ps.filter((p) => !added.includes(p.id) && !isExp(p.id));
     expect(ps.filter((p) => added.includes(p.id)).map((p) => p.id).sort()).toEqual([...added].sort());
     expect(prior.length).toBe(BASE.n); expect(ps.filter((p) => /^rf:(1[3-9]|20)$/.test(p.id)).map((p) => p.id).sort()).toEqual(['rf:13','rf:14','rf:15','rf:16','rf:17','rf:18','rf:19','rf:20']);

@@ -9,7 +9,7 @@ import { EAST_X0, EXPANSION_BOUNDS, PLASTICS_PLANT, RIG_DOCK, estateLots, expans
 import { HYPER_CROPS, HYPER_FARM_TOTAL, HYPER_GROW_MUL, HYPER_STAGES, isHyperCrop } from '../shared/hyperFarm';
 import { RIG_CRUDE_PER_HOUR, RIG_LAUNCH_FEE, RIG_MAX_PER_PLAYER, RIG_STAGES } from '../shared/offshoreRig';
 import { PLASTICS_RECIPES } from '../shared/plasticsPlant';
-import { properties } from '../shared/realEstate';
+import { properties, isWestDeed } from '../shared/realEstate';
 import { landmarks, obbOverlap } from '../shared/worldLayout';
 import { inLake, mapRoadSegments } from '../shared/outskirts';
 import { expRoadSegments } from '../shared/expansionRoads';
@@ -136,7 +136,7 @@ describe('map expansion and Goldwood', () => {
   });
 
   it('keeps the original catalog (568 after Bill Chud 3) plus the new prefixes only', () => {
-    const isNew = (id: string) => /^(lot:estate:|winery:|b:mansion:|orchard:)/.test(id) || /^cf:2\d{3}$/.test(id);
+    const isNew = (id: string) => /^(lot:estate:|winery:|b:mansion:|orchard:)/.test(id) || /^cf:2\d{3}$/.test(id) || isWestDeed(id);
     expect(properties().filter((p) => !/^(sky|isl):/.test(p.id) && !isNew(p.id))).toHaveLength(568);
     expect(allFieldPlots().filter((p) => p.n >= 2000)).toHaveLength(10);
   });
