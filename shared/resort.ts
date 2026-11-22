@@ -19,17 +19,18 @@
 import type { OBB } from './worldLayout.js';
 import type { Crop } from './farm.js';
 
-export type Location = 'city' | 'resort' | 'fortmc' | 'island' | 'voyage';
+export type Location = 'city' | 'resort' | 'fortmc' | 'island' | 'voyage' | 'chudbai';
 /** Places you fly to from Chud Hub International (everything except the city). */
-export type Destination = 'resort' | 'fortmc' | 'island';
+export type Destination = 'resort' | 'fortmc' | 'island' | 'chudbai';
 export const RESORT_TICKET_BASE = 500;
-export const isLocation = (v: unknown): v is Location => v === 'city' || v === 'resort' || v === 'fortmc' || v === 'island' || v === 'voyage';
-export const isDestination = (v: unknown): v is Destination => v === 'resort' || v === 'fortmc' || v === 'island';
+export const isLocation = (v: unknown): v is Location => v === 'city' || v === 'resort' || v === 'fortmc' || v === 'island' || v === 'voyage' || v === 'chudbai';
+export const isDestination = (v: unknown): v is Destination => v === 'resort' || v === 'fortmc' || v === 'island' || v === 'chudbai';
 /** Ticket price (base chips, x price index), ledger game and display name for every destination. */
 export const DESTINATIONS: Record<Destination, { name: string; ticket: number; game: string; ticketed?: boolean }> = {
   resort: { name: 'Chud Resort', ticket: RESORT_TICKET_BASE, game: 'resort_ticket', ticketed: true },
   fortmc: { name: 'Fort McChud', ticket: 1_500, game: 'fortmc_ticket', ticketed: true },
   island: { name: 'Private Island', ticket: 0, game: 'island_sail', ticketed: false },
+  chudbai: { name: 'Chudbai', ticket: 12_000, game: 'chudbai_ticket', ticketed: true },
 };
 
 // ---- map

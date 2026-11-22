@@ -13,6 +13,7 @@ import { RECIPES as KITCHEN_RECIPES } from './cooking.js';
 import { JOBS, OFFLINE_CAP_MS, MAX_WORKERS, baseWage, baseHire, dayValue, itemsPerDay, expectedDayHaul, formatExpectedDay, MINER_EVERY_MS, WORKER_EVERY_MS } from './employment.js';
 import { FISH, RARITY_ODDS, FISH_SPOT_CAP, FISH_SELL_MUL, COOLER_MAX, type FishSpot } from './fishing.js';
 import { PRODUCTS, PRODUCT_ORDER, WELL_RATE, PUMPJACK_MULT, TRACTS, LEASE_BASE, WELL_COST, PUMPJACK_COST, FORTMC_TICKET_BASE } from './fortmc.js';
+import { G_PRODUCTS, G_PRODUCT_ORDER, CHUDBAI_TICKET_BASE, G_TRACTS, OFFSHORE_FROM, DESERT_WELL_RATE, OFFSHORE_WELL_RATE, DESERT_WELL_COST, OFFSHORE_WELL_COST, ESP_COST, ESP_MULT, G_LEASE_BASE, G_LEASE_OFFSHORE, EXPORT_LEVY } from './chudbai.js';
 import { properties, TAX_RATE } from './realEstate.js';
 import { LEVERS, LEVER_IDS, POLICIES, POLICY_IDS, BUILDINGS, BUILDING_IDS, PROJECTS, PROJECT_IDS, TREASURY_SHARE, fundingView, FUNDING_LEVER_IDS, leverText, RIOT_STOP_COST } from './city.js';
 import { DAILY_EVENTS_X3, DAILY_EVENT_TIERS, DAILY_EVENT_TIERS_RETUNE, EVENT_ORDER, LEGACY_EVENT_TIERS, EVENT_PAYOUT_FROM, EVENT_DAILY_FROM, EVENT_RETUNE_FROM, EVENT_TIERS, goalMul, EVENT_CLAIM_MS } from './coop3.js';
@@ -76,6 +77,8 @@ export function buildWiki(): WikiSection[] {
   const oilProductRows = PRODUCT_ORDER.filter((id) => PRODUCTS[id].sellable).map((id) => {
     const p = PRODUCTS[id]; return { cells: [`${p.icon} ${p.name}`, chips(p.price)] };
   });
+
+  const gulfProductRows = G_PRODUCT_ORDER.filter((id) => G_PRODUCTS[id].sellable).map((id) => { const p = G_PRODUCTS[id]; return { cells: [`${p.icon} ${p.name}`, chips(p.price)] }; });
 
   const propSample = properties().slice(0, 40).map((p) => ({ cells: [p.label, p.id, chips(p.price)] }));
 
@@ -182,6 +185,16 @@ export function buildWiki(): WikiSection[] {
       ],
       headers: ['Product', 'Price'],
       rows: oilProductRows,
+    }),
+    section({
+      id: 'chudbai', title: 'Chudbai oil', icon: '🏙️',
+      intro: `Gulf oil city with ${OFFSHORE_FROM - 1} onshore desert blocks and ${G_TRACTS - OFFSHORE_FROM + 1} offshore blocks. Ticket ${chips(CHUDBAI_TICKET_BASE)} (base). Light sweet crude: no sulfur, little residue.`,
+      bullets: [
+        `Desert well ${chips(DESERT_WELL_COST)} (${DESERT_WELL_RATE}/h at richness 1), offshore platform well ${chips(OFFSHORE_WELL_COST)} (${OFFSHORE_WELL_RATE}/h). ESP pump ${chips(ESP_COST)}, ×${ESP_MULT} flow. Concessions from ~${chips(G_LEASE_BASE)} onshore, ~${chips(G_LEASE_OFFSHORE)} offshore.`,
+        `Sell in person at the Mercantile Exchange: ${Math.round(EXPORT_LEVY * 100)}% export levy, same daily revenue tiers as Fort McChud (its own daily total).`,
+      ],
+      headers: ['Product', 'Price'],
+      rows: gulfProductRows,
     }),
     section({
       id: 'property', title: 'Properties & worker cap', icon: '🏠',

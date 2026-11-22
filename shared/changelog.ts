@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-22T08:35:00-06:00", "title": "New map: Chudbai, a Gulf oil city", "bullets": [
+    "Fly first class from Chud Hub International to Chudbai: a desert city of glass skyscrapers and gold, with the Burj Chudifa, a twisted Mercantile Exchange tower, a marina, the Palm Chudeirah island and the sail-shaped Burj al Chud. The ticket is pricier than Fort McChud's; private jets still fly free and the trip home is free.",
+    "Chudbai has its own oil: light sweet desert crude. Sign one of 6 onshore desert concessions or 4 offshore blocks, drill desert wells or offshore platform wells, add ESP pumps and pipelines, then build crude stabilizers, LNG trains, premium refineries (jet fuel, premium gasoline, light naphtha), an aromatics complex (paraxylene), solar farms and tanks.",
+    "Everything costs several times Fort McChud's prices and the output is worth more to match, so a starter well pays for itself in about 12 to 18 days, like Fort McChud.",
+    "Sell in person at the Chudbai Mercantile Exchange (3% export levy). Sales use the same daily revenue tiers as Fort McChud, counted separately for Chudbai. Your Chudbai site counts toward net worth.",
+  ]},
   {"commit": "", "at": "2026-11-22T08:20:00-06:00", "title": "Chud City doubles in size with West Chud", "bullets": [
     "The city map is now twice as wide. West Chud opens up west of the airport, reached by the Westgate Expressway (off the Airport Expressway) and Sunset Coast Road (along the beach past the airport).",
     "Five new districts: Westgate downtown with a skyline of towers half again as tall as the old downtown's, Westgate Square with the Westgate Spire observation tower, and Westgate Park with a pond and gazebo; Sunset Bay on the waterfront; Maple Heights and Cedar Hills suburbs; and the Ironworks industrial district.",

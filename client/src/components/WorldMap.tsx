@@ -238,6 +238,7 @@ const FreightYard = lazyWithReload(() => import('./FreightYard').then((m) => ({ 
 const SpaceProgram = lazyWithReload(() => import('./SpaceProgram').then((m) => ({ default: m.SpaceProgram })));
 const ResortMap = lazyWithReload(() => import('./ResortMap').then((m) => ({ default: m.ResortMap })));
 const FortMcMap = lazyWithReload(() => import('./FortMcMap').then((m) => ({ default: m.FortMcMap })));
+const ChudbaiMap = lazyWithReload(() => import('./ChudbaiMap').then((m) => ({ default: m.ChudbaiMap })));
 const IslandMap = lazyWithReload(() => import('./IslandMap').then((m) => ({ default: m.IslandMap })));
 
 const CASINO_GAMES = [
@@ -575,9 +576,10 @@ export function WorldMap(props: { onClose: () => void; onLeaderboard: () => void
   return <>
     {loc === 'resort' ? <Suspense fallback={<div className="world"><div className="world-loading">Landing at Chud Resort…</div></div>}><ResortMap /></Suspense>
       : loc === 'fortmc' ? <Suspense fallback={<div className="world"><div className="world-loading">Landing at Fort McChud…</div></div>}><FortMcMap /></Suspense>
+      : loc === 'chudbai' ? <Suspense fallback={<div className="world"><div className="world-loading">Landing in Chudbai…</div></div>}><ChudbaiMap /></Suspense>
       : loc === 'island' ? <Suspense fallback={<div className="world"><div className="world-loading">Landing on the Private Island…</div></div>}><IslandMap /></Suspense>
       : loc === 'voyage' ? <VoyageSea />
       : <CityMap {...props} />}
-    {flying && <div className="resort-flight" data-testid="resort-flight"><div><span>✈️</span><br />{loc === 'resort' ? 'Flying to Chud Resort…' : loc === 'fortmc' ? 'Flying to Fort McChud…' : loc === 'island' ? 'Heading to the Private Island…' : loc === 'voyage' ? 'Putting out to sea…' : 'Flying home to Chud Hub…'}</div></div>}
+    {flying && <div className="resort-flight" data-testid="resort-flight"><div><span>✈️</span><br />{loc === 'resort' ? 'Flying to Chud Resort…' : loc === 'fortmc' ? 'Flying to Fort McChud…' : loc === 'chudbai' ? 'Flying to Chudbai…' : loc === 'island' ? 'Heading to the Private Island…' : loc === 'voyage' ? 'Putting out to sea…' : 'Flying home to Chud Hub…'}</div></div>}
   </>;
 }

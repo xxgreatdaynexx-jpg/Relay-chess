@@ -3174,3 +3174,17 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .employ-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 4px 2px 0; border-top: 1px solid #ffffff1f; }
 .employ-group-head b { font-size: 13px; } .employ-group-head span { font-size: 12px; font-weight: 700; color: #e0a23a; } .employ-group-head small { flex-basis: 100%; font-size: 11px; opacity: .8; }
 @media (pointer: coarse) { .employ-legend button { min-height: 40px; } }
+
+/* Chudbai (Gulf oil city) */
+.world.chudbai .world-title { color: #fff6e0; text-shadow: 0 2px 8px #7a5410; } .world.chudbai .world-title span { color: #e8c46a; }
+.gulf-hud span { border-color: #e8c46a88; }
+.gulf-panel .fort-tabs button.on { outline-color: #e8c46a; }
+.gulf-panel h3 { color: #f2d48a; }
+.gulf-sell .fort-unit { padding: 3px 0; border-bottom: 1px solid #ffffff14; } .gulf-sell input { padding: 2px 4px; margin-right: 4px; }
+.gulf-flat-map { background: #d9b77a; } .gulf-flat-map .fort-flat-tract { background: #8a6a3a; }
+.venue-chudbai { background: linear-gradient(90deg, #6a4a10, #b8892a); border-color: #e8c46a; }
+@media (max-width: 700px), (max-height: 520px) {
+ .world.chudbai .fort-map-controls { top: auto; bottom: 8px; left: 8px; right: 8px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding-right: 0; overflow: visible; -webkit-mask-image: none; mask-image: none; }
+ .world.chudbai .fort-map-controls button { min-height: 44px; min-width: 0; padding: 5px 8px; font-size: 12px; white-space: normal; }
+ .world.chudbai .fort-flat-map { bottom: 108px; }
+}
