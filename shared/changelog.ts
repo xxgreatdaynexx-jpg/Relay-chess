@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-22T07:40:00-06:00", "title": "Power plant and data center menus match the rest of the game", "bullets": [
+    "The power plant and data center screens now use the same cards, progress bars and large gold buttons as the Shore Construction Dock and the Employment Office, including on phones.",
+    "Utility contract, plant fuel, demand and supply, digital income and server-rack installs are laid out as clear stats instead of a single block of text. Costs, power, income and what each button does are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-20T16:00:00-06:00", "title": "Employment Office groups workers by mine and graphs production", "bullets": [
     "Your workers are now grouped by where they work (The Mine, Frostbite Caverns, Magma Depths, Stone Quarry, Lake Dock), biggest group first, with a worker count and that group's expected items per hour. Hire order stays the same inside each group.",
     "A new Production section shows, for each resource, how much your paid workers bring in per hour right now (same math as Expected per day) next to what they actually brought in over the last 24 hours.",

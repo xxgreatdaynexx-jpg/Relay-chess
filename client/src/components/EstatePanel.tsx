@@ -81,7 +81,18 @@ type PowerView = {
   cap: number; paidToday: number; gridOff?: boolean; gridBill?: number; coalPerDay?: number; fuelUntil?: number; fuelDay?: number;
 };
 
+
 const chips = (n: number) => n.toLocaleString('en-US');
+
+function plantFuelBadge(power: PowerView) {
+  if (power.plantMw <= 0) return { label: 'None in service', kind: 'is-muted' };
+  const ms = (power.fuelUntil ?? 0) - Date.now();
+  if (ms <= 0) return { label: 'Unfueled', kind: 'is-off' };
+  if (ms < 3_600_000) return { label: 'Fueled for under an hour', kind: 'is-on' };
+  const h = Math.round(ms / 3_600_000);
+  return { label: `Fueled for about ${h} hour${h === 1 ? '' : 's'}`, kind: 'is-on' };
+}
+
 
 export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?: string; me: string | null; mine?: boolean; kind?: 'estate' | 'plastics' | 'rigdock' | 'hyper'; onClose: () => void }) {
   const [view, setView] = useState<Record<string, unknown> | null>(null);
@@ -209,51 +220,146 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
               </div>
             )}
             {site?.plan && (
-              <div>
-                <p>{site.plan.blurb}</p>
-                <p>Catalog total 🪙 {chips(site.plan.total)}.</p>
-                <ul>{(site.stages ?? []).map((s, i) => (
-                  <li key={s.id}><b>{s.name}</b> — {Math.round((s.pct ?? 0) * 100)}%
-                    {canBuild && i === site.stage && !site.complete && !s.parts && <button type="button" onClick={() => void call('estate_contribute', { lotId: site.lotId, part: 'chips', qty: 10_000 })}>Add 10,000 chips</button>}
-                    {i === site.stage && !site.complete && (s.parts ?? []).map((p) => {
-                      const left = Math.max(0, p.need - p.done);
-                      const step = p.part === 'chips' ? Math.min(left, 10_000) : Math.min(left, Math.max(1, Math.ceil(p.need / 10)));
-                      const cost = (n: number) => p.part === 'chips' ? n : Math.max(0, n - (p.have ?? 0)) * p.price;
-                      return <div key={p.part} className="estate-hyper-part" data-testid={`estate-site-part-${p.part}`}>
-                        <small>{p.name}: {chips(p.done)} / {chips(p.need)}{p.part !== 'chips' ? ` · in warehouse ${chips(p.have ?? 0)} · 🪙 ${chips(p.price)} each otherwise` : ''}</small>
-                        {canBuild && left > 0 && <>
-                          <button type="button" data-testid={`estate-site-add-${p.part}`} onClick={() => void call('estate_contribute', { lotId: site.lotId, part: p.part, qty: step })}>Add {chips(step)}{cost(step) > 0 && p.part !== 'chips' ? ` · 🪙 ${chips(cost(step))}` : ''}</button>
-                          {left > step && <button type="button" data-testid={`estate-site-fill-${p.part}`} onClick={() => void call('estate_contribute', { lotId: site.lotId, part: p.part, qty: left })}>Fill {chips(left)}{cost(left) > 0 ? ` · 🪙 ${chips(cost(left))}` : ''}</button>}
-                        </>}
-                      </div>;
+              <div className="estate-dock estate-works" data-testid="estate-works">
+                <p className="estate-dock-blurb">{site.plan.blurb}</p>
+                <p className="estate-dock-blurb">Catalog total 🪙 {chips(site.plan.total)}.</p>
+                <ul className="estate-dock-list">
+                  <li className="estate-dock-card" data-testid="estate-works-build">
+                    <div className="estate-dock-head">
+                      <b>{site.complete ? `${site.plan.name} finished` : `Building · ${(site.stages ?? [])[site.stage]?.name ?? site.plan.name}`}</b>
+                      <small className="estate-dock-badge">{site.complete ? 'Complete' : `Stage ${Math.min(site.stage + 1, site.stages?.length ?? 4)} of ${site.stages?.length ?? 4}`}</small>
+                    </div>
+                    <Bar v={site.complete ? 1 : ((site.stages ?? []).reduce((a, s) => a + (s.pct ?? 0), 0) / Math.max(1, site.stages?.length ?? 1))} testid="estate-works-progress" />
+                    {site.complete ? (
+                      <ul className="estate-works-done">
+                        {(site.stages ?? []).map((s) => (
+                          <li key={s.id} data-testid={`estate-works-stage-${s.id}`}><b>{s.name}</b><span>Done</span></li>
+                        ))}
+                      </ul>
+                    ) : (site.stages ?? []).map((s, i) => {
+                      const current = i === site.stage;
+                      const done = i < site.stage;
+                      const pct = done ? 1 : (s.pct ?? 0);
+                      return (
+                        <div key={s.id} className={`estate-dock-stage${current ? ' is-current' : done ? ' is-done' : ' is-upcoming'}`} data-testid={`estate-works-stage-${s.id}`}>
+                          <div className="estate-dock-stage-head"><b>{s.name}</b> <span>{done ? 'Done' : pctLabel(pct)}</span></div>
+                          <Bar v={pct} />
+                          {canBuild && current && !s.parts && (
+                            <div className="estate-dock-actions">
+                              <button type="button" className="estate-dock-btn" onClick={() => void call('estate_contribute', { lotId: site.lotId, part: 'chips', qty: 10_000 })}>Add 10,000 chips</button>
+                            </div>
+                          )}
+                          {current && (s.parts ?? []).map((p) => {
+                            const left = Math.max(0, p.need - p.done);
+                            const step = p.part === 'chips' ? Math.min(left, 10_000) : Math.min(left, Math.max(1, Math.ceil(p.need / 10)));
+                            const cost = (n: number) => p.part === 'chips' ? n : Math.max(0, n - (p.have ?? 0)) * p.price;
+                            return (
+                              <div key={p.part} className="estate-dock-part" data-testid={`estate-site-part-${p.part}`}>
+                                <small>{p.name}: {chips(p.done)} / {chips(p.need)}{p.part !== 'chips' ? ` · in warehouse ${chips(p.have ?? 0)} · 🪙 ${chips(p.price)} each otherwise` : ''}</small>
+                                {canBuild && left > 0 && (
+                                  <div className="estate-dock-actions">
+                                    <button type="button" className="estate-dock-btn" data-testid={`estate-site-add-${p.part}`} onClick={() => void call('estate_contribute', { lotId: site.lotId, part: p.part, qty: step })}>Add {chips(step)}{cost(step) > 0 && p.part !== 'chips' ? ` · 🪙 ${chips(cost(step))}` : ''}</button>
+                                    {left > step && <button type="button" className="estate-dock-btn estate-dock-fill" data-testid={`estate-site-fill-${p.part}`} onClick={() => void call('estate_contribute', { lotId: site.lotId, part: p.part, qty: left })}>Fill {chips(left)}{cost(left) > 0 ? ` · 🪙 ${chips(cost(left))}` : ''}</button>}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
                     })}
                   </li>
-                ))}</ul>
-                {site.complete && site.gearDef && (
-                  <p>
-                    {site.gearDef.icon} {site.gear} / {site.gearDef.max} {site.gearDef.name}s · {site.gearDef.mw} MW each · 🪙 {chips(site.gearDef.chipsPerHour)}/h each · 🪙 {chips(site.gearDef.price)}
-                    {site.gearDef.install && site.gearDef.install.length > 0 && (
-                      <small> Install uses {site.gearDef.install.map((g) => `${g.qty} ${g.name}`).join(' + ')} from the warehouse.</small>
-                    )}
-                    {canBuild && <button type="button" onClick={() => void call('estate_gear', { lotId: site.lotId, qty: 1 })}>Install one</button>}
-                  </p>
-                )}
+                  {site.complete && site.gearDef && (
+                    <li className="estate-dock-card estate-gear" data-testid="estate-gear">
+                      <div className="estate-dock-head">
+                        <b>{site.gearDef.icon} {site.gearDef.name}s</b>
+                        <small className="estate-dock-badge">{site.gear} / {site.gearDef.max}</small>
+                      </div>
+                      <Bar v={site.gearDef.max > 0 ? site.gear / site.gearDef.max : 0} testid="estate-gear-progress" />
+                      <dl className="estate-stat">
+                        <dt>Each</dt>
+                        <dd>{site.gearDef.mw} MW · 🪙 {chips(site.gearDef.chipsPerHour)}/h · 🪙 {chips(site.gearDef.price)}</dd>
+                        {site.gearDef.install && site.gearDef.install.length > 0 && (
+                          <>
+                            <dt>Install uses</dt>
+                            <dd>{site.gearDef.install.map((g) => `${g.qty} ${g.name}`).join(' + ')} from the warehouse.</dd>
+                          </>
+                        )}
+                        <dt>This site</dt>
+                        <dd>🪙 {chips(gearRate)}/h at full power · {site.gear * site.gearDef.mw} MW draw</dd>
+                      </dl>
+                      {canBuild && (
+                        <div className="estate-dock-actions">
+                          <button type="button" className="estate-dock-btn" data-testid="estate-gear-install" onClick={() => void call('estate_gear', { lotId: site.lotId, qty: 1 })}>Install one</button>
+                        </div>
+                      )}
+                    </li>
+                  )}
+                </ul>
               </div>
             )}
             {power && (
-              <div className="estate-power" data-testid="estate-power">
-                <h3>⚡ Power</h3>
-                {power.gridOff && <p data-testid="estate-power-cut"><strong>Grid is off.</strong> Digital output that needs the utility has stopped until the bill is paid.</p>}
-                <p>Utility contract {power.gridMw} MW at 🪙 {chips(power.gridPrice)}/MW/day{power.gridOff ? ' (shut off)' : ''}. Plant {power.plantMw} MW{power.plantMw > 0 ? ` · ${chips(power.coalPerDay ?? 0)} coal/day or 🪙 ${chips(power.fuelDay ?? 0)} fuel contract` : ''}. Demand {power.demand} MW. Supply {power.supply} MW. Throttle {Math.round(power.throttle * 100)}%.</p>
-                <p>Digital income today 🪙 {chips(power.paidToday)} / {chips(power.cap)} cap{gearRate ? ` · this site 🪙 ${chips(gearRate)}/h at full power` : ''}.</p>
-                {canBuild && <button type="button" onClick={() => void call('estate_grid', { mw: (power.gridMw || 0) + 10 })}>Buy +10 MW utility</button>}
+              <div className="estate-ops estate-power" data-testid="estate-power">
+                <div className="estate-dock-head">
+                  <h3>⚡ Power</h3>
+                </div>
+                {power.gridOff && <p data-testid="estate-power-cut" className="estate-ops-cut"><strong>Grid is off.</strong> Digital output that needs the utility has stopped until the bill is paid.</p>}
+                <div className="estate-ops-grid">
+                  <div className="estate-dock-card" data-testid="estate-power-utility">
+                    <div className="estate-dock-head">
+                      <b>Utility contract</b>
+                      <small className={`estate-ops-badge ${power.gridOff ? 'is-off' : power.gridMw > 0 ? 'is-on' : 'is-muted'}`}>{power.gridOff ? 'Shut off' : power.gridMw > 0 ? 'On' : 'None'}</small>
+                    </div>
+                    <dl className="estate-stat">
+                      <dt>Contract</dt><dd>{power.gridMw} MW</dd>
+                      <dt>Rate</dt><dd>🪙 {chips(power.gridPrice)}/MW/day</dd>
+                      {(power.gridBill ?? 0) > 0 && (<><dt>{power.gridOff ? 'Unpaid bill' : 'Bill'}</dt><dd>🪙 {chips(power.gridBill ?? 0)}</dd></>)}
+                    </dl>
+                    {canBuild && (
+                      <div className="estate-dock-actions">
+                        <button type="button" className="estate-dock-btn" data-testid="estate-grid-buy" onClick={() => void call('estate_grid', { mw: (power.gridMw || 0) + 10 })}>Buy +10 MW utility</button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="estate-dock-card" data-testid="estate-power-plant">
+                    <div className="estate-dock-head">
+                      <b>Power plant</b>
+                      <small className={`estate-ops-badge ${plantFuelBadge(power).kind}`}>{plantFuelBadge(power).label}</small>
+                    </div>
+                    <dl className="estate-stat">
+                      <dt>Nameplate</dt><dd>{power.plantMw} MW</dd>
+                      {power.plantMw > 0 && (<><dt>Fuel</dt><dd>{chips(power.coalPerDay ?? 0)} coal/day or 🪙 {chips(power.fuelDay ?? 0)} fuel contract</dd></>)}
+                    </dl>
+                  </div>
+                  <div className="estate-dock-card" data-testid="estate-power-balance">
+                    <div className="estate-dock-head">
+                      <b>Balance</b>
+                      <small className="estate-dock-badge">Throttle {Math.round(power.throttle * 100)}%</small>
+                    </div>
+                    <dl className="estate-stat">
+                      <dt>Demand</dt><dd>{power.demand} MW</dd>
+                      <dt>Supply</dt><dd>{power.supply} MW</dd>
+                    </dl>
+                    <Bar v={power.throttle} testid="estate-power-throttle" />
+                  </div>
+                  <div className="estate-dock-card" data-testid="estate-power-income">
+                    <div className="estate-dock-head">
+                      <b>Digital income</b>
+                      <small className="estate-dock-badge">Today</small>
+                    </div>
+                    <p className="estate-dock-hold">🪙 {chips(power.paidToday)} / {chips(power.cap)} cap{gearRate ? ` · this site 🪙 ${chips(gearRate)}/h at full power` : ''}.</p>
+                    <Bar v={power.cap > 0 ? Math.min(1, power.paidToday / power.cap) : 0} testid="estate-power-cap" />
+                  </div>
+                </div>
               </div>
             )}
             {lotId && canBuild && (
-              <div className="estate-demolish">
-                <h3>Demolish</h3>
+              <div className="estate-demolish estate-dock-card">
+                <div className="estate-dock-head"><h3>Demolish</h3></div>
                 <p>{DEMOLISH_RULES}</p>
-                <button type="button" data-testid="estate-demolish" onClick={() => { if (confirm('Demolish this structure and turn the lot into a construction site?\n\n' + DEMOLISH_RULES)) void call('estate_demolish', { id: lotId, confirm: true }); }}>Demolish…</button>
+                <div className="estate-dock-actions">
+                  <button type="button" className="estate-dock-btn estate-demolish-btn" data-testid="estate-demolish" onClick={() => { if (confirm('Demolish this structure and turn the lot into a construction site?\n\n' + DEMOLISH_RULES)) void call('estate_demolish', { id: lotId, confirm: true }); }}>Demolish…</button>
+                </div>
               </div>
             )}
           </div>
