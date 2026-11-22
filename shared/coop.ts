@@ -41,13 +41,19 @@ export const COOP_PLAN: Record<ProjectId, ProjectPlan> = {
     ],
     perk: 'Live spectating at the Stadium, and every player gets a 6th paid hockey win a day (was 5).',
   },
+  /**
+   * Bridge sizing: in line with the stadium (693,000 chips-equivalent over 4 stages, the same ~77/23 chips/goods mix, a similar
+   * stone load in concrete/brick/glass). Stage 0 keeps concrete + brick so earlier Piers donations still count; the needs
+   * floor at already-donated qty at runtime (floorStageNeed), so nothing given is ever lost or shrunk.
+   */
   bridge: {
-    id: 'bridge', name: 'Fort McChud Bridge', icon: '🌉', total: 10_000_000, chipShare: 0.6,
+    id: 'bridge', name: 'Fort McChud Bridge', icon: '🌉', total: 693_000, chipShare: 0.6,
     stages: [
-      { id: 'piers', name: 'Piers', goods: [['concrete', 0.7], ['brick', 0.3]] },
-      { id: 'deck', name: 'Deck', goods: [['steel_beam', 0.6], ['steel_plate', 0.4]] },
-      { id: 'cables', name: 'Cables', goods: [['steel_cable', 0.8], ['steel', 0.2]] },
-      { id: 'lights', name: 'Lights & road', goods: [['glass', 0.5], ['concrete', 0.5]] },
+      // concrete 6, brick 3, steel_beam 159, steel_plate 79, steel_cable 41, glass 4 (GOODS house prices)
+      { id: 'piers', name: 'Piers & abutment', chips: 165_000, goods: [['concrete', 500], ['brick', 600]] },
+      { id: 'towers', name: 'Towers', chips: 120_000, goods: [['concrete', 400], ['steel_beam', 300]] },
+      { id: 'deck', name: 'Deck & road', chips: 103_000, goods: [['steel_beam', 220], ['steel_plate', 420]] },
+      { id: 'cables', name: 'Cables & lights', chips: 146_940, goods: [['steel_cable', 800], ['glass', 550]] },
     ],
     perk: 'Fort McChud tickets cost half for everyone.',
   },
@@ -198,3 +204,25 @@ export const STADIUM_SITE = { x: 4, z: -156, w: 36, d: 28 } as const;
 /** Decor (trees/rocks) clearance around the site edge: the finished arena + its forecourt need a clear ring. */
 export const STADIUM_CLEAR_PAD = 12;
 export const inStadiumSite = (x: number, z: number, pad = STADIUM_CLEAR_PAD) => Math.abs(x - STADIUM_SITE.x) <= STADIUM_SITE.w / 2 + pad && Math.abs(z - STADIUM_SITE.z) <= STADIUM_SITE.d / 2 + pad;
+
+/**
+ * Fort McChud Bridge on the city map: a cable-stayed sea bridge off the south-west beach, heading south out to sea
+ * toward Fort McChud. A short paved approach leaves Sunset Coast Road (the straight stretch at z 170 between the
+ * airport and the beach, shared/westCity.ts) through a clear strip west of the outskirts fields, ramps up over the
+ * beach and runs past two A-frame towers into the fog. All z values are world z.
+ */
+export const BRIDGE_SITE = {
+  x: -190, roadZ: 172.5, rampZ0: 184, rampZ1: 236, mainZ1: 500, farZ: 920,
+  deckY: 10, crest: 2.6, halfW: 4.6, towers: [280, 400] as const, towerH: 54,
+} as const;
+/** Deck surface height at world z (ground road -> ramp -> gently crowned main span -> long flat viaduct). */
+export function bridgeDeckY(z: number): number {
+  const B = BRIDGE_SITE;
+  if (z <= B.rampZ0) return 0.06;
+  if (z < B.rampZ1) { const t = (z - B.rampZ0) / (B.rampZ1 - B.rampZ0); return 0.06 + (B.deckY - 0.06) * (0.5 - 0.5 * Math.cos(Math.PI * t)); }
+  if (z < B.mainZ1) return B.deckY + B.crest * Math.sin((Math.PI * (z - B.rampZ1)) / (B.mainZ1 - B.rampZ1));
+  return B.deckY;
+}
+/** Decor (trees/rocks/hills) stays off the land approach and the beach under the ramp. */
+export const BRIDGE_CLEAR_PAD = 4;
+export const inBridgeSite = (x: number, z: number, pad = BRIDGE_CLEAR_PAD) => Math.abs(x - BRIDGE_SITE.x) <= BRIDGE_SITE.halfW + pad && z >= BRIDGE_SITE.roadZ - 1 && z <= BRIDGE_SITE.rampZ1;

@@ -35,6 +35,13 @@ describe('co-op sizing + rules', () => {
     expect(Math.abs(projectValue(COOP_PLAN.stadium) - 693_000) / 693_000).toBeLessThan(0.01);
     expect(COOP_PLAN.bridge.stages).toHaveLength(4);
   });
+  it('bridge is sized like the stadium: 693k over 4 stages, ~60/40 chips/goods, Piers keep concrete + brick', () => {
+    expect(COOP_PLAN.bridge.total).toBe(693_000); expect(projectValue(COOP_PLAN.bridge)).toBe(693_000);
+    const st = projectStages(COOP_PLAN.bridge); expect(st.map((s) => s.id)).toEqual(['piers', 'towers', 'deck', 'cables']);
+    expect(st[0]!.goods.map((g) => g.id)).toEqual(['concrete', 'brick']);
+    const chips = st.reduce((a, s) => a + s.chips, 0); expect(chips / 693_000).toBeGreaterThan(0.7); expect(chips / 693_000).toBeLessThan(0.82);
+    for (const s of st) { const v = s.chips + s.goods.reduce((a, g) => a + g.qty * g.price, 0); expect(v).toBeGreaterThan(160_000); expect(v).toBeLessThan(190_000); }
+  });
   it('donor reward is 10%, capped, and always below the donation', () => {
     expect(donorReward(10_000, 0)).toBe(10_000 * DONOR_REWARD_RATE);
     expect(donorReward(10_000_000, 0)).toBe(DONOR_REWARD_CAP); expect(donorReward(1000, DONOR_REWARD_CAP)).toBe(0);
@@ -122,9 +129,9 @@ describe('Coop server', () => {
     expect(whQty('Bob', g.type, g.id)).toBe(q);
     const r = await c.donate('Bob', { project: 'stadium', part: partKey(g), qty: q, nonce: nonce() }); expect(whQty('Bob', g.type, g.id)).toBe(0);
     expect(r.value).toBe(q * g.price); expect(c.projectView('stadium').stages[0]!.done[partKey(g)]).toBe(q); expect(r.reward).toBeLessThan(r.value);
-    // The reduced stadium is too small to hit the 50k reward ceiling; exercise it on the unchanged bridge.
+    // One stage is too small to hit the 50k reward ceiling; one player funding three bridge stages (~511k) does.
     for (let i = 0; i < 4; i++) await fillStage(c, 'Builder');
-    fund('Big', 10_000_000); await c.donate('Big', { project: 'bridge', part: 'chips', qty: 600_000, nonce: nonce() });
+    for (let i = 0; i < 3; i++) await fillStage(c, 'Big');
     expect(c.view('Big').me!.rewarded).toBe(DONOR_REWARD_CAP);
   });
   it('concurrency: parallel donations never over-fill a stage, never double-spend', async () => {

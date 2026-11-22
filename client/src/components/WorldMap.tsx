@@ -2,7 +2,7 @@ import { PropertyIncomeDetails } from './PropertyIncomeDetails';
 import { incomeEligible } from '../../../shared/propertyIncome';
 import { MapSheet } from './MapSheet';
 import { TimedSuspense } from './ModalShell';
-import { STADIUM_SITE } from '../../../shared/coop';
+import { STADIUM_SITE, BRIDGE_SITE } from '../../../shared/coop';
 import { useDoing } from '@/lib/doing';
 import { fullScreenGameOpen } from '@/lib/pauseWorld';
 import { ROYALTY_VENUE, royaltyPct, buyoutPrice, BUYOUT_PROTECT_MS } from '../../../shared/royalty';
@@ -313,7 +313,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   const mechanic = panel.k === 'mechanic'; const setMechanic = (v: boolean) => setPanel((c) => (v ? { k: 'mechanic' } : closePanel(c, 'mechanic')));
   const [nitro, setNitro] = useState<{ have: number; full: number; on: boolean } | null>(null);
   const dock = panel.k === 'dock'; const setDock = (v: boolean) => setPanel((c) => (v ? { k: 'dock' } : closePanel(c, 'dock')));
-  const driveRef = useRef<Drive | null>(null); const freightRef = useRef<{ dispose: () => void; setRunning: (v: boolean) => void } | null>(null); const haulRef = useRef<{ dispose: () => void; setRunning: (v: boolean) => void } | null>(null); const stadiumRef = useRef<{ dispose: () => void; refresh: () => void } | null>(null);
+  const driveRef = useRef<Drive | null>(null); const freightRef = useRef<{ dispose: () => void; setRunning: (v: boolean) => void } | null>(null); const haulRef = useRef<{ dispose: () => void; setRunning: (v: boolean) => void } | null>(null); const stadiumRef = useRef<{ dispose: () => void; refresh: () => void } | null>(null); const bridgeRef = useRef<{ dispose: () => void; refresh: () => void } | null>(null);
   const estateRef = useRef<{ dispose: () => void; refresh?: () => void } | null>(null);
   const pendingDrive = useRef<{ carId: string; color: number; from?: string } | null>(null); const startDriveRef = useRef<(carId: string, color: number, from?: string) => void>(() => {});
   const [driving, setDriving] = useState(false); const [haulOff, setHaulOff] = useState(() => { try { return localStorage.getItem('chud-haul-trucks-off') === '1'; } catch { return false; } }); const [near, setNear] = useState<string | null>(null); const [drift, setDrift] = useState(false);
@@ -383,7 +383,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   };
   const goRef = useRef(go); goRef.current = go;
   // Player profile "Show on map": land/farm coordinates from /api/player.
-  useEffect(() => { const on = (e: Event) => { const d = (e as CustomEvent<{ x: number; z: number; dist?: number; hgt?: number }>).detail; if (d && Number.isFinite(d.x) && Number.isFinite(d.z)) worldRef.current?.focusXZ(d.x, d.z, d.dist, d.hgt); }; window.addEventListener('world-focus', on); return () => window.removeEventListener('world-focus', on); }, []);
+  useEffect(() => { const on = (e: Event) => { const d = (e as CustomEvent<{ x: number; z: number; dist?: number; hgt?: number; ang?: number }>).detail; if (d && Number.isFinite(d.x) && Number.isFinite(d.z)) worldRef.current?.focusXZ(d.x, d.z, d.dist, d.hgt, d.ang); }; window.addEventListener('world-focus', on); return () => window.removeEventListener('world-focus', on); }, []);
   useEffect(() => { if (!dock || driving || loading) return; const t = setTimeout(() => worldRef.current?.flyTo('dock'), 600); return () => clearTimeout(t); }, [dock, loading, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -415,6 +415,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         void importWithReload(() => import('@/lib/worldFreight')).then(({ createFreight }) => { if (dead || worldRef.current !== w) return; freightRef.current = createFreight(w); });
         void importWithReload(() => import('@/lib/worldHaul')).then(({ createHaul }) => { if (dead || worldRef.current !== w) return; haulRef.current = createHaul(w); });
         void importWithReload(() => import('@/lib/worldStadium')).then(({ createStadium }) => { if (dead || worldRef.current !== w) return; stadiumRef.current = createStadium(w); });
+        void importWithReload(() => import('@/lib/worldBridge')).then(({ createBridge }) => { if (dead || worldRef.current !== w) return; bridgeRef.current = createBridge(w); });
         void importWithReload(() => import('@/lib/worldEstate')).then(({ createEstate }) => { if (dead || worldRef.current !== w) return; estateRef.current = createEstate(w); });
         void importWithReload(() => import('@/lib/worldDrive')).then(({ createDrive }) => { if (dead || worldRef.current !== w) return;
           driveRef.current = createDrive(w, { me: () => meRef.current ?? null, onNear: setNear, onSpeed: setKmh, onRace, onNitro: setNitro, onDrift: setDrift });
@@ -422,7 +423,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       } catch { setMode('2d'); }
       setLoading(false);
     }).catch(() => setMode('2d'));
-    return () => { dead = true; stadiumRef.current?.dispose(); stadiumRef.current = null; estateRef.current?.dispose(); estateRef.current = null; haulRef.current?.dispose(); haulRef.current = null; freightRef.current?.dispose(); freightRef.current = null; driveRef.current?.dispose(); driveRef.current = null; setDriving(false); worldRef.current?.dispose(); worldRef.current = null; };
+    return () => { dead = true; stadiumRef.current?.dispose(); stadiumRef.current = null; bridgeRef.current?.dispose(); bridgeRef.current = null; estateRef.current?.dispose(); estateRef.current = null; haulRef.current?.dispose(); haulRef.current = null; freightRef.current?.dispose(); freightRef.current = null; driveRef.current?.dispose(); driveRef.current = null; setDriving(false); worldRef.current?.dispose(); worldRef.current = null; };
   }, [mode]);
   // Pause the city while a building's panel is open over it (saves GPU for Arena/Mines).
   useEffect(() => {
@@ -525,7 +526,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       {mechanic && <TimedSuspense label="Opening the garage…" onClose={() => setMechanic(false)}><MechanicShop onClose={() => setMechanic(false)} onDrive={(carId, color) => { setMechanic(false); startDrive(carId, color, 'mechanic'); }} /></TimedSuspense>}
       {panel.k !== 'coop' && <WeeklyEventBar onOpen={() => setPanel((c) => togglePanel(c, { k: 'coop', tab: 'event' }))} />}
       {panel.k === 'spacesim' && <TimedSuspense label="Opening the Space Center…" onClose={() => setPanel((c) => closePanel(c, 'spacesim'))}><SpaceProgram me={me} onClose={() => setPanel((c) => closePanel(c, 'spacesim'))} /></TimedSuspense>}
-      {panel.k === 'coop' && <TimedSuspense label="Opening the co-op board…" onClose={() => setPanel((c) => closePanel(c, 'coop'))}><CoopPanel me={me} tab0={panel.tab} onClose={() => setPanel((c) => closePanel(c, 'coop'))} onChanged={() => stadiumRef.current?.refresh()} onViewSite={() => { setPanel((c) => closePanel(c, 'coop')); worldRef.current?.focusXZ(STADIUM_SITE.x, STADIUM_SITE.z, 46, 38); }} /></TimedSuspense>}
+      {panel.k === 'coop' && <TimedSuspense label="Opening the co-op board…" onClose={() => setPanel((c) => closePanel(c, 'coop'))}><CoopPanel me={me} tab0={panel.tab} onClose={() => setPanel((c) => closePanel(c, 'coop'))} onChanged={() => { stadiumRef.current?.refresh(); bridgeRef.current?.refresh(); }} onViewSite={(id) => { setPanel((c) => closePanel(c, 'coop')); if (id === 'bridge') worldRef.current?.focusXZ(BRIDGE_SITE.x, 270, 200, 110, 0.5); else worldRef.current?.focusXZ(STADIUM_SITE.x, STADIUM_SITE.z, 46, 38); }} /></TimedSuspense>}
       {freight && <TimedSuspense label="Opening the freight yard…" onClose={() => setFreight(false)}><FreightYard me={me} onClose={() => setFreight(false)} /></TimedSuspense>}
       {dealer && <TimedSuspense label="Opening the dealership…" onClose={() => setDealer(false)}><Dealership onClose={() => setDealer(false)} onDrive={startDrive} /></TimedSuspense>}
       {casino && (

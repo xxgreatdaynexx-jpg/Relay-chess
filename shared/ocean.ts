@@ -14,3 +14,5 @@ export const HARBOUR = { x: 40, quayZ: OCEAN.shoreZ + 2, pierZ1: OCEAN.shoreZ + 
 export const BREAKWATER: Array<[number, number]> = [[HARBOUR.x - 40, OCEAN.shoreZ + 1], [HARBOUR.x - 44, OCEAN.shoreZ + 22], [HARBOUR.x - 34, OCEAN.shoreZ + 42], [HARBOUR.x - 12, OCEAN.shoreZ + 50], [HARBOUR.x + 6, OCEAN.shoreZ + 50]];
 /** How far south the camera may pan (farm.ts MAP_VIEW): the harbour and a strip of open water. */
 export const VIEW_Z1 = HARBOUR.pierZ1 + 26;
+/** The Fort McChud Bridge's sea towers (shared/coop.ts BRIDGE_SITE.towers, last at z 400) stay pannable. */
+export const BRIDGE_VIEW_Z1 = 440;

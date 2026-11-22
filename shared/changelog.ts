@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-22T08:40:00-06:00", "title": "Fort McChud Bridge is a real co-op build", "bullets": [
+    "The Fort McChud Bridge now stands on the city map: a cable-stayed sea bridge that leaves Sunset Coast Road south of the airport, ramps over the beach and runs out to sea past two tall towers. Tap 🏟️ Co-op, then \"📍 View the Bridge on the map\" to fly there.",
+    "It goes up with the co-op project like the Hockey Stadium did, in 4 stages: Piers & abutment, Towers, Deck & road, then Cables & lights. Each stage shows on the map as it fills, and a label above the shore shows the overall %.",
+    "The bridge now costs about the same as the stadium: 693,000 in chips and goods (it was 10 million). Everything already donated still counts, and the perk is unchanged: once it opens, Fort McChud tickets cost half for everyone, and traffic runs across it.",
+  ]},
   {"commit": "", "at": "2026-11-22T08:35:00-06:00", "title": "New map: Chudbai, a Gulf oil city", "bullets": [
     "Fly first class from Chud Hub International to Chudbai: a desert city of glass skyscrapers and gold, with the Burj Chudifa, a twisted Mercantile Exchange tower, a marina, the Palm Chudeirah island and the sail-shaped Burj al Chud. The ticket is pricier than Fort McChud's; private jets still fly free and the trip home is free.",
     "Chudbai has its own oil: light sweet desert crude. Sign one of 6 onshore desert concessions or 4 offshore blocks, drill desert wells or offshore platform wells, add ESP pumps and pipelines, then build crude stabilizers, LNG trains, premium refineries (jet fuel, premium gasoline, light naphtha), an aromatics complex (paraxylene), solar farms and tanks.",

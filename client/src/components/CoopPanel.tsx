@@ -17,7 +17,7 @@ function Bar({ v, testid }: { v: number; testid?: string }) {
 }
 
 /** Co-op: server megaprojects (Hockey Stadium, then the Fort McChud Bridge) + the Warehouse group-contract board. */
-export function CoopPanel({ onClose, me, tab0 = 'project', onChanged, onViewSite }: { onClose: () => void; me: string | null; tab0?: 'project' | 'contracts' | 'supply' | 'fleet' | 'event'; onChanged?: () => void; onViewSite?: () => void }) {
+export function CoopPanel({ onClose, me, tab0 = 'project', onChanged, onViewSite }: { onClose: () => void; me: string | null; tab0?: 'project' | 'contracts' | 'supply' | 'fleet' | 'event'; onChanged?: () => void; onViewSite?: (id: 'stadium' | 'bridge') => void }) {
   useDoing('city');
   const drag = usePanelDrag('coop');
   const [v, setV] = useState<View | null>(null); const [tab, setTab] = useState<string>(tab0);
@@ -59,7 +59,7 @@ export function CoopPanel({ onClose, me, tab0 = 'project', onChanged, onViewSite
               </ul>}
             </li>)}</ol>
             <p className="coop-perk">🎁 When built: {p.perk}</p>
-            {onViewSite && <button type="button" onClick={onViewSite} data-testid="coop-view-site">📍 View the Stadium on the map</button>}
+            {onViewSite && <button type="button" onClick={() => onViewSite(p.id)} data-testid="coop-view-site">📍 View the {p.id === 'bridge' ? 'Bridge' : 'Stadium'} on the map</button>}
             {p.id === 'stadium' && me && <p className="coop-sellbonus" data-testid="coop-sell-bonus">🏦 Your sell-cap bonus: <b>+{sellBonusPct(v.sellBonus ?? 0)}%</b> <small>({fmt(v.stadiumRecent ?? 0)} 🪙 given in the last 60 days ({fmt(v.stadiumDonated ?? 0)} all-time); Stadium donations from the last 60 days raise your daily sell-to-house cap, with diminishing returns up to +{Math.round(SELL_BONUS_MAX * 100)}%)</small></p>}
             {stage && me && <div className="coop-donate" data-testid="coop-donate">
               <select value={part} onChange={(e) => setPart(e.target.value)} data-testid="coop-part">

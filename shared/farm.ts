@@ -8,7 +8,7 @@
  * Harvest pays back the seed cost in full plus the crop's profit (sell - seed), with no daily farm profit cap,
  * and never pays less than the seeds cost.
  */
-import { VIEW_Z1 } from './ocean.js';
+import { VIEW_Z1, BRIDGE_VIEW_Z1 } from './ocean.js';
 import { BIG_FARM_AREA } from './bigFarms.js';
 import { EXPANSION_BOUNDS, RIG_BERTHS, RIG_DOCK } from './mapExpansion.js';
 import { PLATE, PARK_AREA, MINE_SITES, MINE_APRON, OUTSKIRTS, type OBB } from './worldLayout.js';
@@ -179,7 +179,7 @@ export const MAP_VIEW_CORE = {
   x0: Math.min(MAP_BOUNDS_CORE.x0, RIG_DOCK.x - 40),
   x1: Math.max(MAP_BOUNDS_CORE.x1, RIG_DOCK.x + 40),
   z0: MAP_BOUNDS_CORE.z0,
-  z1: Math.max(MAP_BOUNDS_CORE.z1, VIEW_Z1, RIG_DOCK.z + 20, ...RIG_BERTHS.map(([, z]) => z + 20)),
+  z1: Math.max(MAP_BOUNDS_CORE.z1, VIEW_Z1, BRIDGE_VIEW_Z1, RIG_DOCK.z + 20, ...RIG_BERTHS.map(([, z]) => z + 20)),
 };
 /** Whole map including West Chud, the western half added west of the airport (shared/westCity.ts). */
 export const MAP_BOUNDS = { ...MAP_BOUNDS_CORE, x0: Math.min(MAP_BOUNDS_CORE.x0, WEST.x0 - 6) };

@@ -1,7 +1,7 @@
 import { attachCityProtestJoke, CITY_PROTEST_JOKE_ENABLED } from './cityProtestJoke';
 import { cityRiotGate } from './cityRiotGate';
 import { farmBarns } from '../../../shared/farmBarns';
-import { inStadiumSite } from '../../../shared/coop';
+import { inStadiumSite, inBridgeSite, BRIDGE_SITE } from '../../../shared/coop';
 import * as THREE from 'three';
 import { JAIL_SITE, JAIL_SCALE, type JailInfo } from '../../../shared/jail';
 import { BUILDINGS, BUILDING_IDS, civicPlot, inCivic, type CityView } from '../../../shared/city';
@@ -196,7 +196,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     // dune grass tufts + a few palms/umbrellas along the dry sand (instanced)
     const n = lowT ? 90 : 220; const tuft = new THREE.InstancedMesh(geo(new THREE.ConeGeometry(0.5, 1.2, 5)), mat({ color: XM ? 0xc8d0c0 : 0x6b8f3a, roughness: 1 }), n); const m4 = new THREE.Matrix4();
     const span = BEACH_X1 - BEACH_X0 - 20;
-    for (let i = 0; i < n; i++) { const x = BEACH_X0 + 10 + ((i * 97.3) % span); if (Math.abs(x - 33) < 42 || Math.abs(x - RIG_DOCK.x) < 26) { m4.makeScale(0, 0, 0); tuft.setMatrixAt(i, m4); continue; } m4.makeScale(1, 0.6 + ((i * 7) % 5) * 0.15, 1); m4.setPosition(x, 0.5, OCEAN.beachZ + 1.5 + ((i * 13) % 4)); tuft.setMatrixAt(i, m4); }
+    for (let i = 0; i < n; i++) { const x = BEACH_X0 + 10 + ((i * 97.3) % span); if (Math.abs(x - 33) < 42 || Math.abs(x - RIG_DOCK.x) < 26 || Math.abs(x - BRIDGE_SITE.x) < 9) { m4.makeScale(0, 0, 0); tuft.setMatrixAt(i, m4); continue; } m4.makeScale(1, 0.6 + ((i * 7) % 5) * 0.15, 1); m4.setPosition(x, 0.5, OCEAN.beachZ + 1.5 + ((i * 13) % 4)); tuft.setMatrixAt(i, m4); }
     scene.add(tuft);
     const umb = [[-120, 0xef4444], [-96, 0x3b82f6], [-60, 0xf59e0b], [110, 0x22c55e], [140, 0xec4899], [170, 0x3b82f6], [420, 0xef4444], [540, 0x3b82f6], [660, 0xf59e0b]] as const;
     for (const [x, c] of umb) { const z = (OCEAN.beachZ + coastZ(x)) / 2 + 1; const pole = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 5)), mat({ color: 0xe5e7eb })); pole.position.set(x, 1.3, z); const top = new THREE.Mesh(geo(new THREE.ConeGeometry(1.6, 0.6, 8)), mat({ color: c, roughness: 0.8 })); top.position.set(x, 2.6, z); const towel = new THREE.Mesh(geo(new THREE.BoxGeometry(1, 0.03, 1.8)), mat({ color: c ^ 0x333333 })); towel.position.set(x + 1.4, 0.07, z); scene.add(pole, top, towel); }
@@ -570,7 +570,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   for (let i = 0; i < 700; i++) { const x = (r() - 0.5) * S * 2 * 0.96, z = (r() - 0.5) * S * 2 * 0.96; if (z > shoreZ(x) - 2) continue; if (roadClearance(x, z) < 1.4) continue; if (blocked(x, z, 1)) continue; treeSpots.push([x, z, 0.7 + r() * 0.6]); }
   // palms along the curving waterfront
   for (let x = -S + 3; x < S - 2; x += 4.4) { const z = shoreZ(x) - 1.4; if (roadClearance(x, z) > 1.4 && !blocked(x, z, 0.8)) treeSpots.push([x, z, -1]); }
-  for (let i = treeSpots.length - 1; i >= 0; i--) if (inStadiumSite(treeSpots[i]![0], treeSpots[i]![1]) || inCivic(treeSpots[i]![0], treeSpots[i]![1], 1)) treeSpots.splice(i, 1); // co-op Stadium site (after the seeded fill, so nothing else moves)
+  for (let i = treeSpots.length - 1; i >= 0; i--) if (inStadiumSite(treeSpots[i]![0], treeSpots[i]![1]) || inBridgeSite(treeSpots[i]![0], treeSpots[i]![1]) || inCivic(treeSpots[i]![0], treeSpots[i]![1], 1)) treeSpots.splice(i, 1); // co-op Stadium site (after the seeded fill, so nothing else moves)
   const trunk = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.15, 0.22, 1, 5)), mat({ color: 0x5a3a22 }), treeSpots.length);
   const crown = new THREE.InstancedMesh(geo(new THREE.IcosahedronGeometry(1, 0)), mat({ color: 0x2f8a3a, flatShading: true, emissive: 0x0a2a10, emissiveIntensity: 0.4 }), treeSpots.length);
   { const d = new THREE.Object3D(); treeSpots.forEach(([x, z, s], i) => {
@@ -850,19 +850,19 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       // gravel path from the lake road up to the boathouse
       { const [[x0, z0], [x1, z1]] = DOCK.path; const pth = new THREE.Mesh(geo(new THREE.PlaneGeometry(2.6, Math.abs(z1 - z0) + 0.6)), mat({ color: 0xa89a80, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })); pth.rotation.x = -Math.PI / 2; pth.position.set((x0 + x1) / 2, 0.02, (z0 + z1) / 2); scene.add(pth); } }
     // the big lake's shore: reeds and lilies in the shallows, rocks, trees on the banks, the ends and the island
-    { const R0 = riverDecor(); const R = { ...R0, trees: R0.trees.filter(([x, z]) => !inStadiumSite(x, z)), rocks: R0.rocks.filter(([x, z]) => !inStadiumSite(x, z)) };
+    { const R0 = riverDecor(); const R = { ...R0, trees: R0.trees.filter(([x, z]) => !inStadiumSite(x, z) && !inBridgeSite(x, z)), rocks: R0.rocks.filter(([x, z]) => !inStadiumSite(x, z) && !inBridgeSite(x, z)) };
       inst(geo(new THREE.CylinderGeometry(0.05, 0.07, 1, 4)), mat({ color: 0x6f8f3a, roughness: 1 }), R.reeds.length, (i) => { const [x, z, s] = R.reeds[i]; const h = s * (1.3 + (i % 3) * 0.35); d.position.set(x, h / 2, z); d.rotation.set(((i % 3) - 1) * 0.12, 0, ((i % 5) - 2) * 0.05); d.scale.set(1, h, 1); });
       inst(geo(new THREE.CircleGeometry(1, 9, 0.4, Math.PI * 2 - 0.5)), mat({ color: 0x3f8f3a, roughness: 0.8, side: THREE.DoubleSide }), R.lilies.length, (i) => { const [x, z, s] = R.lilies[i]; d.position.set(x, 0.09, z); d.rotation.set(-Math.PI / 2, 0, i * 1.7); d.scale.set(s, s, 1); });
       inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x7a7670, roughness: 1, flatShading: true }), R.rocks.length, (i) => { const [x, z, s] = R.rocks[i]; d.position.set(x, s * 0.2, z); d.scale.set(s, s * 0.55, s * 0.8); d.rotation.set(0, i * 2.3, 0); });
       inst(trunk.geometry, trunk.material, R.trees.length, (i) => { const [x, z, s] = R.trees[i]; d.position.set(x, 0.7 * s, z); d.rotation.set(0, 0, 0); d.scale.set(s, 1.4 * s, s); });
       inst(crown.geometry, crown.material, R.trees.length, (i) => { const [x, z, s] = R.trees[i]; d.position.set(x, 2.1 * s, z); d.scale.set(s * 1.1, s * 1.3, s * 1.1); d.rotation.y = i; }); }
-    const oRocks = O.rocks.filter(([x, z]) => !inStadiumSite(x, z) && clearNew(x, z, 1) && westRoadClearance(x, z) > 1.2); // co-op Stadium site stays clear (no keepOut: the seeded fill must not move)
+    const oRocks = O.rocks.filter(([x, z]) => !inStadiumSite(x, z) && !inBridgeSite(x, z) && clearNew(x, z, 1) && westRoadClearance(x, z) > 1.2); // co-op Stadium site stays clear (no keepOut: the seeded fill must not move)
     // low rolling hills in the grass colour, rocks near the mines
-    const hills = O.hills.filter(([x, z, r]) => clearNew(x, z, r + 0.5) && westRoadClearance(x, z, r + 20) > r + 0.5);
+    const hills = O.hills.filter(([x, z, r]) => clearNew(x, z, r + 0.5) && !inBridgeSite(x, z, r + 2) && westRoadClearance(x, z, r + 20) > r + 0.5);
     inst(geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2)), (XM ? mat({ color: 0xeef3ff, roughness: 0.95, flatShading: true, emissive: 0x1a2238, emissiveIntensity: 0.6 }) : mat({ color: 0x3f9a45, roughness: 1, flatShading: true, emissive: 0x0f3a14, emissiveIntensity: 0.6 })), hills.length, (i) => { const [x, z, r, h] = hills[i]; d.position.set(x, -0.05, z); d.scale.set(r, h * 0.6, r * 0.8); d.rotation.y = i; });
     inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x6a6670, roughness: 1, flatShading: true }), oRocks.length, (i) => { const [x, z, s] = oRocks[i]; d.position.set(x, s * 0.3, z); d.scale.set(s, s * 0.6, s); d.rotation.set(0, i * 2, 0); });
     // forest: the city's tree (trunk + low-poly crown, same materials)
-    const T = O.trees.filter(([x, z]) => !inStadiumSite(x, z) && clearNew(x, z, 1.3) && westRoadClearance(x, z) > 1.6); // and off the West Chud link roads
+    const T = O.trees.filter(([x, z]) => !inStadiumSite(x, z) && !inBridgeSite(x, z) && clearNew(x, z, 1.3) && westRoadClearance(x, z) > 1.6); // and off the West Chud link roads
     inst(trunk.geometry, trunk.material, T.length, (i) => { const [x, z, s] = T[i]; d.position.set(x, 0.7 * s, z); d.scale.set(s, 1.4 * s, s); });
     inst(crown.geometry, crown.material, T.length, (i) => { const [x, z, s] = T[i]; d.position.set(x, 2.1 * s, z); d.scale.set(s * 1.1, s * 1.3, s * 1.1); d.rotation.y = i; });
     // road lamps: the city's streetlight pole + glow
@@ -1016,9 +1016,10 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     flyTo(id);
   };
   /** Glide the camera to a world point (player-profile "show on map" for land and farms). */
-  const focusXZ = (x: number, z: number, dist = 24, hgt = 20) => {
+  const focusXZ = (x: number, z: number, dist = 24, hgt = 20, ang?: number) => {
     h.onHover(null, 0, 0); const tgt = new THREE.Vector3(x, 2, z);
-    const dir = camera.position.clone().sub(controls.target).setY(0).normalize();
+    // optional azimuth (radians, camera offset direction = (sin, cos)); default keeps the current viewing direction
+    const dir = ang != null && Number.isFinite(ang) ? new THREE.Vector3(Math.sin(ang), 0, Math.cos(ang)) : camera.position.clone().sub(controls.target).setY(0).normalize();
     fly = { from: camera.position.clone(), to: tgt.clone().add(dir.multiplyScalar(dist)).setY(hgt), tf: controls.target.clone(), tt: tgt, t: 0, id: '' }; controls.enabled = false;
   };
   /** Glide to a vantage point south of the Space Center, aimed above the pad so a climbing rocket stays in frame. */

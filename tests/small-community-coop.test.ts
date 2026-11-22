@@ -57,7 +57,7 @@ describe('small-community goals', () => {
 });
 
 describe('stadium proportional cost transition', () => {
-  it('preserves four stages and the unchanged bridge; exact rounded cost stays near seven days at 25% cashflow', () => {
+  it('preserves four stages; bridge sized like the stadium; exact rounded cost stays near seven days at 25% cashflow', () => {
     expect(COOP_PLAN.stadium.total).toBe(693000); expect(COOP_PLAN.stadium.chipShare).toBe(.6);
     const stages=projectStages(COOP_PLAN.stadium); expect(stages).toHaveLength(4);
     expect(stages.map(s=>s.id)).toEqual(['foundation','frame','stands','roof']);
@@ -68,7 +68,7 @@ describe('stadium proportional cost transition', () => {
     expect(stages[2].goods.map(g=>[g.id,g.qty])).toEqual([['concrete',398],['steel_plate',457]]);
     expect(stages[3].goods.map(g=>[g.id,g.qty])).toEqual([['glass',596],['steel_cable',879]]);
     expect(projectValue(COOP_PLAN.stadium)).toBe(693211);
-    expect(COOP_PLAN.bridge.total).toBe(10000000);
+    expect(COOP_PLAN.bridge.total).toBe(693000);
   });
 
   it('floors stage need at already-donated qty so prior donations never shrink the goal below progress', () => {

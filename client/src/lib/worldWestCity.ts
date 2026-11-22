@@ -14,6 +14,7 @@ import {
   WESTGATE_PARK, WESTGATE_SQUARE, WEST_STADIUM, WEST_PORT, WEST_MARINA, WEST_LIGHTHOUSE, WIND_TURBINES, WEST, westFill, westRoadClearance, westDistrict, toLocal, onWest,
 } from '../../../shared/westCity';
 import { OCEAN, coastZ } from '../../../shared/ocean';
+import { inBridgeSite } from '../../../shared/coop';
 
 type P = [number, number];
 type MatFn = (o: THREE.MeshStandardMaterialParameters) => THREE.MeshStandardMaterial;
@@ -146,7 +147,7 @@ export function addWestCity(c: WestCityCtx) {
   { const lp: number[] = []; const step = low ? 22 : 12;
     for (const r of WEST_ROADS) { if (r.kind === 'lane') continue; const p = r.pts; const off = r.width / 2 + (inGate(p[0][0], p[0][1]) ? 1.1 : 0.8);
       for (let i = 4, k = 0; i < p.length - 1; i += step, k++) { const a = Math.atan2(p[i + 1][1] - p[i - 1][1], p[i + 1][0] - p[i - 1][0]); const sd = k % 2 ? 1 : -1; const x = p[i][0] - Math.sin(a) * off * sd, z = p[i][1] + Math.cos(a) * off * sd;
-        if (westRoadClearance(x, z) > 0.3 && !blocked(x, z, 0.3)) lp.push(x, 0, z); } }
+        if (westRoadClearance(x, z) > 0.3 && !blocked(x, z, 0.3) && !inBridgeSite(x, z, 1)) lp.push(x, 0, z); } } // the Fort McChud Bridge approach stays clear
     const n = lp.length / 3; const pole = new THREE.InstancedMesh(c.pole.geo, c.pole.mat, n);
     for (let i = 0; i < n; i++) { dummy.position.set(lp[i * 3], 1.2, lp[i * 3 + 2]); dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix(); pole.setMatrixAt(i, dummy.matrix); }
     scene.add(pole);
