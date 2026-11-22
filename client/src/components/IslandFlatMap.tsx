@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ISLAND_HELI, ISLAND_HUNT, ISLAND_SNORKEL, treasureSpots } from '../../../shared/islandActivities';
 import { ISLAND_BEACH_R, ISLAND_CENTER, ISLAND_DOCK, ISLAND_GRASS_R, ISLAND_LAGOON, ISLAND_LOTS, ISLAND_MAP, ISLAND_PLACES, islandMapPos, islandSpots } from '../../../shared/island';
+import { fetchRealEstateList } from '@/lib/realEstateApi';
 
 export type IslandOwners = Map<string, string>;
 
@@ -66,9 +67,10 @@ export function IslandFlatMap({ owners, me, selected, onPick, dug = [] }: { owne
 export function useIslandOwners(): [IslandOwners, () => void] {
   const [owners, setOwners] = useState<IslandOwners>(new Map());
   const load = useCallback(() => {
-    void fetch('/api/real-estate').then((r) => r.json()).then((d: { owned?: Array<{ id: string; owner: string }> }) => {
-      setOwners(new Map((d.owned ?? []).filter((o) => o.id.startsWith('isl:')).map((o) => [o.id, o.owner])));
-    }).catch(() => {});
+    void fetchRealEstateList().then((d) => {
+      if (!d) return;
+      setOwners(new Map(d.owned!.filter((o) => o.id.startsWith('isl:')).map((o) => [o.id, o.owner])));
+    });
   }, []);
   useEffect(() => { load(); const t = window.setInterval(load, 30_000); return () => window.clearInterval(t); }, [load]);
   return [owners, load];

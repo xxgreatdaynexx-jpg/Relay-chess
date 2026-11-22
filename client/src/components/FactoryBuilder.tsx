@@ -14,6 +14,7 @@ import { clipKitMissing, clipToPlaceItems, entsToClip, type FactoryClip } from '
 import { factoryPlants, factoryPlantLabel, factoryPlantN, isFactoryPlantId, FACTORY_PLANT_PRICE } from '../../../shared/bill3';
 import { ZONE_DEED_CAP } from '../../../shared/zoning';
 import { loadAuth } from '../lib/auth';
+import { fetchRealEstateList } from '@/lib/realEstateApi';
 
 export type FAck = { ok: boolean; error?: string; state?: FState | null; level?: number; storage?: Stack[]; guest?: boolean; now?: number; result?: unknown; carbonTax?: { rate: number; unpaid: number } };
 type Tool = 'select' | 'remove' | Kind;
@@ -46,10 +47,10 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
   const me = loadAuth()?.name ?? null;
   useEffect(() => {
     let n = true;
-    void fetch('/api/real-estate').then((r) => r.json()).then((j: { owned?: Array<{ id: string; owner: string }> }) => {
-      if (!n || !me) return;
-      setMyPlants((j.owned ?? []).filter((o) => isFactoryPlantId(o.id) && o.owner.toLowerCase() === me.toLowerCase()).map((o) => o.id).sort());
-    }).catch(() => {});
+    void fetchRealEstateList().then((j) => {
+      if (!n || !me || !j) return;
+      setMyPlants(j.owned!.filter((o) => isFactoryPlantId(o.id) && o.owner.toLowerCase() === me.toLowerCase()).map((o) => o.id).sort());
+    });
     return () => { n = false; };
   }, [me, fs]);
   const ui = useRef({ tool, dir, sel, moving, sels: [] as number[], hover: null as null | [number, number], drag: [] as Array<{ x: number; y: number; d: Dir }>, dragging: false, removing: new Set<number>(), marquee: null as null | { x0: number; y0: number; x1: number; y1: number }, z: 1, px: 0, py: 0, pan: null as null | { x: number; y: number; px: number; py: number; moved: boolean; btn: number }, pts: new Map<number, { x: number; y: number }>(), pinch: null as null | { d: number; z: number; cx: number; cy: number; px: number; py: number }, space: false, mini: null as null | { x: number; y: number; w: number; s: number } });

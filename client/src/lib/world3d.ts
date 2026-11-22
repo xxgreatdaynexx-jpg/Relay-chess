@@ -54,6 +54,7 @@ import { attachTownHallProtest, type TownHallProtest } from './townHallProtest3d
 import { attachFarmProtests, type FarmProtestHandle } from './farmProtest3d';
 import { disposeSharedProtestSfx } from './protestSfx';
 import type { OwnedProp } from './farmProtest';
+import { fetchRealEstateList } from '@/lib/realEstateApi';
 
 type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void; onProperty?: (id: string) => void; onBarn?: (id: string) => void; onTrailer?: (name: string) => boolean };
 
@@ -480,9 +481,9 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (!skipFarmProtest) {
       farmProtest = attachFarmProtests(scene, disposables);
       const loadFarmProtestOwned = () => {
-        void fetch('/api/real-estate').then((r) => r.json()).then((d: { owned?: OwnedProp[] }) => {
-          if (Array.isArray(d?.owned)) farmProtest?.setOwned(d.owned);
-        }).catch(() => {});
+        void fetchRealEstateList().then((d) => {
+          if (d) farmProtest?.setOwned(d.owned!);
+        });
       };
       loadFarmProtestOwned();
       const farmProtestPoll = window.setInterval(loadFarmProtestOwned, 30_000);

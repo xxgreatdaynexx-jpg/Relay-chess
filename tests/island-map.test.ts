@@ -47,7 +47,7 @@ describe('private island map', () => {
     expect(s).toContain('island-map-mode'); expect(s).toContain('setMapError');
     expect(s).toContain('island-sheet-x'); expect(s).toContain('island-dock-home'); expect(s).toContain('island-buy');
     const f = src('client/src/components/IslandFlatMap.tsx');
-    expect(f).toContain('islandSpots()'); expect(f).toContain('/api/real-estate');
+    expect(f).toContain('islandSpots()'); expect(f).toContain('fetchRealEstateList');
   });
 
   it('can be looked at from the Billionaire Club before travelling', () => {

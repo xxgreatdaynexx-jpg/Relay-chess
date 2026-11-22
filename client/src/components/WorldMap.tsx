@@ -19,6 +19,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { lazyWithReload } from '@/lib/lazyWithReload';
 import { importWithReload } from '@/lib/chunkReload';
 import { applyWorldOwned } from '@/lib/worldOwned';
+import { fetchRealEstateList } from '@/lib/realEstateApi';
 import { WORLD_SPOTS } from '@/lib/worldSpots';
 import { canDemolish, ESTATE_BUILDS } from '../../../shared/estateProjects';
 import { demolishedLine } from '../../../shared/estateSites';
@@ -303,7 +304,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   }, [loading]);
   useEffect(() => {
     let dead = false;
-    const load = () => { void fetch('/api/real-estate').then((r) => r.json()).then((d: { owned?: OwnedProperty[]; index?: number; royalties?: Record<string, number> }) => { if (typeof d.index === 'number' && d.index > 0) IDX = d.index; ROY = d.royalties ?? {}; if (!dead) setOwned(new Map((d.owned ?? []).map((o) => [o.id, o]))); }).catch(() => {}); };
+    const load = () => { void fetchRealEstateList().then((d) => { if (!d || dead) return; if (typeof d.index === 'number' && d.index > 0) IDX = d.index; if (d.royalties) ROY = d.royalties; setOwned(new Map(d.owned!.map((o) => [o.id, o]))); }); };
     load(); socket.on('re_changed', load);
     return () => { dead = true; socket.off('re_changed', load); };
   }, []);

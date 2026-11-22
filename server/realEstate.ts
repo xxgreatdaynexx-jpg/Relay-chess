@@ -58,6 +58,7 @@ ALTER TABLE properties ADD COLUMN IF NOT EXISTS city_price BIGINT;`;
 
 type Pool = pg.Pool;
 interface Row { id: string; owner_key: string; owner_name: string; price: string | number; bought_at: string | number; arrears: number; tax_paid: string | number; city_price?: string | number | null }
+type ListingPayload = { owned: OwnedProperty[]; index: number; stats: { owned: number; taxBurned: number; taxToday: number; repossessed: number }; royalties: Record<string, number> };
 /** Catalog entry with today's indexed list price (list prices and tax follow the price index). */
 const plotTiles = (id: string): number | null => {
   if (/^f:\d+$/.test(id)) { const p = farmPlots().find((q) => `f:${q.n}` === id); return p ? p.cols * p.rows : null; }
@@ -361,11 +362,28 @@ export class RealEstate {
   }
 
   async stats() {
-    const [own, tax] = await Promise.all([
-      this.pool.query("SELECT COUNT(*) n, COALESCE(SUM(price),0) v FROM properties WHERE owner_key NOT LIKE 'qa-%'"),
-      this.pool.query("SELECT COALESCE(SUM(CASE WHEN paid THEN amount ELSE 0 END),0) burned, COALESCE(SUM(CASE WHEN paid AND day = $1 THEN amount ELSE 0 END),0) today, COALESCE(SUM(CASE WHEN repossessed THEN 1 ELSE 0 END),0) repo FROM property_tax WHERE owner_key NOT LIKE 'qa-%'", [utcDay(this.clock())]),
-    ]);
+    // Sequential on purpose: this pool is max 2, and Promise.all of two queries plus any
+    // concurrent /api/real-estate or buy can deadlock both connections until the 10s timeout.
+    const own = await this.pool.query("SELECT COUNT(*) n, COALESCE(SUM(price),0) v FROM properties WHERE owner_key NOT LIKE 'qa-%'");
+    const tax = await this.pool.query("SELECT COALESCE(SUM(CASE WHEN paid THEN amount ELSE 0 END),0) burned, COALESCE(SUM(CASE WHEN paid AND day = $1 THEN amount ELSE 0 END),0) today, COALESCE(SUM(CASE WHEN repossessed THEN 1 ELSE 0 END),0) repo FROM property_tax WHERE owner_key NOT LIKE 'qa-%'", [utcDay(this.clock())]);
     return { owned: Number(own.rows[0].n), taxBurned: Number(tax.rows[0].burned), taxToday: Number(tax.rows[0].today), repossessed: Number(tax.rows[0].repo) };
+  }
+
+  private listingInflight: Promise<ListingPayload> | null = null;
+  /** Public map payload. Concurrent GETs share one in-flight read so a re_changed herd cannot exhaust the pool. */
+  async listing(): Promise<ListingPayload> {
+    if (this.listingInflight) return this.listingInflight;
+    const run = this.listingNow().finally(() => { if (this.listingInflight === run) this.listingInflight = null; });
+    this.listingInflight = run;
+    return run;
+  }
+  private async listingNow(): Promise<ListingPayload> {
+    const owned = await this.owned();
+    let stats: ListingPayload['stats'] = { owned: owned.filter((o) => !/^qa-/i.test(o.owner)).length, taxBurned: 0, taxToday: 0, repossessed: 0 };
+    try { stats = await this.stats(); } catch (e) { console.error('[realestate] stats failed:', (e as Error).message); }
+    let royalties: Record<string, number> = {};
+    try { royalties = await this.royalties(); } catch (e) { console.error('[realestate] royalties failed:', (e as Error).message); }
+    return { owned, index: priceIndex(), stats, royalties };
   }
   /** Player-owned property at total spent (shared propertyWorth: price paid + upgrades + planted seed; QA excluded). */
   async playerValue(): Promise<{ n: number; value: number }> {
@@ -449,8 +467,10 @@ export async function initRealEstate(): Promise<void> {
 export function realEstateRouter() {
   const r = express.Router();
   r.get('/api/real-estate', async (_req, res) => {
+    res.set('Cache-Control', 'no-store');
     if (!re) { res.json({ ok: true, live: false, owned: [] }); return; }
-    try { res.json({ ok: true, live: true, owned: await re.owned(), index: priceIndex(), stats: await re.stats(), royalties: await re.royalties() }); } catch { res.status(500).json({ ok: false }); }
+    try { res.json({ ok: true, live: true, ...(await re.listing()) }); }
+    catch (e) { console.error('[realestate] list failed:', (e as Error).message); res.status(500).json({ ok: false }); }
   });
   return r;
 }

@@ -19,15 +19,17 @@ import { enterHome } from './Homes';
 import { TimedSuspense } from './ModalShell';
 import { lazyWithReload } from '@/lib/lazyWithReload';
 import { CHUDBAI_DEEDS, DISTRICTS, DISTRICT_LABELS, GULF_BLOCKS, GULF_LOTS, METRO_STATIONS, carriage, medianRect, GULF_ROADS } from '../../../shared/chudbaiCity';
+import { fetchRealEstateList } from '@/lib/realEstateApi';
 const FishingPanel = lazyWithReload(() => import('./FishingPanel').then((m) => ({ default: m.FishingPanel })));
 
 /** Owners of the Chudbai deeds (cb:*), from the public real-estate feed. */
 function useChudbaiOwners(): [Map<string, string>, () => void] {
   const [owners, setOwners] = useState<Map<string, string>>(new Map());
   const load = useCallback(() => {
-    void fetch('/api/real-estate').then((r) => r.json()).then((d: { owned?: Array<{ id: string; owner: string }> }) => {
-      setOwners(new Map((d.owned ?? []).filter((o) => o.id.startsWith('cb:')).map((o) => [o.id, o.owner])));
-    }).catch(() => {});
+    void fetchRealEstateList().then((d) => {
+      if (!d) return;
+      setOwners(new Map(d.owned!.filter((o) => o.id.startsWith('cb:')).map((o) => [o.id, o.owner])));
+    });
   }, []);
   useEffect(() => { load(); const t = window.setInterval(load, 30_000); return () => window.clearInterval(t); }, [load]);
   return [owners, load];

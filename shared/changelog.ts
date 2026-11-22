@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-22T12:59:00-06:00", "title": "Owned properties no longer show as for sale after a listing glitch", "bullets": [
+    "If the property list could not be loaded, the map treated every deed as for sale and owned homes and farms could not be opened.",
+    "The last good list now stays on screen until a fresh copy arrives, and the server still returns ownership when a side query is slow.",
+  ]},
   {"commit": "", "at": "2026-11-22T10:26:00-06:00", "title": "Chudbai becomes a real city, with gold, homes, a sky deck and dhow fishing", "bullets": [
     "Chudbai is rebuilt as a proper city: a street grid with palm-lined boulevards, medians and sidewalks, and five districts. Downtown and the Marina have the towers, Al Chudha Old Town has wind-tower houses and souks, Chudeirah Hills has walled villas, and Jebel Chud has warehouses and a container port. Buildings get lower the farther they are from the two centres.",
     "The blocks are filled with apartments, hotels, malls, shops with awnings, parking, plazas, parks and seven mosques with minarets. An elevated metro runs along Sheikh Chud Road with five stations, and traffic runs on the main roads.",

@@ -1,6 +1,7 @@
 import { MapSheet } from './MapSheet';
 import { TimedSuspense } from './ModalShell';
 import { useDoing } from '@/lib/doing';
+import { fetchRealEstateList } from '@/lib/realEstateApi';
 import { fullScreenGameOpen } from '@/lib/pauseWorld';
 import { backdropDismiss } from '@/lib/backdrop';
 import { useEffect, useRef, useState } from 'react';
@@ -74,7 +75,7 @@ export function ResortMap() {
   }, []);
   useEffect(() => {
     let dead = false;
-    const load = () => { void fetch('/api/real-estate').then((r) => r.json()).then((d: { owned?: OwnedProperty[]; index?: number }) => { if (typeof d.index === 'number' && d.index > 0) IDX = d.index; if (dead) return; const m = new Map((d.owned ?? []).map((o) => [o.id, o])); setOwned(m); worldRef.current?.setOwned([...m.keys()]); }).catch(() => {}); };
+    const load = () => { void fetchRealEstateList().then((d) => { if (!d || dead) return; if (typeof d.index === 'number' && d.index > 0) IDX = d.index; const m = new Map(d.owned!.map((o) => [o.id, o])); setOwned(m); worldRef.current?.setOwned([...m.keys()]); }); };
     const loadFarm = () => { void fetch('/api/farm').then((r) => r.json()).then((d: { tiles?: Array<[string, number, string, string]> }) => { if (!dead && Array.isArray(d?.tiles)) worldRef.current?.setFarm(d.tiles); }).catch(() => {}); };
     load(); loadFarm(); socket.on('re_changed', load); socket.on('farm_changed', loadFarm); const t = window.setInterval(loadFarm, 60_000);
     return () => { dead = true; socket.off('re_changed', load); socket.off('farm_changed', loadFarm); window.clearInterval(t); };
