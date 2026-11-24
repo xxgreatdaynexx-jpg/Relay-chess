@@ -19,7 +19,7 @@ describe('high-stakes tables', () => {
     const hi = room.join('Bea', 0, 'high');
     expect(lo).not.toBe(hi);
     expect(lo.stakes).toBe('classic'); expect(hi.stakes).toBe('high');
-    expect(() => lo.bet('Ann', 5_001, 0)).toThrow(/5,000/);
+    expect(() => lo.bet('Ann', 10_000_001, 0)).toThrow(/10,000,000/);
     lo.bet('Ann', 25, 0);
     expect(() => hi.bet('Bea', 25, 0)).toThrow(/1,000/);
     hi.bet('Bea', 1_000, 0);
@@ -28,25 +28,32 @@ describe('high-stakes tables', () => {
     expect(() => whale.bet('Ann', 5_000, 0)).toThrow(/10,000/);
   });
 
-  it('classic roulette still caps a chip at 10,000, and the high-limit wheel accepts a 250,000 chip', () => {
+  it('classic and high-limit roulette both accept a 250,000 chip, and still reject a bet over 10 million', () => {
     expect(MAX_TOTAL_STAKE).toBe(RL_STAKES[0]!.maxSpin);
     expect(MAX_ROULETTE_STAKE).toBe(RL_STAKES[0]!.maxChip);
-    expect(validateRouletteBet({ kind: 'red', numbers: [], amount: 10_001 })).toBeNull();
+    expect(validateRouletteBet({ kind: 'red', numbers: [], amount: 10_001 })).toMatchObject({ amount: 10_001 });
     expect(validateRouletteBet({ kind: 'red', numbers: [], amount: 250_000 }, rlStakes('high').maxChip)).toMatchObject({ amount: 250_000 });
+    expect(validateRouletteBet({ kind: 'red', numbers: [], amount: 10_000_001 })).toBeNull();
     const bank = new CasinoBank(); bank.account('Cy').chips = 2_000_000;
     const classic = new RouletteWheel(bank, 0); const high = new RouletteWheel(bank, 0, Math.random, 'high');
-    expect(() => classic.placeBet('Cy', { kind: 'red', numbers: [], amount: 15_000 })).toThrow(/Invalid bet/);
-    high.placeBet('Cy', { kind: 'red', numbers: [], amount: 15_000 });
+    classic.placeBet('Cy', { kind: 'red', numbers: [], amount: 15_000 });
     expect(bank.account('Cy').chips).toBe(2_000_000 - 15_000);
+    high.placeBet('Cy', { kind: 'red', numbers: [], amount: 15_000 });
+    expect(bank.account('Cy').chips).toBe(2_000_000 - 30_000);
   });
 
-  it('video poker classic still rejects 501, and the high table accepts 50,000', () => {
+  it('video poker classic and high both accept 50,000, and still reject a bet over 10 million', () => {
     expect(POKER_MAX_BET).toBe(VP_STAKES[0]!.max);
-    const bank = new CasinoBank(); bank.account('Dee').chips = 100_000;
+    const bank = new CasinoBank(); bank.account('Dee').chips = 200_000;
     const vp = new VideoPoker(bank);
-    expect(() => vp.deal('Dee', 501)).toThrow(/500/);
-    vp.deal('Dee', 50_000, undefined, 'high');
-    expect(bank.account('Dee').chips).toBe(50_000);
+    vp.deal('Dee', 501);
+    expect(bank.account('Dee').chips).toBe(199_499);
+    // settle/abandon is not needed: deal on a fresh name
+    bank.account('Fay').chips = 100_000;
+    expect(() => vp.deal('Fay', 10_000_001, undefined, 'classic')).toThrow(/10,000,000/);
+    expect(bank.account('Fay').chips).toBe(100_000);
+    vp.deal('Fay', 50_000, undefined, 'high');
+    expect(bank.account('Fay').chips).toBe(50_000);
   });
 
   it('adds Billionaire Hold\'em 500K and 1M at the classic blind ratio', () => {

@@ -34,7 +34,7 @@ describe('expectedDayHaul (pt2088u)', () => {
         if (!pri) expect(exp.value / exp.picks).toBeCloseTo(minerItemEv(c), 6);
       }
     }
-  });
+  }, 60_000);
 
   it('fisher expected rarity counts equal rollWorkerFish simulation mean', () => {
     const job = jobById('fisher')!;

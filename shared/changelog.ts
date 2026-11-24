@@ -6,6 +6,14 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-24T10:28:00-06:00", "title": "Regular casino tables now take bets up to 10 million", "bullets": [
+    "You can now bet up to 10,000,000 chips on the regular (Classic) blackjack, roulette and Jacks or Better tables, not only at the high-limit rooms. Regular Hold'em now lets you buy in up to 10,000,000 at the same 5/10 blinds. Slots were already at 10 million. House odds and payout rates are unchanged.",
+    "Next to the usual bet chips, you can still type a custom amount. High Stakes and Whale tables are still there if you want a higher minimum.",
+  ]},
+  {"commit": "", "at": "2026-11-24T10:28:00-06:00", "title": "Employment Office hire section is a usable size again", "bullets": [
+    "After the production graph was added, the Hire list in the Employment Office could shrink to a sliver, and resizing the window only zoomed the content so it stayed hard to read.",
+    "Hire and your workers now share the window evenly, each with a readable size and its own scroll bar. Making the window bigger gives both lists more room instead of zooming. On a phone, both lists still scroll with the page.",
+  ]},
   {"commit": "", "at": "2026-11-22T13:55:00-06:00", "title": "West Chud: a working Steel Mill, ranches and five new things to do", "bullets": [
     "Ironworks Steel Mill: smelt ore from your Chud City Warehouse storage into Pig Iron (3 iron ore + 1 coal → 1 iron bar, 4s a pour), Bessemer Steel (5 iron ore + 3 coal → 1 steel, 8s), Steel Beams (2 steel + 1 coal → 1 steel beam, 10s) or Rebar (1 iron bar → 3 iron rods, 5s). Finished batches go back into your storage.",
     "Each pour costs a small furnace fee (1, 3, 4 or 2 chips before the price index). Hiring the shift crew costs twice the fee again and halves the time. Two furnaces per player, 1–50 pours per batch and 200 pours per day (resets 00:00 UTC). Selling steel still goes through the warehouse house sale and its daily cap, or the market.",

@@ -2,12 +2,13 @@ import { payCigaretteBonus } from './cigarettes.js';
 /** Shared multiplayer European roulette wheel (play money). One wheel for everyone, spinning on a fixed cycle. */
 import { betKey, betReturn, validateRouletteBet, type RouletteBet, type RouletteView } from '../shared/casino.js';
 import { rlStakes, type RlStakes, type RlStakesId } from '../shared/highStakes.js';
+import { CASINO_MAX_BET } from '../shared/casino-bet.js';
 import type { CasinoBank } from './casino-store.js';
 
 export const ROULETTE_BET_MS = 25_000;
 export const ROULETTE_SPIN_MS = 6_000;
 export const ROULETTE_RESULT_MS = 5_000;
-export const MAX_TOTAL_STAKE = 20_000;
+export const MAX_TOTAL_STAKE = CASINO_MAX_BET;
 
 interface Player {
   name: string;

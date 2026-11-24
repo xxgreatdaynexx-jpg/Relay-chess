@@ -656,6 +656,8 @@ input {
 .win-grip-se { right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize;
   background: linear-gradient(135deg, transparent 0 45%, rgba(255,246,216,.55) 45% 52%, transparent 52% 64%, rgba(255,246,216,.55) 64% 71%, transparent 71% 83%, rgba(255,246,216,.55) 83% 90%, transparent 90%); }
 .win-sized:not(.fps-panel) > :not(.sol-bar):not(.win-grip) { zoom: var(--win-scale, 1); }
+/* Employment Office lists should reflow when the window is resized, not zoom. */
+.win-sized.employ-panel > :not(.sol-bar):not(.win-grip) { zoom: 1; }
 .win-sized.fps-panel .fps-stage { flex: 1; min-height: 0; }
 .win-sized.fps-panel .fps-canvas { height: 100%; aspect-ratio: auto; }
 .win-sized.fps-panel .fps-help, .win-sized.fps-panel .fps-touch { flex: none; }
@@ -2033,8 +2035,8 @@ html, body { overflow-x: clip; }
 .employ-front span { font-weight: 900; letter-spacing: .1em; font-size: 17px; } .employ-front small { opacity: .85; }
 .employ-rules { flex: 0 0 auto; font-size: 11px; opacity: .8; margin: 0; }
 .employ-panel h4 { font-size: 13px; font-weight: 800; margin: 4px 0 0; }
-.employ-roster { flex: 1 1 auto; min-height: min(40vh, 240px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 6px; }
-.employ-hire { flex: 0 1 auto; min-height: 0; max-height: 45%; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 6px; }
+.employ-roster { flex: 1 1 50%; min-height: 160px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 6px; }
+.employ-hire { flex: 1 1 50%; min-height: 220px; max-height: none; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 6px; }
 .employ-list { display: flex; flex-direction: column; gap: 6px; }
 .employ-list li { display: flex; flex-direction: column; gap: 3px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 7px 9px; }
 .employ-list li small { font-size: 11px; opacity: .8; }
@@ -2042,9 +2044,9 @@ html, body { overflow-x: clip; }
 .employ-list li button:disabled { opacity: .5; }
 /* Mobile MapSheet already scrolls the body — avoid a second tiny nested scroller. */
 @media (max-width: 640px), (max-height: 500px) {
-  .world-deed.employ-panel, .employ-panel { width: 100%; height: auto; max-height: none; overflow: visible; }
+  .world-deed.employ-panel, .hub-win.sol-panel.employ-panel, .employ-panel { width: 100%; height: min(100dvh - 16px, 100%); max-height: min(100dvh - 16px, 100%); overflow: hidden; }
   .employ-roster { flex: none; overflow: visible; min-height: 0; }
-  .employ-hire { flex: none; max-height: none; overflow: visible; }
+  .employ-hire { flex: none; min-height: 0; max-height: none; overflow: visible; }
 }
 .employ-btns { display: flex; gap: 6px; } .employ-list li .employ-fire { background: rgba(255,80,80,.12); border-color: rgba(255,80,80,.4); }
 .employ-expected { display: block; font-size: 11px; opacity: .85; line-height: 1.35; }
@@ -2809,6 +2811,11 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 }
 .hub-win-grocery { left: min(490px, calc(100vw - 480px)); }
 .hub-win-employ { left: 36px; top: 72px; }
+.hub-win.sol-panel.employ-panel, .hub-win-employ.employ-panel {
+  width: min(560px, calc(100vw - 24px));
+  height: min(90dvh, calc(100dvh - 60px));
+  max-height: min(90dvh, calc(100dvh - 60px));
+}
 .hub-win-cityhall { left: 72px; top: 64px; width: min(520px, calc(100vw - 24px)); }
 .hub-win-warehouse, .hub-win-market {
   width: min(1100px, 96vw);

@@ -164,7 +164,13 @@ describe('hold\'em stakes tiers', () => {
       ['classic', HE_SMALL, HE_BIG, 100, HE_MAX_BUYIN],
       ['5k', 25, 50, 5000, 5000], ['10k', 50, 100, 10000, 10000], ['25k', 125, 250, 25000, 25000], ['100k', 500, 1000, 100000, 100000], ['500k', 2500, 5000, 500000, 500000], ['1m', 5000, 10000, 1000000, 1000000], ['10m', 50000, 100000, 10000000, 10000000],
     ]);
-    for (const t of HE_STAKES) { expect(t.maxBuyIn / t.big).toBe(HE_MAX_BUYIN / HE_BIG); expect(t.big).toBe(t.small * 2); }
+    expect(HE_MAX_BUYIN).toBe(10_000_000);
+    expect(HE_STAKES[0]!.big).toBe(HE_SMALL * 2);
+    for (const t of HE_STAKES.filter((t) => t.id !== 'classic')) {
+      expect(t.maxBuyIn / t.big).toBe(100);
+      expect(t.minBuyIn).toBe(t.maxBuyIn);
+      expect(t.big).toBe(t.small * 2);
+    }
   });
 
   it('posts the tier blinds and moves chips only through the bank', () => {

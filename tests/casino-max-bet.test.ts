@@ -61,18 +61,22 @@ describe('validateCasinoBet and clamp', () => {
 });
 
 describe('raised casino maxes', () => {
-  it('keeps classic table limits and raises the top tier and slots to 10M', () => {
+  it('raises classic and top-tier tables, and slots, to 10M', () => {
     expect(CASINO_MAX_BET).toBe(10_000_000);
-    expect(BJ_STAKES[0]!.max).toBe(5_000);
+    expect(BJ_STAKES[0]!.max).toBe(CASINO_MAX_BET);
+    expect(BJ_STAKES[0]!.bets).toContain(CASINO_MAX_BET);
     expect(BJ_STAKES.find((s) => s.id === 'whale')!.max).toBe(CASINO_MAX_BET);
-    expect(RL_STAKES[0]!.maxChip).toBe(10_000);
-    expect(RL_STAKES[0]!.maxSpin).toBe(20_000);
+    expect(RL_STAKES[0]!.maxChip).toBe(CASINO_MAX_BET);
+    expect(RL_STAKES[0]!.maxSpin).toBe(CASINO_MAX_BET);
+    expect(RL_STAKES[0]!.chips).toContain(CASINO_MAX_BET);
     expect(RL_STAKES.find((s) => s.id === 'high')!.maxChip).toBe(CASINO_MAX_BET);
     expect(RL_STAKES.find((s) => s.id === 'high')!.maxSpin).toBe(CASINO_MAX_BET);
-    expect(VP_STAKES[0]!.max).toBe(500);
+    expect(VP_STAKES[0]!.max).toBe(CASINO_MAX_BET);
+    expect(VP_STAKES[0]!.bets).toContain(CASINO_MAX_BET);
     expect(VP_STAKES.find((s) => s.id === 'high')!.max).toBe(CASINO_MAX_BET);
     expect(VS_MIN_BET).toBe(20);
     expect(VS_MAX_BET).toBe(CASINO_MAX_BET);
+    expect(heStakes('classic')).toMatchObject({ minBuyIn: 100, maxBuyIn: CASINO_MAX_BET, small: 5, big: 10 });
     expect(heStakes('10m')).toMatchObject({ minBuyIn: CASINO_MAX_BET, maxBuyIn: CASINO_MAX_BET, small: 50_000, big: 100_000 });
     expect(HE_STAKES.some((t) => t.id === '10m')).toBe(true);
   });
@@ -129,6 +133,36 @@ describe('server validates every 10M bet and never trusts the client', () => {
     const t = room.sit('Eli', CASINO_MAX_BET, 0, '10m');
     expect(t.stakes).toBe('10m');
     expect(bank.account('Eli').chips).toBe(10_000_000);
+  });
+
+  it('classic blackjack, roulette, video poker and Hold\'em also accept a 10M bet or buy-in', () => {
+    const bank = new CasinoBank();
+    bank.account('Ann').chips = 40_000_000;
+    const bj = new BlackjackTable('C', bank, Math.random, 'classic');
+    bj.sit('Ann', 0);
+    expect(() => bj.bet('Ann', CASINO_MAX_BET, 0)).not.toThrow();
+    // A lone bet starts the hand immediately, so a natural blackjack can settle and pay out in the same call.
+    expect(bank.account('Ann').chips).toBeLessThan(40_000_000);
+    expect(Number.isSafeInteger(bank.account('Ann').chips)).toBe(true);
+
+    bank.account('Bea').chips = 20_000_000;
+    const rl = new RouletteWheel(bank, 0, Math.random, 'classic');
+    expect(validateRouletteBet({ kind: 'red', numbers: [], amount: CASINO_MAX_BET })).toMatchObject({ amount: CASINO_MAX_BET });
+    rl.placeBet('Bea', { kind: 'straight', numbers: [17], amount: CASINO_MAX_BET });
+    expect(bank.account('Bea').chips).toBe(10_000_000);
+
+    const vp = new VideoPoker(bank);
+    bank.account('Cy').chips = 20_000_000;
+    vp.deal('Cy', CASINO_MAX_BET);
+    expect(bank.account('Cy').chips).toBe(10_000_000);
+
+    bank.account('Dee').chips = 20_000_000;
+    const room = new HoldemRoom(bank);
+    const t = room.sit('Dee', CASINO_MAX_BET, 0, 'classic');
+    expect(t.stakes).toBe('classic');
+    expect(bank.account('Dee').chips).toBe(10_000_000);
+    bank.account('Ed').chips = 20_000_000;
+    expect(() => room.sit('Ed', CASINO_MAX_BET + 1, 1, 'classic')).toThrow(/10,?000,?000/);
   });
 });
 

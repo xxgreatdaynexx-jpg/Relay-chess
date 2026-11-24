@@ -1,8 +1,9 @@
 /** Video poker (Jacks or Better): pure rules shared by server and client. Play money only. */
 import type { CasinoCard } from './casino.js';
+import { CASINO_MAX_BET } from './casino-bet.js';
 
 export const POKER_MIN_BET = 1;
-export const POKER_MAX_BET = 500;
+export const POKER_MAX_BET = CASINO_MAX_BET;
 
 export type PokerHand = 'royal' | 'straight-flush' | 'four' | 'full-house' | 'flush' | 'straight' | 'three' | 'two-pair' | 'jacks' | 'nothing';
 

@@ -2,7 +2,7 @@ import { payCigaretteBonus } from './cigarettes.js';
 /** Server-authoritative multiplayer blackjack (play money). 6-deck shoe, dealer stands on soft 17, blackjack pays 3:2. */
 import { handValue, isBlackjack, type BJHandView, type BJOutcome, type BJTableView, type CasinoCard, type Suit } from '../shared/casino.js';
 import { bjStakes, type BjStakes, type BjStakesId } from '../shared/highStakes.js';
-import { validateCasinoBet } from '../shared/casino-bet.js';
+import { CASINO_MAX_BET, validateCasinoBet } from '../shared/casino-bet.js';
 import type { CasinoBank } from './casino-store.js';
 
 export const MAX_SEATS = 5;
@@ -10,7 +10,7 @@ export const BET_MS = 15_000;
 export const TURN_MS = 20_000;
 export const SETTLE_MS = 6_000;
 export const MIN_BET = 1;
-export const MAX_BET = 5_000;
+export const MAX_BET = CASINO_MAX_BET;
 const DECKS = 6;
 const RESHUFFLE_AT = 78;
 const SUITS: Suit[] = ['S', 'H', 'D', 'C'];

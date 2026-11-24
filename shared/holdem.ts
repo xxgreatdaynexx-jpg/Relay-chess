@@ -1,14 +1,15 @@
 /** No-Limit Texas Hold'em: shared constants, view types and hand evaluation. Play money only. */
 import type { CasinoCard } from './casino.js';
+import { CASINO_MAX_BET } from './casino-bet.js';
 
 export const HE_SEATS = 6;
 export const HE_SMALL = 5;
 export const HE_BIG = 10;
 export const HE_MIN_BUYIN = 100;
-export const HE_MAX_BUYIN = 1000;
+export const HE_MAX_BUYIN = CASINO_MAX_BET;
 export const HE_TURN_MS = 25000;
 
-/** Table tiers. Blinds keep the classic ratio: big blind = max buy-in / 100, small blind = big / 2. */
+/** Table tiers. Fixed-buy-in rooms keep the classic ratio (big = buy-in / 100, small = big / 2). Classic blinds stay 5/10; the max buy-in follows the 10 million casino cap. */
 export interface HEStakes { id: HEStakesId; label: string; small: number; big: number; minBuyIn: number; maxBuyIn: number }
 export type HEStakesId = 'classic' | '5k' | '10k' | '25k' | '100k' | '500k' | '1m' | '10m';
 const tier = (id: HEStakesId, label: string, buyIn: number): HEStakes => ({ id, label, small: buyIn / 200, big: buyIn / 100, minBuyIn: buyIn, maxBuyIn: buyIn });
